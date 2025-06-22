@@ -5,7 +5,7 @@ type Env = {
 };
 
 export class MyContainer<Env = unknown> extends Container<Env> {
-  defaultPort = 8080; // The default port for the container to listen on
+  defaultPort = 3000; // The default port for the container to listen on
   sleepAfter = "3m"; // Sleep the container if no requests are made in this timeframe
 
   envVars = {
@@ -33,7 +33,7 @@ export default {
 
     if (pathname.startsWith("/container")) {
       const containerInstance = getContainer(env.MY_CONTAINER, pathname);
-      return containerInstance.fetch(request);
+      return await containerInstance.fetch(request);
     }
 
     if (pathname.startsWith("/error")) {

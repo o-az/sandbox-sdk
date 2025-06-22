@@ -8,8 +8,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y git
 
 COPY container_src/* ./
-RUN bun install
+# RUN bun install
 
-EXPOSE 8080
+EXPOSE 3000
 # Run
 CMD ["bun", "index.ts"]
+

@@ -1,5 +1,5 @@
+import { spawn } from "node:child_process";
 import { serve } from "bun";
-import { spawn } from "child_process";
 
 interface ExecuteRequest {
   command: string;
