@@ -1,0 +1,11 @@
+{
+  "name": "computer",
+  "version": "0.0.0",
+  "description": "a computer",
+  "main": "src/index.ts",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module"
+}
