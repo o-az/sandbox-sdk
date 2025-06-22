@@ -7,6 +7,12 @@
   "observability": {
     "enabled": true
   },
+  "assets": {
+    "directory": "public"
+  },
+  "build": {
+    "command": "bun build app/index.tsx --outdir public/dist"
+  },
   "containers": [
     {
       "class_name": "MyContainer",

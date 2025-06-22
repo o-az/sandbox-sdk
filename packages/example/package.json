@@ -1,15 +1,24 @@
 {
-  "name": "example",
+  "name": "websocket-repl",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "type": "module",
+  "description": "A",
   "scripts": {
-    "start": "wrangler dev",
-    "dev": "bun run container_src/index.ts",
-    "server": "bun run container_src/index.ts"
+    "start": "wrangler dev"
   },
-  "keywords": [],
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "keywords": [
+    "websocket",
+    "repl",
+    "shell",
+    "terminal",
+    "bun"
+  ],
   "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "license": "MIT"
 }

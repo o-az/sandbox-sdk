@@ -1,6 +1,10 @@
 import { Container, getContainer, getRandom } from "@cloudflare/containers";
 
-export class MyContainer extends Container {
+type Env = {
+  MY_CONTAINER: DurableObjectNamespace<MyContainer<Env>>;
+};
+
+export class MyContainer<Env = unknown> extends Container<Env> {
   defaultPort = 8080; // The default port for the container to listen on
   sleepAfter = "3m"; // Sleep the container if no requests are made in this timeframe
 
@@ -22,10 +26,7 @@ export class MyContainer extends Container {
 }
 
 export default {
-  async fetch(
-    request: Request,
-    env: { MY_CONTAINER: DurableObjectNamespace<MyContainer> }
-  ): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const pathname = new URL(request.url).pathname;
     // If you want to route requests to a specific container,
     // pass a unique container identifier to .get()
