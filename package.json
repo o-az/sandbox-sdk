@@ -4,7 +4,8 @@
   "description": "an api for computers",
   "scripts": {
     "check": "biome check && tsc --noEmit",
-    "build": "npm run build -w @cloudflare/sandbox"
+    "build": "npm run build -w @cloudflare/sandbox",
+    "test": "echo 'No tests'"
   },
   "keywords": [],
   "author": "",
