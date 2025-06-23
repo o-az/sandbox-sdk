@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { HttpClient } from "../../sandbox/src/client";
+import { HttpClient } from "../../../packages/sandbox/src/client";
 import "./style.css";
 
 interface CommandResult {
@@ -333,7 +333,7 @@ function REPL() {
       <div className="results-container" ref={resultsEndRef}>
         {results.length === 0 ? (
           <div
-            style={{ color: "#8b949e" , padding: "2rem", textAlign: "center"}}
+            style={{ color: "#8b949e", padding: "2rem", textAlign: "center" }}
           >
             No commands executed yet. Try running a command above.
           </div>

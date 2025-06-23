@@ -1,7 +1,8 @@
 {
-  "name": "sandbox-example",
+  "name": "@cloudflare/sandbox-example",
   "version": "1.0.0",
   "type": "module",
+  "private": true,
   "description": "An example of using the sandbox package",
   "scripts": {
     "start": "wrangler dev"
