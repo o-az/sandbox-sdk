@@ -1,6 +1,10 @@
 {
   "name": "@cloudflare/sandbox",
   "version": "0.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cloudflare/sandbox-sdk"
+  },
   "description": "A sandboxed environment for running commands",
   "dependencies": {
     "@cloudflare/containers": "^0.0.8"
