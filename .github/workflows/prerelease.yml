@@ -33,7 +33,7 @@ jobs:
       - run: npm run check
       - run: CI=true npm run test
 
-      - run: npm publish --tag beta
+      - run: npm publish --tag beta --access public
         env:
           NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         working-directory: packages/sandbox
