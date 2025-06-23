@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { serve } from "bun";
-import { writeFile, mkdir, unlink, rename } from "node:fs/promises";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { serve } from "bun";
 
 interface ExecuteRequest {
   command: string;
@@ -1436,9 +1436,9 @@ async function handleStreamingWriteFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  path,
                   error:
                     error instanceof Error ? error.message : "Unknown error",
+                  path,
                   type: "error",
                 })}\n\n`
               )
@@ -1536,9 +1536,9 @@ async function handleDeleteFileRequest(
 
     return new Response(
       JSON.stringify({
+        exitCode: result.exitCode,
         path,
         success: result.success,
-        exitCode: result.exitCode,
         timestamp: new Date().toISOString(),
       }),
       {
@@ -1661,9 +1661,9 @@ async function handleStreamingDeleteFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  path,
                   error:
                     error instanceof Error ? error.message : "Unknown error",
+                  path,
                   type: "error",
                 })}\n\n`
               )
@@ -1780,10 +1780,10 @@ async function handleRenameFileRequest(
 
     return new Response(
       JSON.stringify({
-        oldPath,
-        newPath,
-        success: result.success,
         exitCode: result.exitCode,
+        newPath,
+        oldPath,
+        success: result.success,
         timestamp: new Date().toISOString(),
       }),
       {
@@ -1894,8 +1894,8 @@ async function handleStreamingRenameFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  oldPath,
                   newPath,
+                  oldPath,
                   timestamp: new Date().toISOString(),
                   type: "command_start",
                 })}\n\n`
@@ -1913,8 +1913,8 @@ async function handleStreamingRenameFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  oldPath,
                   newPath,
+                  oldPath,
                   success: true,
                   timestamp: new Date().toISOString(),
                   type: "command_complete",
@@ -1932,10 +1932,10 @@ async function handleStreamingRenameFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  oldPath,
-                  newPath,
                   error:
                     error instanceof Error ? error.message : "Unknown error",
+                  newPath,
+                  oldPath,
                   type: "error",
                 })}\n\n`
               )
@@ -2056,10 +2056,10 @@ async function handleMoveFileRequest(
 
     return new Response(
       JSON.stringify({
-        sourcePath,
         destinationPath,
-        success: result.success,
         exitCode: result.exitCode,
+        sourcePath,
+        success: result.success,
         timestamp: new Date().toISOString(),
       }),
       {
@@ -2172,8 +2172,8 @@ async function handleStreamingMoveFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  sourcePath,
                   destinationPath,
+                  sourcePath,
                   timestamp: new Date().toISOString(),
                   type: "command_start",
                 })}\n\n`
@@ -2191,8 +2191,8 @@ async function handleStreamingMoveFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  sourcePath,
                   destinationPath,
+                  sourcePath,
                   success: true,
                   timestamp: new Date().toISOString(),
                   type: "command_complete",
@@ -2210,10 +2210,10 @@ async function handleStreamingMoveFileRequest(
             controller.enqueue(
               new TextEncoder().encode(
                 `data: ${JSON.stringify({
-                  sourcePath,
                   destinationPath,
                   error:
                     error instanceof Error ? error.message : "Unknown error",
+                  sourcePath,
                   type: "error",
                 })}\n\n`
               )

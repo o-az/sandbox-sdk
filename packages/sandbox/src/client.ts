@@ -821,9 +821,9 @@ export class HttpClient {
 
       const response = await this.doFetch(`/api/write`, {
         body: JSON.stringify({
-          path,
           content,
           encoding,
+          path,
           sessionId: targetSessionId,
         }),
         headers: {
@@ -864,9 +864,9 @@ export class HttpClient {
 
       const response = await this.doFetch(`/api/write/stream`, {
         body: JSON.stringify({
-          path,
           content,
           encoding,
+          path,
           sessionId: targetSessionId,
         }),
         headers: {
@@ -1132,8 +1132,8 @@ export class HttpClient {
 
       const response = await this.doFetch(`/api/rename`, {
         body: JSON.stringify({
-          oldPath,
           newPath,
+          oldPath,
           sessionId: targetSessionId,
         }),
         headers: {
@@ -1173,8 +1173,8 @@ export class HttpClient {
 
       const response = await this.doFetch(`/api/rename/stream`, {
         body: JSON.stringify({
-          oldPath,
           newPath,
+          oldPath,
           sessionId: targetSessionId,
         }),
         headers: {
@@ -1286,9 +1286,9 @@ export class HttpClient {
 
       const response = await this.doFetch(`/api/move`, {
         body: JSON.stringify({
-          sourcePath,
           destinationPath,
           sessionId: targetSessionId,
+          sourcePath,
         }),
         headers: {
           "Content-Type": "application/json",
@@ -1327,9 +1327,9 @@ export class HttpClient {
 
       const response = await this.doFetch(`/api/move/stream`, {
         body: JSON.stringify({
-          sourcePath,
           destinationPath,
           sessionId: targetSessionId,
+          sourcePath,
         }),
         headers: {
           "Content-Type": "application/json",

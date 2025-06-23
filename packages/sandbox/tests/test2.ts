@@ -1,16 +1,16 @@
 import {
   createClient,
   HttpClient,
-  quickExecute,
-  quickExecuteStream,
-  quickWriteFile,
-  quickWriteFileStream,
   quickDeleteFile,
   quickDeleteFileStream,
-  quickRenameFile,
-  quickRenameFileStream,
+  quickExecute,
+  quickExecuteStream,
   quickMoveFile,
   quickMoveFileStream,
+  quickRenameFile,
+  quickRenameFileStream,
+  quickWriteFile,
+  quickWriteFileStream,
 } from "../../sandbox/src/client";
 
 async function testHttpClient() {
@@ -217,7 +217,7 @@ async function testHttpClient() {
     const client = createClient();
     await client.createSession();
 
-    const largeContent = "Line 1\n".repeat(100) + "Final line";
+    const largeContent = `${"Line 1\n".repeat(100)}Final line`;
     console.log("   Starting streaming file write...");
 
     await client.writeFileStream("large-file.txt", largeContent);
