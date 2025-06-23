@@ -7,6 +7,8 @@ import {
   quickExecuteStream,
   quickMoveFile,
   quickMoveFileStream,
+  quickReadFile,
+  quickReadFileStream,
   quickRenameFile,
   quickRenameFileStream,
   quickWriteFile,
@@ -676,6 +678,223 @@ async function testHttpClient() {
     console.log("❌ Should have failed for empty destination path");
   } catch (error) {
     console.log("✅ Error handling works for invalid move parameters");
+    console.log(
+      "   Error:",
+      error instanceof Error ? error.message : "Unknown error",
+      "\n"
+    );
+  }
+
+  // Test 25: File reading
+  console.log("Test 25: File reading");
+  try {
+    // First create a file to read
+    const readContent = "This is a test file for reading\nLine 2\nLine 3";
+    await quickWriteFile("file-to-read.txt", readContent);
+    console.log("✅ Test file created for reading");
+
+    // Read the file
+    const result = await quickReadFile("file-to-read.txt");
+    console.log("✅ File read successfully:", result.success);
+    console.log("   Path:", result.path);
+    console.log("   Content length:", result.content.length, "characters");
+    console.log("   Exit code:", result.exitCode);
+
+    // Verify the content
+    console.log("✅ File content verified:", result.content === readContent);
+    console.log("   Content:", result.content);
+    console.log("✅ File reading test completed\n");
+  } catch (error) {
+    console.error("❌ Test 25 failed:", error);
+  }
+
+  // Test 26: File reading with custom encoding
+  console.log("Test 26: File reading with custom encoding");
+  try {
+    // Create a file with special characters
+    const specialContent = "Hello 世界! 🌍 Test with emojis and unicode";
+    await quickWriteFile("special-chars.txt", specialContent, "utf-8");
+    console.log("✅ Special characters file created");
+
+    // Read with explicit UTF-8 encoding
+    const result = await quickReadFile("special-chars.txt", "utf-8");
+    console.log(
+      "✅ Special characters file read successfully:",
+      result.success
+    );
+    console.log(
+      "✅ Special characters verified:",
+      result.content === specialContent
+    );
+    console.log("   Content:", result.content);
+    console.log("✅ Custom encoding test completed\n");
+  } catch (error) {
+    console.error("❌ Test 26 failed:", error);
+  }
+
+  // Test 27: File reading in nested directories
+  console.log("Test 27: File reading in nested directories");
+  try {
+    // Create a file in a nested directory
+    const nestedContent = "This file is in a nested directory for reading";
+    await quickWriteFile("nested/read/test-nested-read.txt", nestedContent);
+    console.log("✅ Nested file created for reading");
+
+    // Read the nested file
+    const result = await quickReadFile("nested/read/test-nested-read.txt");
+    console.log("✅ Nested file read successfully:", result.success);
+    console.log(
+      "✅ Nested file content verified:",
+      result.content === nestedContent
+    );
+    console.log("   Content:", result.content);
+    console.log("✅ Nested directory reading test completed\n");
+  } catch (error) {
+    console.error("❌ Test 27 failed:", error);
+  }
+
+  // Test 28: Streaming file reading
+  console.log("Test 28: Streaming file reading");
+  try {
+    const client = createClient();
+    await client.createSession();
+
+    // Create a file to read via streaming
+    const streamReadContent =
+      "This file will be read via streaming\nLine 2\nLine 3";
+    await client.writeFile("stream-read-file.txt", streamReadContent);
+    console.log("✅ Test file created for streaming reading");
+
+    let readContent = "";
+    let readCompleted = false;
+
+    // Set up event handlers for streaming
+    client.setOnStreamEvent((event) => {
+      if (event.type === "command_complete" && event.content) {
+        readContent = event.content;
+        readCompleted = true;
+      }
+    });
+
+    console.log("   Starting streaming file reading...");
+    await client.readFileStream("stream-read-file.txt");
+    console.log("✅ Streaming file reading completed");
+
+    // Verify the content was read correctly
+    console.log(
+      "✅ Streaming read content verified:",
+      readContent === streamReadContent
+    );
+    console.log("   Content length:", readContent.length, "characters");
+
+    client.clearSession();
+    console.log("✅ Streaming file reading test completed\n");
+  } catch (error) {
+    console.error("❌ Test 28 failed:", error);
+  }
+
+  // Test 29: Quick streaming file reading
+  console.log("Test 29: Quick streaming file reading");
+  try {
+    // Create a file for quick streaming read
+    const quickReadContent = "Quick streaming read test content";
+    await quickWriteFile("quick-read-stream.txt", quickReadContent);
+    console.log("✅ Test file created for quick streaming reading");
+
+    let quickReadContentReceived = "";
+    let quickReadCompleted = false;
+
+    console.log("   Starting quick streaming file reading...");
+    await quickReadFileStream("quick-read-stream.txt", "utf-8", {
+      onStreamEvent: (event) => {
+        if (event.type === "command_complete" && event.content) {
+          quickReadContentReceived = event.content;
+          quickReadCompleted = true;
+        }
+      },
+    });
+    console.log("✅ Quick streaming file reading completed");
+
+    // Verify the content
+    console.log(
+      "✅ Quick streaming read verified:",
+      quickReadContentReceived === quickReadContent
+    );
+    console.log("   Content:", quickReadContentReceived);
+    console.log("✅ Quick streaming file reading test completed\n");
+  } catch (error) {
+    console.error("❌ Test 29 failed:", error);
+  }
+
+  // Test 30: File reading with session management
+  console.log("Test 30: File reading with session management");
+  try {
+    const client = createClient();
+    const sessionId = await client.createSession();
+
+    // Create a file in session
+    const sessionReadContent =
+      "This file was created and read with session management";
+    await client.writeFile(
+      "session-read-file.txt",
+      sessionReadContent,
+      "utf-8",
+      sessionId
+    );
+    console.log("✅ Session file created for reading");
+
+    // Read the file in the same session
+    const result = await client.readFile(
+      "session-read-file.txt",
+      "utf-8",
+      sessionId
+    );
+    console.log("✅ Session file read successfully:", result.success);
+    console.log(
+      "✅ Session file content verified:",
+      result.content === sessionReadContent
+    );
+    console.log("   Session ID:", sessionId);
+    console.log("   Content:", result.content);
+
+    client.clearSession();
+    console.log("✅ Session file reading test completed\n");
+  } catch (error) {
+    console.error("❌ Test 30 failed:", error);
+  }
+
+  // Test 31: Error handling for file reading
+  console.log("Test 31: Error handling for file reading");
+  try {
+    // Try to read a non-existent file
+    await quickReadFile("non-existent-read-file.txt");
+    console.log("❌ Should have failed for non-existent file");
+  } catch (error) {
+    console.log("✅ Error handling works for non-existent files");
+    console.log(
+      "   Error:",
+      error instanceof Error ? error.message : "Unknown error"
+    );
+  }
+
+  try {
+    // Try to read from a dangerous path
+    await quickReadFile("/etc/passwd");
+    console.log("❌ Should have failed for dangerous path");
+  } catch (error) {
+    console.log("✅ Error handling works for dangerous paths");
+    console.log(
+      "   Error:",
+      error instanceof Error ? error.message : "Unknown error"
+    );
+  }
+
+  try {
+    // Try to read with empty path
+    await quickReadFile("");
+    console.log("❌ Should have failed for empty path");
+  } catch (error) {
+    console.log("✅ Error handling works for empty paths");
     console.log(
       "   Error:",
       error instanceof Error ? error.message : "Unknown error",

@@ -85,6 +85,20 @@ export interface WriteFileResponse {
   timestamp: string;
 }
 
+interface ReadFileRequest {
+  path: string;
+  encoding?: string;
+  sessionId?: string;
+}
+
+export interface ReadFileResponse {
+  success: boolean;
+  exitCode: number;
+  path: string;
+  content: string;
+  timestamp: string;
+}
+
 interface DeleteFileRequest {
   path: string;
   sessionId?: string;
@@ -142,6 +156,7 @@ interface StreamEvent {
   newPath?: string;
   sourcePath?: string;
   destinationPath?: string;
+  content?: string;
   success?: boolean;
   exitCode?: number;
   stdout?: string;
@@ -978,6 +993,164 @@ export class HttpClient {
     }
   }
 
+  async readFile(
+    path: string,
+    encoding: string = "utf-8",
+    sessionId?: string
+  ): Promise<ReadFileResponse> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/read`, {
+        body: JSON.stringify({
+          encoding,
+          path,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: ReadFileResponse = await response.json();
+      console.log(
+        `[HTTP Client] File read: ${path}, Success: ${data.success}, Content length: ${data.content.length}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error reading file:", error);
+      throw error;
+    }
+  }
+
+  async readFileStream(
+    path: string,
+    encoding: string = "utf-8",
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/read/stream`, {
+        body: JSON.stringify({
+          encoding,
+          path,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = line.slice(6); // Remove 'data: ' prefix
+                const event: StreamEvent = JSON.parse(eventData);
+
+                console.log(
+                  `[HTTP Client] Read file stream event: ${event.type}`
+                );
+                this.options.onStreamEvent?.(event);
+
+                switch (event.type) {
+                  case "command_start":
+                    console.log(
+                      `[HTTP Client] Read file started: ${event.path}`
+                    );
+                    this.options.onCommandStart?.("read", [path, encoding]);
+                    break;
+
+                  case "command_complete":
+                    console.log(
+                      `[HTTP Client] Read file completed: ${
+                        event.path
+                      }, Success: ${event.success}, Content length: ${
+                        event.content?.length || 0
+                      }`
+                    );
+                    this.options.onCommandComplete?.(
+                      event.success!,
+                      0,
+                      event.content || "",
+                      "",
+                      "read",
+                      [path, encoding]
+                    );
+                    break;
+
+                  case "error":
+                    console.error(
+                      `[HTTP Client] Read file error: ${event.error}`
+                    );
+                    this.options.onError?.(event.error!, "read", [
+                      path,
+                      encoding,
+                    ]);
+                    break;
+                }
+              } catch (parseError) {
+                console.warn(
+                  "[HTTP Client] Failed to parse read file stream event:",
+                  parseError
+                );
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("[HTTP Client] Error in streaming read file:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        "read",
+        [path, encoding]
+      );
+      throw error;
+    }
+  }
+
   async deleteFile(
     path: string,
     sessionId?: string
@@ -1624,6 +1797,38 @@ export async function quickWriteFileStream(
 
   try {
     await client.writeFileStream(path, content, encoding);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick file reading
+export async function quickReadFile(
+  path: string,
+  encoding: string = "utf-8",
+  options?: HttpClientOptions
+): Promise<ReadFileResponse> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    return await client.readFile(path, encoding);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick streaming file reading
+export async function quickReadFileStream(
+  path: string,
+  encoding: string = "utf-8",
+  options?: HttpClientOptions
+): Promise<void> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    await client.readFileStream(path, encoding);
   } finally {
     client.clearSession();
   }

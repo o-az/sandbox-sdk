@@ -76,4 +76,54 @@ export class Sandbox<Env = unknown> extends Container<Env> {
     }
     return this.client.mkdir(path, options.recursive);
   }
+
+  async writeFile(
+    path: string,
+    content: string,
+    options: { encoding?: string; stream?: boolean }
+  ) {
+    if (options?.stream) {
+      return this.client.writeFileStream(path, content, options.encoding);
+    }
+    return this.client.writeFile(path, content, options.encoding);
+  }
+
+  async deleteFile(path: string, options: { stream?: boolean }) {
+    if (options?.stream) {
+      return this.client.deleteFileStream(path);
+    }
+    return this.client.deleteFile(path);
+  }
+
+  async renameFile(
+    oldPath: string,
+    newPath: string,
+    options: { stream?: boolean }
+  ) {
+    if (options?.stream) {
+      return this.client.renameFileStream(oldPath, newPath);
+    }
+    return this.client.renameFile(oldPath, newPath);
+  }
+
+  async moveFile(
+    sourcePath: string,
+    destinationPath: string,
+    options: { stream?: boolean }
+  ) {
+    if (options?.stream) {
+      return this.client.moveFileStream(sourcePath, destinationPath);
+    }
+    return this.client.moveFile(sourcePath, destinationPath);
+  }
+
+  async readFile(
+    path: string,
+    options: { encoding?: string; stream?: boolean }
+  ) {
+    if (options?.stream) {
+      return this.client.readFileStream(path, options.encoding);
+    }
+    return this.client.readFile(path, options.encoding);
+  }
 }

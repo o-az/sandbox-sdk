@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { serve } from "bun";
 
@@ -24,6 +24,12 @@ interface MkdirRequest {
 interface WriteFileRequest {
   path: string;
   content: string;
+  encoding?: string;
+  sessionId?: string;
+}
+
+interface ReadFileRequest {
+  path: string;
   encoding?: string;
   sessionId?: string;
 }
@@ -294,6 +300,18 @@ const server = serve({
         case "/api/write/stream":
           if (req.method === "POST") {
             return handleStreamingWriteFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/read":
+          if (req.method === "POST") {
+            return handleReadFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/read/stream":
+          if (req.method === "POST") {
+            return handleStreamingReadFileRequest(req, corsHeaders);
           }
           break;
 
@@ -1476,6 +1494,235 @@ async function handleStreamingWriteFileRequest(
   }
 }
 
+async function handleReadFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as ReadFileRequest;
+    const { path, encoding = "utf-8", sessionId } = body;
+
+    if (!path || typeof path !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (dangerousPatterns.some((pattern) => pattern.test(path))) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Reading file: ${path}`);
+
+    const result = await executeReadFile(path, encoding, sessionId);
+
+    return new Response(
+      JSON.stringify({
+        content: result.content,
+        exitCode: result.exitCode,
+        path,
+        success: result.success,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
+    );
+  } catch (error) {
+    console.error("[Server] Error in handleReadFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to read file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleStreamingReadFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as ReadFileRequest;
+    const { path, encoding = "utf-8", sessionId } = body;
+
+    if (!path || typeof path !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (dangerousPatterns.some((pattern) => pattern.test(path))) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Reading file (streaming): ${path}`);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        (async () => {
+          try {
+            // Send command start event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  timestamp: new Date().toISOString(),
+                  type: "command_start",
+                })}\n\n`
+              )
+            );
+
+            // Read the file
+            const content = await readFile(path, {
+              encoding: encoding as BufferEncoding,
+            });
+
+            console.log(`[Server] File read successfully: ${path}`);
+
+            // Send command completion event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  content,
+                  path,
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  type: "command_complete",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          } catch (error) {
+            console.error(`[Server] Error reading file: ${path}`, error);
+
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                  path,
+                  type: "error",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          }
+        })();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
+        ...corsHeaders,
+      },
+    });
+  } catch (error) {
+    console.error("[Server] Error in handleStreamingReadFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to read file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
 async function handleDeleteFileRequest(
   req: Request,
   corsHeaders: Record<string, string>
@@ -2506,6 +2753,37 @@ function executeWriteFile(
   });
 }
 
+function executeReadFile(
+  path: string,
+  encoding: string,
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  exitCode: number;
+  content: string;
+}> {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        // Read the file
+        const content = await readFile(path, {
+          encoding: encoding as BufferEncoding,
+        });
+
+        console.log(`[Server] File read successfully: ${path}`);
+        resolve({
+          content,
+          exitCode: 0,
+          success: true,
+        });
+      } catch (error) {
+        console.error(`[Server] Error reading file: ${path}`, error);
+        reject(error);
+      }
+    })();
+  });
+}
+
 function executeDeleteFile(
   path: string,
   sessionId?: string
@@ -2610,6 +2888,8 @@ console.log(`   POST /api/mkdir - Create a directory`);
 console.log(`   POST /api/mkdir/stream - Create a directory (streaming)`);
 console.log(`   POST /api/write - Write a file`);
 console.log(`   POST /api/write/stream - Write a file (streaming)`);
+console.log(`   POST /api/read - Read a file`);
+console.log(`   POST /api/read/stream - Read a file (streaming)`);
 console.log(`   POST /api/delete - Delete a file`);
 console.log(`   POST /api/delete/stream - Delete a file (streaming)`);
 console.log(`   POST /api/rename - Rename a file`);
