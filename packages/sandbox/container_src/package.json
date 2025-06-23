@@ -1,5 +1,9 @@
 {
-  "name": "example",
+  "name": "sandbox-server",
   "version": "1.0.0",
-  "description": ""
+  "description": "A server for the sandbox package",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run index.ts"
+  }
 }
