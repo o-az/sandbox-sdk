@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import React, { useState, useEffect, useRef } from "react";
-import { HttpClient } from "../src/client";
+import { HttpClient } from "../../sandbox/src/client";
 import "./style.css";
 
 interface CommandResult {

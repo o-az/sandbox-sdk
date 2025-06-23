@@ -1,4 +1,4 @@
-import { HttpClient } from "../src/client";
+import { HttpClient } from "../../sandbox/src/client";
 
 interface ExecuteRequest {
   command: string;
@@ -186,7 +186,7 @@ class HttpCommandTester {
   async testQuickExecute(): Promise<void> {
     console.log("\n⚡ Testing quick execute...");
     try {
-      const { quickExecute } = await import("../src/client");
+      const { quickExecute } = await import("../../sandbox/src/client");
       const result = await quickExecute("echo", ["Hello from quick execute!"]);
       console.log(`✅ Quick execute result: ${result.stdout.trim()}`);
     } catch (error) {
@@ -197,7 +197,7 @@ class HttpCommandTester {
   async testQuickExecuteStream(): Promise<void> {
     console.log("\n⚡ Testing quick execute stream...");
     try {
-      const { quickExecuteStream } = await import("../src/client");
+      const { quickExecuteStream } = await import("../../sandbox/src/client");
       await quickExecuteStream("echo", ["Hello from quick execute stream!"]);
       console.log("✅ Quick execute stream completed");
     } catch (error) {

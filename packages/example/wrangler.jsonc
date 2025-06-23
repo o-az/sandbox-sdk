@@ -13,27 +13,27 @@
   "build": {
     "command": "bun build app/index.tsx --outdir public/dist",
     "watch_dir": "app"
-  }
-  // "containers": [
-  //   {
-  //     "class_name": "Sandbox",
-  //     "image": "./Dockerfile",
-  //     "max_instances": 3,
-  //     "name": "container-package-class-example"
-  //   }
-  // ],
-  // "durable_objects": {
-  //   "bindings": [
-  //     {
-  //       "class_name": "Sandbox",
-  //       "name": "Sandbox"
-  //     }
-  //   ]
-  // },
-  // "migrations": [
-  //   {
-  //     "new_sqlite_classes": ["Sandbox"],
-  //     "tag": "v1"
-  //   }
-  // ]
+  },
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./node_modules/@cloudflare/sandbox/Dockerfile",
+      "max_instances": 3,
+      "name": "sandbox"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "Sandbox",
+        "name": "Sandbox"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "new_sqlite_classes": ["Sandbox"],
+      "tag": "v1"
+    }
+  ]
 }

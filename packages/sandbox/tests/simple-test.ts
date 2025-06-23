@@ -1,4 +1,8 @@
-import { HttpClient, quickExecute, quickExecuteStream } from "../src/client";
+import {
+  HttpClient,
+  quickExecute,
+  quickExecuteStream,
+} from "../../sandbox/src/client";
 
 async function testHttpClient() {
   console.log("🚀 Testing HTTP Client...\n");

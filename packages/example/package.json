@@ -1,24 +1,11 @@
 {
-  "name": "websocket-repl",
+  "name": "sandbox-example",
   "version": "1.0.0",
   "type": "module",
-  "description": "A",
+  "description": "An example of using the sandbox package",
   "scripts": {
     "start": "wrangler dev"
   },
-  "dependencies": {
-    "ws": "^8.14.2"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0"
-  },
-  "keywords": [
-    "websocket",
-    "repl",
-    "shell",
-    "terminal",
-    "bun"
-  ],
   "author": "",
   "license": "MIT"
 }
