@@ -4,6 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
   "assets": {
     "directory": "public"
   },
@@ -32,8 +35,5 @@
       "new_sqlite_classes": ["Sandbox"],
       "tag": "v1"
     }
-  ],
-  "observability": {
-    "enabled": true
-  }
+  ]
 }
