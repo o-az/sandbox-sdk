@@ -1,15 +1,16 @@
 # HTTP Command Execution Server & Client
 
-This project provides an HTTP-based command execution server and client, replacing the previous WebSocket implementation. The server runs on Bun and supports both regular and streaming command execution.
+This project provides an HTTP-based command execution server and client. The server runs on Bun and supports both regular and streaming command execution, along with git operations and file system management.
 
 ## Features
 
-- **HTTP-based communication** - No WebSocket dependencies
 - **Session management** - Track and manage command execution sessions
 - **Regular command execution** - Execute commands and get results
 - **Streaming command execution** - Real-time output streaming using Server-Sent Events
+- **Git operations** - Checkout repositories with branch support
+- **File system operations** - Create directories with recursive support
 - **CORS support** - Cross-origin requests enabled
-- **Safety checks** - Prevents dangerous commands
+- **Safety checks** - Prevents dangerous commands and paths
 - **Process cleanup** - Automatic cleanup of running processes
 
 ## Server Endpoints
@@ -27,6 +28,14 @@ This project provides an HTTP-based command execution server and client, replaci
 
 - `POST /api/execute` - Execute a command (non-streaming)
 - `POST /api/execute/stream` - Execute a command (streaming)
+
+### Git Operations
+
+- `POST /api/git/checkout` - Checkout a git repository
+
+### File System Operations
+
+- `POST /api/mkdir` - Create a directory
 
 ### Utilities
 
@@ -74,6 +83,18 @@ console.log(result.stdout);
 
 // Execute a command with streaming
 await client.executeStream("ls", ["-la"]);
+
+// Create a directory
+const mkdirResult = await client.mkdir("my-project", true);
+console.log(`Directory created: ${mkdirResult.success}`);
+
+// Checkout a git repository
+const gitResult = await client.gitCheckout(
+  "https://github.com/username/project.git",
+  "main",
+  "my-project"
+);
+console.log(`Repository cloned to: ${gitResult.targetDir}`);
 ```
 
 ### Quick Execute Utilities
@@ -84,7 +105,28 @@ const result = await quickExecute("whoami");
 
 // Quick streaming execute
 await quickExecuteStream("ls", ["-la"]);
+
+// Quick directory creation
+const mkdirResult = await quickMkdir("temp-folder", true);
+
+// Quick git checkout
+const gitResult = await quickGitCheckout(
+  "https://github.com/username/repo.git",
+  "develop",
+  "my-repo"
+);
 ```
+
+### Convenience Functions
+
+The client provides several convenience functions for quick operations without session management:
+
+- `quickExecute(command, args?, options?)` - Quick command execution
+- `quickExecuteStream(command, args?, options?)` - Quick streaming execution
+- `quickGitCheckout(repoUrl, branch?, targetDir?, options?)` - Quick git repository checkout
+- `quickMkdir(path, recursive?, options?)` - Quick directory creation
+
+These functions automatically create a session, perform the operation, and clean up the session afterward.
 
 ## API Reference
 
@@ -102,6 +144,8 @@ new HttpClient(options?: HttpClientOptions)
 - `listSessions(): Promise<SessionListResponse>` - List all sessions
 - `execute(command: string, args?: string[], sessionId?: string): Promise<ExecuteResponse>` - Execute a command
 - `executeStream(command: string, args?: string[], sessionId?: string): Promise<void>` - Execute a command with streaming
+- `gitCheckout(repoUrl: string, branch?: string, targetDir?: string, sessionId?: string): Promise<GitCheckoutResponse>` - Checkout a git repository
+- `mkdir(path: string, recursive?: boolean, sessionId?: string): Promise<MkdirResponse>` - Create a directory
 - `ping(): Promise<string>` - Health check
 - `getCommands(): Promise<string[]>` - Get available commands
 - `getSessionId(): string | null` - Get current session ID
@@ -152,6 +196,56 @@ new HttpClient(options?: HttpClientOptions)
 }
 ```
 
+#### Git Checkout Request
+
+```typescript
+{
+  repoUrl: string;
+  branch?: string;
+  targetDir?: string;
+  sessionId?: string;
+}
+```
+
+#### Git Checkout Response
+
+```typescript
+{
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  repoUrl: string;
+  branch: string;
+  targetDir: string;
+  timestamp: string;
+}
+```
+
+#### Mkdir Request
+
+```typescript
+{
+  path: string;
+  recursive?: boolean;
+  sessionId?: string;
+}
+```
+
+#### Mkdir Response
+
+```typescript
+{
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  path: string;
+  recursive: boolean;
+  timestamp: string;
+}
+```
+
 ## Testing
 
 Run the test file to verify the implementation:
@@ -162,9 +256,17 @@ bun run simple-test.ts
 
 ## Security
 
-The server includes basic safety checks to prevent dangerous commands:
+The server includes basic safety checks to prevent dangerous commands and paths:
+
+### Dangerous Commands
 
 - `rm`, `rmdir`, `del`, `format`, `shutdown`, `reboot`
+
+### Dangerous Paths (for mkdir operations)
+
+- Root directory (`/`)
+- System directories (`/etc`, `/var`, `/usr`, `/bin`, `/sbin`, `/boot`, `/dev`, `/proc`, `/sys`)
+- Path traversal attempts (`..`)
 
 In production, you should implement more comprehensive security measures.
 

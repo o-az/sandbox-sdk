@@ -1,4 +1,4 @@
-import { HttpClient } from "./src/client";
+import { HttpClient } from "../src/client";
 
 async function connectionTest() {
   console.log("🔌 Testing HTTP Connection Only");

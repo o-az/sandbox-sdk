@@ -3,7 +3,7 @@ import {
   createClient,
   quickExecute,
   quickExecuteStream,
-} from "./src/client";
+} from "../src/client";
 
 async function testHttpClient() {
   console.log("🧪 Testing HTTP Client...\n");
