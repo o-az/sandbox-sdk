@@ -16,7 +16,7 @@
   },
   "containers": [
     {
-      "class_name": "MyContainer",
+      "class_name": "Sandbox",
       "image": "./Dockerfile",
       "max_instances": 3,
       "name": "container-package-class-example"
@@ -25,14 +25,14 @@
   "durable_objects": {
     "bindings": [
       {
-        "class_name": "MyContainer",
-        "name": "MY_CONTAINER"
+        "class_name": "Sandbox",
+        "name": "Sandbox"
       }
     ]
   },
   "migrations": [
     {
-      "new_sqlite_classes": ["MyContainer"],
+      "new_sqlite_classes": ["Sandbox"],
       "tag": "v1"
     }
   ]

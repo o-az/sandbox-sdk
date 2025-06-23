@@ -30,7 +30,7 @@ function REPL() {
   // Initialize WebSocket client
   useEffect(() => {
     const wsClient = new WebSocketClient({
-      url: `wss://${window.location.host}/container`,
+      url: `ws://${window.location.host}/container`,
       onConnected: (sessionId: string) => {
         console.log("Connected with session:", sessionId);
         setIsConnected(true);
@@ -145,7 +145,9 @@ function REPL() {
       setResults((prev) => [...prev, newResult]);
 
       // Execute the command using the new async method
+      console.log("! Executing command:", command, args);
       const result = await client.execute(command, args);
+      console.log("! Result:", result);
 
       // Update the result with the response
       setResults((prev) => {

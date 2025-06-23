@@ -1,9 +1,4 @@
-import {
-  WebSocketClient,
-  createClient,
-  executeCommand,
-  quickExecute,
-} from "./src/client";
+import { WebSocketClient, createClient, quickExecute } from "./src/client";
 
 async function testWebSocketClient() {
   console.log("🧪 Testing WebSocket Client...\n");
@@ -15,11 +10,9 @@ async function testWebSocketClient() {
     await client.connect();
     console.log("✅ Connected successfully");
 
-    client.ping();
-    console.log("✅ Ping sent");
+    const pingResult = await client.ping();
+    console.log("✅ Ping result:", pingResult);
 
-    // Wait for pong response
-    await new Promise((resolve) => setTimeout(resolve, 1000));
     client.disconnect();
     console.log("✅ Disconnected\n");
   } catch (error) {
@@ -51,7 +44,7 @@ async function testWebSocketClient() {
 
     for (const [command, args] of commands) {
       console.log(`Executing: ${command} ${args.join(" ")}`);
-      const result = await executeCommand(client, command, args);
+      const result = await client.execute(command, args);
       console.log(`   Success: ${result.success}, Exit: ${result.exitCode}`);
     }
 
@@ -78,7 +71,23 @@ async function testWebSocketClient() {
 
 // Run tests if this file is executed directly
 if (require.main === module) {
-  testWebSocketClient().catch(console.error);
+  // Add a timeout to prevent hanging
+  const timeout = setTimeout(() => {
+    console.error("❌ Tests timed out after 60 seconds");
+    process.exit(1);
+  }, 60000);
+
+  testWebSocketClient()
+    .then(() => {
+      clearTimeout(timeout);
+      console.log("✅ Tests finished successfully");
+      process.exit(0);
+    })
+    .catch((error) => {
+      clearTimeout(timeout);
+      console.error("❌ Tests failed:", error);
+      process.exit(1);
+    });
 }
 
 export { testWebSocketClient };

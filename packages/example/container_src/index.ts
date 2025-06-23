@@ -9,6 +9,7 @@ interface ExecuteRequest {
 interface WebSocketMessage {
   type: "execute" | "ping" | "list";
   data?: ExecuteRequest;
+  _requestId?: string;
 }
 
 interface WebSocketData {
@@ -79,15 +80,26 @@ const server = serve({
           message.toString()
         ) as WebSocketMessage;
 
+        console.log(
+          `[Server] Received message:`,
+          parsedMessage.type,
+          parsedMessage._requestId
+        );
+
         switch (parsedMessage.type) {
           case "execute":
             if (parsedMessage.data) {
-              handleCommandExecution(ws, parsedMessage.data);
+              handleCommandExecution(
+                ws,
+                parsedMessage.data,
+                parsedMessage._requestId
+              );
             } else {
               ws.send(
                 JSON.stringify({
                   type: "error",
                   error: "No command data provided",
+                  _requestId: parsedMessage._requestId,
                 })
               );
             }
@@ -98,6 +110,7 @@ const server = serve({
               JSON.stringify({
                 type: "pong",
                 timestamp: new Date().toISOString(),
+                _requestId: parsedMessage._requestId,
               })
             );
             break;
@@ -119,6 +132,7 @@ const server = serve({
                   sessionId: (ws.data as WebSocketData).sessionId || "unknown",
                   timestamp: new Date().toISOString(),
                 },
+                _requestId: parsedMessage._requestId,
               })
             );
             break;
@@ -128,6 +142,7 @@ const server = serve({
               JSON.stringify({
                 type: "error",
                 error: "Unknown message type",
+                _requestId: parsedMessage._requestId,
               })
             );
         }
@@ -142,10 +157,14 @@ const server = serve({
     },
 
     close(ws: Bun.ServerWebSocket<WebSocketData>) {
-      console.log("WebSocket closed");
+      console.log("[Server] WebSocket closed for session:", ws.data?.sessionId);
       // Clean up any running processes for this session
       const wsData = ws.data;
       if (wsData.activeProcess) {
+        console.log(
+          "[Server] Killing active process for session:",
+          wsData.sessionId
+        );
         wsData.activeProcess.kill();
       }
     },
@@ -155,7 +174,7 @@ const server = serve({
     // },
 
     open(ws: Bun.ServerWebSocket<WebSocketData>) {
-      console.log("WebSocket opened");
+      console.log("[Server] WebSocket opened");
       // Generate a session ID for this connection
       const wsData: WebSocketData = {
         sessionId: `session_${Date.now()}_${Math.random()
@@ -164,6 +183,8 @@ const server = serve({
         activeProcess: null,
       };
       ws.data = wsData;
+
+      console.log("[Server] Created session:", wsData.sessionId);
 
       // Send welcome message
       ws.send(
@@ -183,15 +204,25 @@ const server = serve({
 
 function handleCommandExecution(
   ws: Bun.ServerWebSocket<WebSocketData>,
-  request: ExecuteRequest
+  request: ExecuteRequest,
+  _requestId?: string
 ): void {
   const { command, args = [] } = request;
+
+  console.log(
+    `[Server] Executing command:`,
+    command,
+    args,
+    `RequestId:`,
+    _requestId
+  );
 
   if (!command || typeof command !== "string") {
     ws.send(
       JSON.stringify({
         type: "error",
         error: "Command is required and must be a string",
+        _requestId,
       })
     );
     return;
@@ -213,6 +244,7 @@ function handleCommandExecution(
       JSON.stringify({
         type: "error",
         error: "Dangerous command not allowed",
+        _requestId,
       })
     );
     return;
@@ -227,6 +259,7 @@ function handleCommandExecution(
         args: args,
         timestamp: new Date().toISOString(),
       },
+      _requestId,
     })
   );
 
@@ -255,6 +288,7 @@ function handleCommandExecution(
           data: output,
           command: command,
         },
+        _requestId,
       })
     );
   });
@@ -272,6 +306,7 @@ function handleCommandExecution(
           data: output,
           command: command,
         },
+        _requestId,
       })
     );
   });
@@ -279,6 +314,15 @@ function handleCommandExecution(
   child.on("close", (code) => {
     // Clear the active process reference
     wsData.activeProcess = null;
+
+    console.log(
+      `[Server] Command completed:`,
+      command,
+      `Exit code:`,
+      code,
+      `RequestId:`,
+      _requestId
+    );
 
     ws.send(
       JSON.stringify({
@@ -292,6 +336,7 @@ function handleCommandExecution(
           args: args,
           timestamp: new Date().toISOString(),
         },
+        _requestId,
       })
     );
   });
@@ -306,6 +351,7 @@ function handleCommandExecution(
         error: error.message,
         command: command,
         args: args,
+        _requestId,
       })
     );
   });

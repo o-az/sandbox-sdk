@@ -110,10 +110,10 @@ export class WebSocketClient {
     return this.options.onCommandComplete;
   }
 
-  connect(): Promise<void> {
+  connect(ws?: WebSocket): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.options.url!);
+        this.ws = ws ?? new WebSocket(this.options.url!);
 
         this.ws.onopen = () => {
           console.log("WebSocket connected");
@@ -145,6 +145,11 @@ export class WebSocketClient {
   private handleMessage(data: string) {
     try {
       const message: WebSocketMessage = JSON.parse(data);
+      console.log(
+        `[WebSocket] Received message:`,
+        message.type,
+        message._requestId
+      );
 
       switch (message.type) {
         case "connected":
@@ -262,9 +267,43 @@ export class WebSocketClient {
       const requestId = `req-${this._requestCounter++}`;
       const requestMessage = { ...message, _requestId: requestId };
 
+      console.log(
+        `[WebSocket] Making request ${requestId}:`,
+        message.type,
+        message.data
+      );
+
+      // Add timeout to prevent hanging promises
+      const timeout = setTimeout(() => {
+        console.error(`[WebSocket] Request ${requestId} timed out`);
+        this._requestResolvers.delete(requestId);
+        reject(
+          new Error(
+            `Request timeout: ${responseType} response not received within 30 seconds`
+          )
+        );
+      }, 30000);
+
       this._requestResolvers.set(requestId, (response) => {
+        console.log(
+          `[WebSocket] Received response for ${requestId}:`,
+          response.type,
+          response.data
+        );
+        clearTimeout(timeout);
         if (response.type === responseType) {
-          resolve(response.data as T);
+          if (responseType === "command_complete") {
+            resolve({
+              success: response.data?.success,
+              stdout: response.data?.stdout || "",
+              stderr: response.data?.stderr || "",
+              exitCode: response.data?.exitCode || 0,
+            } as T);
+          } else if (responseType === "pong") {
+            resolve({ timestamp: response.timestamp } as T);
+          } else {
+            resolve(response.data as T);
+          }
         } else if (response.type === "error") {
           reject(new Error(response.error));
         }
@@ -276,6 +315,11 @@ export class WebSocketClient {
 
   send(message: WebSocketMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log(
+        `[WebSocket] Sending message:`,
+        message.type,
+        message._requestId
+      );
       this.ws.send(JSON.stringify(message));
     } else {
       throw new Error("WebSocket is not connected");
@@ -314,8 +358,16 @@ export class WebSocketClient {
 
   disconnect(): void {
     if (this.ws) {
+      console.log("[WebSocket] Disconnecting...");
+
+      // Clear any pending request resolvers
+      this._requestResolvers.clear();
+
+      // Close the WebSocket
       this.ws.close();
       this.ws = null;
+
+      console.log("[WebSocket] Disconnected");
     }
   }
 

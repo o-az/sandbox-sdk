@@ -1,10 +1,12 @@
 import { Container, getContainer, getRandom } from "@cloudflare/containers";
+// import { WebSocketClient } from "./client";
 
 type Env = {
-  MY_CONTAINER: DurableObjectNamespace<MyContainer<Env>>;
+  Sandbox: DurableObjectNamespace<Sandbox<Env>>;
 };
 
-export class MyContainer<Env = unknown> extends Container<Env> {
+export class Sandbox<Env = unknown> extends Container<Env> {
+  // client!: WebSocketClient;
   defaultPort = 3000; // The default port for the container to listen on
   sleepAfter = "3m"; // Sleep the container if no requests are made in this timeframe
 
@@ -14,6 +16,10 @@ export class MyContainer<Env = unknown> extends Container<Env> {
 
   override onStart() {
     console.log("Container successfully started");
+    // const ws = this.fetch("http://localhost:3000");
+    // this.client = new WebSocketClient({
+    //   url: "ws://localhost:3000",
+    // });
   }
 
   override onStop() {
@@ -32,23 +38,23 @@ export default {
     // pass a unique container identifier to .get()
 
     if (pathname.startsWith("/container")) {
-      const containerInstance = getContainer(env.MY_CONTAINER, pathname);
-      return await containerInstance.fetch(request);
+      const containerInstance = getContainer(env.Sandbox, pathname);
+      return await containerInstance.containerFetch(request);
     }
 
     if (pathname.startsWith("/error")) {
-      const containerInstance = getContainer(env.MY_CONTAINER, "error-test");
+      const containerInstance = getContainer(env.Sandbox, "error-test");
       return containerInstance.fetch(request);
     }
 
     if (pathname.startsWith("/lb")) {
-      const containerInstance = await getRandom(env.MY_CONTAINER, 3);
+      const containerInstance = await getRandom(env.Sandbox, 3);
       return containerInstance.fetch(request);
     }
 
     if (pathname.startsWith("/singleton")) {
       // getContainer will return a specific instance if no second argument is provided
-      return getContainer(env.MY_CONTAINER).fetch(request);
+      return getContainer(env.Sandbox).fetch(request);
     }
 
     return new Response(
