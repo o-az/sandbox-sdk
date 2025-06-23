@@ -32,7 +32,7 @@ function REPL() {
   // Initialize HTTP client
   useEffect(() => {
     const httpClient = new HttpClient({
-      baseUrl: `http://localhost:3000`,
+      baseUrl: `http://localhost:8787`,
       onCommandComplete: (
         success: boolean,
         exitCode: number,
