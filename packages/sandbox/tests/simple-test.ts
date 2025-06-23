@@ -10,19 +10,19 @@ async function testHttpClient() {
   // Create a client instance
   const client = new HttpClient({
     baseUrl: "http://localhost:3000",
-    onCommandStart: (command, args) => {
-      console.log(`📝 Command started: ${command} ${args.join(" ")}`);
-    },
-    onOutput: (stream, data, command) => {
-      console.log(`📤 [${stream}] ${data.trim()}`);
-    },
     onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
       console.log(
         `✅ Command completed: ${command}, Success: ${success}, Exit code: ${exitCode}`
       );
     },
+    onCommandStart: (command, args) => {
+      console.log(`📝 Command started: ${command} ${args.join(" ")}`);
+    },
     onError: (error, command, args) => {
       console.error(`❌ Command error: ${error}`);
+    },
+    onOutput: (stream, data, command) => {
+      console.log(`📤 [${stream}] ${data.trim()}`);
     },
   });
 

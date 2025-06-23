@@ -6,10 +6,19 @@
     "@cloudflare/containers": "^0.0.8"
   },
   "scripts": {
-    "build": "tsc -b src/**/*.ts"
+    "build": "tsup src/*.ts --outDir dist --dts --sourcemap --format esm"
   },
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "require": "./dist/client.js"
+    }
   },
   "keywords": [],
   "author": "",

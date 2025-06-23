@@ -1,6 +1,6 @@
-import { getSandbox, type Sandbox } from "../../sandbox/src";
+import { getSandbox, type Sandbox } from "@cloudflare/sandbox";
 
-export { Sandbox } from "../../sandbox/src";
+export { Sandbox } from "@cloudflare/sandbox";
 
 type Env = {
   Sandbox: DurableObjectNamespace<Sandbox>;

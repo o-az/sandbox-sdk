@@ -3,8 +3,8 @@ import {
   quickExecute,
   quickExecuteStream,
   quickGitCheckout,
-  quickMkdir,
   quickGitCheckoutStream,
+  quickMkdir,
   quickMkdirStream,
 } from "../../sandbox/src/client";
 
@@ -14,20 +14,20 @@ async function basicExample() {
 
   const client = createClient({
     baseUrl: "http://localhost:3000",
-    onCommandStart: (command, args) => {
-      console.log(`Starting command: ${command} ${args.join(" ")}`);
-    },
-    onOutput: (stream, data, command) => {
-      console.log(`[${stream}] ${data}`);
-    },
     onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
       console.log(
         `Command completed: ${command}, success=${success}, exitCode=${exitCode}`
       );
       if (stderr) console.log(`Stderr: ${stderr}`);
     },
+    onCommandStart: (command, args) => {
+      console.log(`Starting command: ${command} ${args.join(" ")}`);
+    },
     onError: (error, command, args) => {
       console.error(`Error in ${command}: ${error}`);
+    },
+    onOutput: (stream, data, command) => {
+      console.log(`[${stream}] ${data}`);
     },
   });
 
@@ -62,16 +62,16 @@ async function streamingExample() {
 
   const client = createClient({
     baseUrl: "http://localhost:3000",
+    onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
+      console.log(
+        `\n✅ Completed: ${command}, success=${success}, exitCode=${exitCode}`
+      );
+    },
     onCommandStart: (command, args) => {
       console.log(`🚀 Starting: ${command} ${args.join(" ")}`);
     },
     onOutput: (stream, data, command) => {
       process.stdout.write(data);
-    },
-    onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
-      console.log(
-        `\n✅ Completed: ${command}, success=${success}, exitCode=${exitCode}`
-      );
     },
   });
 
@@ -97,14 +97,14 @@ async function gitExample() {
 
   const client = createClient({
     baseUrl: "http://localhost:3000",
+    onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
+      console.log(`✅ Git operation completed: ${command}, success=${success}`);
+    },
     onCommandStart: (command, args) => {
       console.log(`🔧 Starting: ${command} ${args.join(" ")}`);
     },
     onOutput: (stream, data, command) => {
       console.log(`[${stream}] ${data.trim()}`);
-    },
-    onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
-      console.log(`✅ Git operation completed: ${command}, success=${success}`);
     },
   });
 
@@ -147,6 +147,11 @@ async function streamingGitExample() {
 
   const client = createClient({
     baseUrl: "http://localhost:3000",
+    onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
+      console.log(
+        `\n🎉 Git operation completed: ${command}, success=${success}`
+      );
+    },
     onCommandStart: (command, args) => {
       console.log(`🌐 Starting git operation: ${command} ${args.join(" ")}`);
     },
@@ -156,11 +161,6 @@ async function streamingGitExample() {
       } else {
         process.stdout.write(data);
       }
-    },
-    onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
-      console.log(
-        `\n🎉 Git operation completed: ${command}, success=${success}`
-      );
     },
   });
 

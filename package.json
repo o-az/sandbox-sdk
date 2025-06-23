@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "description": "an api for computers",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "biome check && tsc --noEmit",
+    "build": "npm run build -w @cloudflare/sandbox"
   },
   "keywords": [],
   "author": "",
@@ -21,6 +22,7 @@
     "@types/react-dom": "^19.1.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "tsup": "^8.5.0",
     "typescript": "^5.8.3",
     "wrangler": "^4.19.1"
   },

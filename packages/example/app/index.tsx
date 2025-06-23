@@ -1,5 +1,6 @@
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import React, { useState, useEffect, useRef } from "react";
 import { HttpClient } from "../../sandbox/src/client";
 import "./style.css";
 
@@ -32,38 +33,6 @@ function REPL() {
   useEffect(() => {
     const httpClient = new HttpClient({
       baseUrl: `http://localhost:3000`,
-      onCommandStart: (command: string, args: string[]) => {
-        console.log("Command started:", command, args);
-        const newResult: CommandResult = {
-          id: Date.now().toString(),
-          command,
-          args,
-          status: "running",
-          stdout: "",
-          stderr: "",
-          timestamp: new Date(),
-        };
-        setResults((prev) => [...prev, newResult]);
-        setIsExecuting(true);
-      },
-      onOutput: (
-        stream: "stdout" | "stderr",
-        data: string,
-        command: string
-      ) => {
-        setResults((prev) => {
-          const updated = [...prev];
-          const lastResult = updated[updated.length - 1];
-          if (lastResult && lastResult.command === command) {
-            if (stream === "stdout") {
-              lastResult.stdout += data;
-            } else {
-              lastResult.stderr += data;
-            }
-          }
-          return updated;
-        });
-      },
       onCommandComplete: (
         success: boolean,
         exitCode: number,
@@ -85,6 +54,20 @@ function REPL() {
         });
         setIsExecuting(false);
       },
+      onCommandStart: (command: string, args: string[]) => {
+        console.log("Command started:", command, args);
+        const newResult: CommandResult = {
+          args,
+          command,
+          id: Date.now().toString(),
+          status: "running",
+          stderr: "",
+          stdout: "",
+          timestamp: new Date(),
+        };
+        setResults((prev) => [...prev, newResult]);
+        setIsExecuting(true);
+      },
       onError: (error: string, command?: string) => {
         console.error("Command error:", error);
         setResults((prev) => {
@@ -97,6 +80,24 @@ function REPL() {
           return updated;
         });
         setIsExecuting(false);
+      },
+      onOutput: (
+        stream: "stdout" | "stderr",
+        data: string,
+        command: string
+      ) => {
+        setResults((prev) => {
+          const updated = [...prev];
+          const lastResult = updated[updated.length - 1];
+          if (lastResult && lastResult.command === command) {
+            if (stream === "stdout") {
+              lastResult.stdout += data;
+            } else {
+              lastResult.stderr += data;
+            }
+          }
+          return updated;
+        });
       },
       onStreamEvent: (event) => {
         console.log("Stream event:", event);
@@ -148,12 +149,12 @@ function REPL() {
 
       // Create a result entry for the command
       const newResult: CommandResult = {
-        id: Date.now().toString(),
-        command,
         args,
+        command,
+        id: Date.now().toString(),
         status: "running",
-        stdout: "",
         stderr: "",
+        stdout: "",
         timestamp: new Date(),
       };
       setResults((prev) => [...prev, newResult]);
@@ -212,12 +213,12 @@ function REPL() {
 
       // Create a result entry for the command
       const newResult: CommandResult = {
-        id: Date.now().toString(),
-        command,
         args,
+        command,
+        id: Date.now().toString(),
         status: "running",
-        stdout: "",
         stderr: "",
+        stdout: "",
         timestamp: new Date(),
       };
       setResults((prev) => [...prev, newResult]);
@@ -332,7 +333,7 @@ function REPL() {
       <div className="results-container" ref={resultsEndRef}>
         {results.length === 0 ? (
           <div
-            style={{ textAlign: "center", padding: "2rem", color: "#8b949e" }}
+            style={{ color: "#8b949e" , padding: "2rem", textAlign: "center"}}
           >
             No commands executed yet. Try running a command above.
           </div>

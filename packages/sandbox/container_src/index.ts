@@ -48,21 +48,20 @@ function cleanupOldSessions() {
 setInterval(cleanupOldSessions, 10 * 60 * 1000);
 
 const server = serve({
-  port: 3000,
   fetch(req: Request) {
     const url = new URL(req.url);
     const pathname = url.pathname;
 
     // Handle CORS
     const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Origin": "*",
     };
 
     // Handle preflight requests
     if (req.method === "OPTIONS") {
-      return new Response(null, { status: 200, headers: corsHeaders });
+      return new Response(null, { headers: corsHeaders, status: 200 });
     }
 
     try {
@@ -125,9 +124,9 @@ const server = serve({
           if (req.method === "POST") {
             const sessionId = generateSessionId();
             const sessionData: SessionData = {
-              sessionId,
               activeProcess: null,
               createdAt: new Date(),
+              sessionId,
             };
             sessions.set(sessionId, sessionData);
 
@@ -135,8 +134,8 @@ const server = serve({
 
             return new Response(
               JSON.stringify({
-                sessionId,
                 message: "Session created successfully",
+                sessionId,
                 timestamp: new Date().toISOString(),
               }),
               {
@@ -153,16 +152,16 @@ const server = serve({
           if (req.method === "GET") {
             const sessionList = Array.from(sessions.values()).map(
               (session) => ({
-                sessionId: session.sessionId,
-                hasActiveProcess: !!session.activeProcess,
                 createdAt: session.createdAt.toISOString(),
+                hasActiveProcess: !!session.activeProcess,
+                sessionId: session.sessionId,
               })
             );
 
             return new Response(
               JSON.stringify({
-                sessions: sessionList,
                 count: sessionList.length,
+                sessions: sessionList,
                 timestamp: new Date().toISOString(),
               }),
               {
@@ -262,8 +261,8 @@ const server = serve({
 
         default:
           return new Response("Not Found", {
-            status: 404,
             headers: corsHeaders,
+            status: 404,
           });
       }
     } catch (error) {
@@ -274,15 +273,16 @@ const server = serve({
           message: error instanceof Error ? error.message : "Unknown error",
         }),
         {
-          status: 500,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 500,
         }
       );
     }
   },
+  port: 3000,
 } as any);
 
 async function handleExecuteRequest(
@@ -299,11 +299,11 @@ async function handleExecuteRequest(
           error: "Command is required and must be a string",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -327,11 +327,11 @@ async function handleExecuteRequest(
           error: "Dangerous command not allowed",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -342,12 +342,12 @@ async function handleExecuteRequest(
 
     return new Response(
       JSON.stringify({
-        success: result.success,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-        command,
         args,
+        command,
+        exitCode: result.exitCode,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        success: result.success,
         timestamp: new Date().toISOString(),
       }),
       {
@@ -365,11 +365,11 @@ async function handleExecuteRequest(
         message: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
         headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
+        status: 500,
       }
     );
   }
@@ -389,11 +389,11 @@ async function handleStreamingExecuteRequest(
           error: "Command is required and must be a string",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -417,11 +417,11 @@ async function handleStreamingExecuteRequest(
           error: "Dangerous command not allowed",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -450,10 +450,10 @@ async function handleStreamingExecuteRequest(
         controller.enqueue(
           new TextEncoder().encode(
             `data: ${JSON.stringify({
-              type: "command_start",
-              command,
               args,
+              command,
               timestamp: new Date().toISOString(),
+              type: "command_start",
             })}\n\n`
           )
         );
@@ -466,10 +466,10 @@ async function handleStreamingExecuteRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "output",
-                stream: "stdout",
-                data: output,
                 command,
+                data: output,
+                stream: "stdout",
+                type: "output",
               })}\n\n`
             )
           );
@@ -483,10 +483,10 @@ async function handleStreamingExecuteRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "output",
-                stream: "stderr",
-                data: output,
                 command,
+                data: output,
+                stream: "stderr",
+                type: "output",
               })}\n\n`
             )
           );
@@ -507,14 +507,14 @@ async function handleStreamingExecuteRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "command_complete",
-                success: code === 0,
-                exitCode: code,
-                stdout,
-                stderr,
-                command,
                 args,
+                command,
+                exitCode: code,
+                stderr,
+                stdout,
+                success: code === 0,
                 timestamp: new Date().toISOString(),
+                type: "command_complete",
               })}\n\n`
             )
           );
@@ -532,10 +532,10 @@ async function handleStreamingExecuteRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "error",
-                error: error.message,
-                command,
                 args,
+                command,
+                error: error.message,
+                type: "error",
               })}\n\n`
             )
           );
@@ -547,9 +547,9 @@ async function handleStreamingExecuteRequest(
 
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
         ...corsHeaders,
       },
     });
@@ -561,11 +561,11 @@ async function handleStreamingExecuteRequest(
         message: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
         headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
+        status: 500,
       }
     );
   }
@@ -585,11 +585,11 @@ async function handleGitCheckoutRequest(
           error: "Repository URL is required and must be a string",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -603,11 +603,11 @@ async function handleGitCheckoutRequest(
           error: "Invalid repository URL format",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -630,12 +630,12 @@ async function handleGitCheckoutRequest(
 
     return new Response(
       JSON.stringify({
-        success: result.success,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        branch,
         exitCode: result.exitCode,
         repoUrl,
-        branch,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        success: result.success,
         targetDir: checkoutDir,
         timestamp: new Date().toISOString(),
       }),
@@ -654,11 +654,11 @@ async function handleGitCheckoutRequest(
         message: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
         headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
+        status: 500,
       }
     );
   }
@@ -678,11 +678,11 @@ async function handleStreamingGitCheckoutRequest(
           error: "Repository URL is required and must be a string",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -696,11 +696,11 @@ async function handleStreamingGitCheckoutRequest(
           error: "Invalid repository URL format",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -738,10 +738,10 @@ async function handleStreamingGitCheckoutRequest(
         controller.enqueue(
           new TextEncoder().encode(
             `data: ${JSON.stringify({
-              type: "command_start",
-              command: "git clone",
               args: [branch, repoUrl, checkoutDir],
+              command: "git clone",
               timestamp: new Date().toISOString(),
+              type: "command_start",
             })}\n\n`
           )
         );
@@ -754,10 +754,10 @@ async function handleStreamingGitCheckoutRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "output",
-                stream: "stdout",
-                data: output,
                 command: "git clone",
+                data: output,
+                stream: "stdout",
+                type: "output",
               })}\n\n`
             )
           );
@@ -771,10 +771,10 @@ async function handleStreamingGitCheckoutRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "output",
-                stream: "stderr",
-                data: output,
                 command: "git clone",
+                data: output,
+                stream: "stderr",
+                type: "output",
               })}\n\n`
             )
           );
@@ -795,14 +795,14 @@ async function handleStreamingGitCheckoutRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "command_complete",
-                success: code === 0,
-                exitCode: code,
-                stdout,
-                stderr,
-                command: "git clone",
                 args: [branch, repoUrl, checkoutDir],
+                command: "git clone",
+                exitCode: code,
+                stderr,
+                stdout,
+                success: code === 0,
                 timestamp: new Date().toISOString(),
+                type: "command_complete",
               })}\n\n`
             )
           );
@@ -820,10 +820,10 @@ async function handleStreamingGitCheckoutRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "error",
-                error: error.message,
-                command: "git clone",
                 args: [branch, repoUrl, checkoutDir],
+                command: "git clone",
+                error: error.message,
+                type: "error",
               })}\n\n`
             )
           );
@@ -835,9 +835,9 @@ async function handleStreamingGitCheckoutRequest(
 
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
         ...corsHeaders,
       },
     });
@@ -852,11 +852,11 @@ async function handleStreamingGitCheckoutRequest(
         message: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
         headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
+        status: 500,
       }
     );
   }
@@ -876,11 +876,11 @@ async function handleMkdirRequest(
           error: "Path is required and must be a string",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -907,11 +907,11 @@ async function handleMkdirRequest(
           error: "Dangerous path not allowed",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -924,12 +924,12 @@ async function handleMkdirRequest(
 
     return new Response(
       JSON.stringify({
-        success: result.success,
-        stdout: result.stdout,
-        stderr: result.stderr,
         exitCode: result.exitCode,
         path,
         recursive,
+        stderr: result.stderr,
+        stdout: result.stdout,
+        success: result.success,
         timestamp: new Date().toISOString(),
       }),
       {
@@ -947,11 +947,11 @@ async function handleMkdirRequest(
         message: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
         headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
+        status: 500,
       }
     );
   }
@@ -971,11 +971,11 @@ async function handleStreamingMkdirRequest(
           error: "Path is required and must be a string",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -1002,11 +1002,11 @@ async function handleStreamingMkdirRequest(
           error: "Dangerous path not allowed",
         }),
         {
-          status: 400,
           headers: {
             "Content-Type": "application/json",
             ...corsHeaders,
           },
+          status: 400,
         }
       );
     }
@@ -1036,10 +1036,10 @@ async function handleStreamingMkdirRequest(
         controller.enqueue(
           new TextEncoder().encode(
             `data: ${JSON.stringify({
-              type: "command_start",
-              command: "mkdir",
               args,
+              command: "mkdir",
               timestamp: new Date().toISOString(),
+              type: "command_start",
             })}\n\n`
           )
         );
@@ -1052,10 +1052,10 @@ async function handleStreamingMkdirRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "output",
-                stream: "stdout",
-                data: output,
                 command: "mkdir",
+                data: output,
+                stream: "stdout",
+                type: "output",
               })}\n\n`
             )
           );
@@ -1069,10 +1069,10 @@ async function handleStreamingMkdirRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "output",
-                stream: "stderr",
-                data: output,
                 command: "mkdir",
+                data: output,
+                stream: "stderr",
+                type: "output",
               })}\n\n`
             )
           );
@@ -1091,14 +1091,14 @@ async function handleStreamingMkdirRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "command_complete",
-                success: code === 0,
-                exitCode: code,
-                stdout,
-                stderr,
-                command: "mkdir",
                 args,
+                command: "mkdir",
+                exitCode: code,
+                stderr,
+                stdout,
+                success: code === 0,
                 timestamp: new Date().toISOString(),
+                type: "command_complete",
               })}\n\n`
             )
           );
@@ -1116,10 +1116,10 @@ async function handleStreamingMkdirRequest(
           controller.enqueue(
             new TextEncoder().encode(
               `data: ${JSON.stringify({
-                type: "error",
-                error: error.message,
-                command: "mkdir",
                 args,
+                command: "mkdir",
+                error: error.message,
+                type: "error",
               })}\n\n`
             )
           );
@@ -1131,9 +1131,9 @@ async function handleStreamingMkdirRequest(
 
     return new Response(stream, {
       headers: {
-        "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
         ...corsHeaders,
       },
     });
@@ -1145,11 +1145,11 @@ async function handleStreamingMkdirRequest(
         message: error instanceof Error ? error.message : "Unknown error",
       }),
       {
-        status: 500,
         headers: {
           "Content-Type": "application/json",
           ...corsHeaders,
         },
+        status: 500,
       }
     );
   }
@@ -1198,10 +1198,10 @@ function executeCommand(
       console.log(`[Server] Command completed: ${command}, Exit code: ${code}`);
 
       resolve({
-        success: code === 0,
-        stdout,
-        stderr,
         exitCode: code || 0,
+        stderr,
+        stdout,
+        success: code === 0,
       });
     });
 
@@ -1268,20 +1268,20 @@ function executeGitCheckout(
           `[Server] Repository cloned successfully: ${repoUrl} to ${targetDir}`
         );
         resolve({
-          success: true,
-          stdout,
-          stderr,
           exitCode: code || 0,
+          stderr,
+          stdout,
+          success: true,
         });
       } else {
         console.error(
           `[Server] Failed to clone repository: ${repoUrl}, Exit code: ${code}`
         );
         resolve({
-          success: false,
-          stdout,
-          stderr,
           exitCode: code || 1,
+          stderr,
+          stdout,
+          success: false,
         });
       }
     });
@@ -1343,20 +1343,20 @@ function executeMkdir(
       if (code === 0) {
         console.log(`[Server] Directory created successfully: ${path}`);
         resolve({
-          success: true,
-          stdout,
-          stderr,
           exitCode: code || 0,
+          stderr,
+          stdout,
+          success: true,
         });
       } else {
         console.error(
           `[Server] Failed to create directory: ${path}, Exit code: ${code}`
         );
         resolve({
-          success: false,
-          stdout,
-          stderr,
           exitCode: code || 1,
+          stderr,
+          stdout,
+          success: false,
         });
       }
     });

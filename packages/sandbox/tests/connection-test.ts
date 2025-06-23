@@ -5,12 +5,6 @@ async function connectionTest() {
 
   const client = new HttpClient({
     baseUrl: "http://localhost:3000",
-    onCommandStart: (command: string, args: string[]) => {
-      console.log("📝 Command started:", command, args);
-    },
-    onOutput: (stream: "stdout" | "stderr", data: string, command: string) => {
-      console.log(`📤 [${stream}] ${data.trim()}`);
-    },
     onCommandComplete: (
       success: boolean,
       exitCode: number,
@@ -23,8 +17,14 @@ async function connectionTest() {
         `✅ Command completed: ${command}, Success: ${success}, Exit code: ${exitCode}`
       );
     },
+    onCommandStart: (command: string, args: string[]) => {
+      console.log("📝 Command started:", command, args);
+    },
     onError: (error: string, command?: string, args?: string[]) => {
       console.error(`❌ Error: ${error}`);
+    },
+    onOutput: (stream: "stdout" | "stderr", data: string, command: string) => {
+      console.log(`📤 [${stream}] ${data.trim()}`);
     },
   });
 

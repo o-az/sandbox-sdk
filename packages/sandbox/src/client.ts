@@ -6,7 +6,7 @@ interface ExecuteRequest {
   args?: string[];
 }
 
-interface ExecuteResponse {
+export interface ExecuteResponse {
   success: boolean;
   stdout: string;
   stderr: string;
@@ -44,7 +44,7 @@ interface GitCheckoutRequest {
   sessionId?: string;
 }
 
-interface GitCheckoutResponse {
+export interface GitCheckoutResponse {
   success: boolean;
   stdout: string;
   stderr: string;
@@ -61,7 +61,7 @@ interface MkdirRequest {
   sessionId?: string;
 }
 
-interface MkdirResponse {
+export interface MkdirResponse {
   success: boolean;
   stdout: string;
   stderr: string;
@@ -188,10 +188,10 @@ export class HttpClient {
   async createSession(): Promise<string> {
     try {
       const response = await this.doFetch(`/api/session/create`, {
-        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -211,10 +211,10 @@ export class HttpClient {
   async listSessions(): Promise<SessionListResponse> {
     try {
       const response = await this.doFetch(`/api/session/list`, {
-        method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        method: "GET",
       });
 
       if (!response.ok) {
@@ -239,15 +239,15 @@ export class HttpClient {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/execute`, {
-        method: "POST",
+        body: JSON.stringify({
+          args,
+          command,
+          sessionId: targetSessionId,
+        }),
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          command,
-          args,
-          sessionId: targetSessionId,
-        }),
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -295,15 +295,15 @@ export class HttpClient {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/execute/stream`, {
-        method: "POST",
+        body: JSON.stringify({
+          args,
+          command,
+          sessionId: targetSessionId,
+        }),
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          command,
-          args,
-          sessionId: targetSessionId,
-        }),
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -422,16 +422,16 @@ export class HttpClient {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/git/checkout`, {
-        method: "POST",
+        body: JSON.stringify({
+          branch,
+          repoUrl,
+          sessionId: targetSessionId,
+          targetDir,
+        }),
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          repoUrl,
-          branch,
-          targetDir,
-          sessionId: targetSessionId,
-        }),
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -465,16 +465,16 @@ export class HttpClient {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/git/checkout/stream`, {
-        method: "POST",
+        body: JSON.stringify({
+          branch,
+          repoUrl,
+          sessionId: targetSessionId,
+          targetDir,
+        }),
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          repoUrl,
-          branch,
-          targetDir,
-          sessionId: targetSessionId,
-        }),
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -594,15 +594,15 @@ export class HttpClient {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/mkdir`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           path,
           recursive,
           sessionId: targetSessionId,
         }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -635,15 +635,15 @@ export class HttpClient {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/mkdir/stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           path,
           recursive,
           sessionId: targetSessionId,
         }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -753,10 +753,10 @@ export class HttpClient {
   async ping(): Promise<string> {
     try {
       const response = await this.doFetch(`/api/ping`, {
-        method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        method: "GET",
       });
 
       if (!response.ok) {
@@ -775,10 +775,10 @@ export class HttpClient {
   async getCommands(): Promise<string[]> {
     try {
       const response = await fetch(`${this.baseUrl}/api/commands`, {
-        method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        method: "GET",
       });
 
       if (!response.ok) {

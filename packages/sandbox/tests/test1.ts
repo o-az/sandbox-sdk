@@ -12,17 +12,6 @@ class HttpCommandTester {
   constructor(private baseUrl: string) {
     this.client = new HttpClient({
       baseUrl,
-      onCommandStart: (command: string, args: string[]) => {
-        console.log(`🚀 Starting command: ${command} ${args.join(" ")}`);
-      },
-      onOutput: (
-        stream: "stdout" | "stderr",
-        data: string,
-        command: string
-      ) => {
-        const streamLabel = stream === "stderr" ? "❌ STDERR" : "📤 STDOUT";
-        console.log(`${streamLabel}: ${data.trim()}`);
-      },
       onCommandComplete: (
         success: boolean,
         exitCode: number,
@@ -39,8 +28,19 @@ class HttpCommandTester {
           console.log(`❌ Final stderr: ${stderr.trim()}`);
         }
       },
+      onCommandStart: (command: string, args: string[]) => {
+        console.log(`🚀 Starting command: ${command} ${args.join(" ")}`);
+      },
       onError: (error: string, command?: string, args?: string[]) => {
         console.error(`❌ Error: ${error}`);
+      },
+      onOutput: (
+        stream: "stdout" | "stderr",
+        data: string,
+        command: string
+      ) => {
+        const streamLabel = stream === "stderr" ? "❌ STDERR" : "📤 STDOUT";
+        console.log(`${streamLabel}: ${data.trim()}`);
       },
       onStreamEvent: (event) => {
         console.log(`📡 Stream event: ${event.type}`);

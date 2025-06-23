@@ -10,21 +10,21 @@ export class Sandbox<Env = unknown> extends Container<Env> {
   sleepAfter = "3m"; // Sleep the sandbox if no requests are made in this timeframe
 
   client: HttpClient = new HttpClient({
-    port: this.defaultPort,
-    onCommandStart: (command, args) => {
-      console.log(`[Container] Command started: ${command} ${args.join(" ")}`);
-    },
-    onOutput: (stream, data, command) => {
-      console.log(`[Container] [${stream}] ${data}`);
-    },
     onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
       console.log(
         `[Container] Command completed: ${command}, Success: ${success}, Exit code: ${exitCode}`
       );
     },
+    onCommandStart: (command, args) => {
+      console.log(`[Container] Command started: ${command} ${args.join(" ")}`);
+    },
     onError: (error, command, args) => {
       console.error(`[Container] Command error: ${error}`);
     },
+    onOutput: (stream, data, command) => {
+      console.log(`[Container] [${stream}] ${data}`);
+    },
+    port: this.defaultPort,
   });
 
   envVars = {

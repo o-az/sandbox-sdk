@@ -1,12 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "container-package-class-worker",
-  // "main": "src/index.ts",
+  "name": "sandbox-example",
+  "main": "src/index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": {
-    "enabled": true
-  },
   "assets": {
     "directory": "public"
   },
@@ -18,7 +15,6 @@
     {
       "class_name": "Sandbox",
       "image": "./node_modules/@cloudflare/sandbox/Dockerfile",
-      "max_instances": 3,
       "name": "sandbox"
     }
   ],
@@ -35,5 +31,8 @@
       "new_sqlite_classes": ["Sandbox"],
       "tag": "v1"
     }
-  ]
+  ],
+  "observability": {
+    "enabled": true
+  }
 }
