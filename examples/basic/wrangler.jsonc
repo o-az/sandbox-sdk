@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "sandbox-example",
   "main": "src/index.ts",
   "compatibility_date": "2025-05-06",
@@ -15,7 +15,8 @@
     {
       "class_name": "Sandbox",
       "image": "./node_modules/@cloudflare/sandbox/Dockerfile",
-      "name": "sandbox"
+      "name": "sandbox",
+      "max_instances": 1
     }
   ],
   "durable_objects": {

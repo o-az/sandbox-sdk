@@ -11,7 +11,8 @@
   "license": "ISC",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.0.4",
