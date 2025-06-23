@@ -19,6 +19,8 @@ interface WebSocketMessage {
   command?: string;
   args?: string[];
   timestamp?: string;
+  // This is a client-side only field to help with async requests
+  _requestId?: string;
 }
 
 interface WebSocketClientOptions {
@@ -51,6 +53,11 @@ export class WebSocketClient {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private _requestCounter = 0;
+  private _requestResolvers = new Map<
+    string,
+    (message: WebSocketMessage) => void
+  >();
 
   constructor(options: WebSocketClientOptions = {}) {
     this.options = {
@@ -173,6 +180,14 @@ export class WebSocketClient {
             "Exit code:",
             message.data?.exitCode
           );
+          if (
+            message._requestId &&
+            this._requestResolvers.has(message._requestId)
+          ) {
+            this._requestResolvers.get(message._requestId)!(message);
+            this._requestResolvers.delete(message._requestId);
+            return;
+          }
           this.options.onCommandComplete?.(
             message.data?.success,
             message.data?.exitCode,
@@ -190,11 +205,27 @@ export class WebSocketClient {
 
         case "pong":
           console.log("Pong received:", message.timestamp);
+          if (
+            message._requestId &&
+            this._requestResolvers.has(message._requestId)
+          ) {
+            this._requestResolvers.get(message._requestId)!(message);
+            this._requestResolvers.delete(message._requestId);
+            return;
+          }
           this.options.onPong?.(message.timestamp!);
           break;
 
         case "list":
           console.log("List response:", message.data);
+          if (
+            message._requestId &&
+            this._requestResolvers.has(message._requestId)
+          ) {
+            this._requestResolvers.get(message._requestId)!(message);
+            this._requestResolvers.delete(message._requestId);
+            return;
+          }
           this.options.onList?.(message.data);
           break;
 
@@ -223,6 +254,26 @@ export class WebSocketClient {
     }
   }
 
+  private _makeRequest<T>(
+    message: Omit<WebSocketMessage, "_requestId">,
+    responseType: WebSocketMessage["type"]
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const requestId = `req-${this._requestCounter++}`;
+      const requestMessage = { ...message, _requestId: requestId };
+
+      this._requestResolvers.set(requestId, (response) => {
+        if (response.type === responseType) {
+          resolve(response.data as T);
+        } else if (response.type === "error") {
+          reject(new Error(response.error));
+        }
+      });
+
+      this.send(requestMessage);
+    });
+  }
+
   send(message: WebSocketMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
@@ -231,19 +282,34 @@ export class WebSocketClient {
     }
   }
 
-  execute(command: string, args: string[] = []): void {
-    this.send({
-      type: "execute",
-      data: { command, args },
-    });
+  async execute(
+    command: string,
+    args: string[] = []
+  ): Promise<{
+    success: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  }> {
+    return this._makeRequest(
+      {
+        type: "execute",
+        data: { command, args },
+      },
+      "command_complete"
+    );
   }
 
-  ping(): void {
-    this.send({ type: "ping" });
+  async ping(): Promise<string> {
+    const response = await this._makeRequest<{ timestamp: string }>(
+      { type: "ping" },
+      "pong"
+    );
+    return response.timestamp;
   }
 
-  list(): void {
-    this.send({ type: "list" });
+  async list(): Promise<any> {
+    return this._makeRequest({ type: "list" }, "list");
   }
 
   disconnect(): void {
@@ -265,59 +331,6 @@ export function createClient(
   return new WebSocketClient(options);
 }
 
-export async function executeCommand(
-  client: WebSocketClient,
-  command: string,
-  args: string[] = []
-): Promise<{
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}> {
-  return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
-    let exitCode = -1;
-    let success = false;
-
-    // Store original handlers
-    const originalOnOutput = client.getOnOutput();
-    const originalOnComplete = client.getOnCommandComplete();
-
-    // Set temporary handlers for this command
-    client.setOnOutput((stream, data) => {
-      if (stream === "stdout") {
-        stdout += data;
-      } else {
-        stderr += data;
-      }
-      originalOnOutput?.(stream, data, command);
-    });
-
-    client.setOnCommandComplete(
-      (cmdSuccess, code, cmdStdout, cmdStderr, cmd, cmdArgs) => {
-        success = cmdSuccess;
-        exitCode = code;
-        stdout = cmdStdout;
-        stderr = cmdStderr;
-
-        originalOnComplete?.(
-          cmdSuccess,
-          code,
-          cmdStdout,
-          cmdStderr,
-          cmd,
-          cmdArgs
-        );
-        resolve({ success, stdout, stderr, exitCode });
-      }
-    );
-
-    client.execute(command, args);
-  });
-}
-
 // Convenience function for quick command execution
 export async function quickExecute(
   command: string,
@@ -333,7 +346,7 @@ export async function quickExecute(
   await client.connect();
 
   try {
-    return await executeCommand(client, command, args);
+    return await client.execute(command, args);
   } finally {
     client.disconnect();
   }

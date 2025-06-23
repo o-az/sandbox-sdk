@@ -31,11 +31,11 @@ function REPL() {
   useEffect(() => {
     const wsClient = new WebSocketClient({
       url: `wss://${window.location.host}/container`,
-      onConnected: (sessionId) => {
+      onConnected: (sessionId: string) => {
         console.log("Connected with session:", sessionId);
         setIsConnected(true);
       },
-      onCommandStart: (command, args) => {
+      onCommandStart: (command: string, args: string[]) => {
         const newResult: CommandResult = {
           id: Date.now().toString(),
           command,
@@ -48,7 +48,11 @@ function REPL() {
         setResults((prev) => [...prev, newResult]);
         setIsExecuting(true);
       },
-      onOutput: (stream, data, command) => {
+      onOutput: (
+        stream: "stdout" | "stderr",
+        data: string,
+        command: string
+      ) => {
         setResults((prev) => {
           const updated = [...prev];
           const lastResult = updated[updated.length - 1];
@@ -62,7 +66,14 @@ function REPL() {
           return updated;
         });
       },
-      onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
+      onCommandComplete: (
+        success: boolean,
+        exitCode: number,
+        stdout: string,
+        stderr: string,
+        command: string,
+        args: string[]
+      ) => {
         setResults((prev) => {
           const updated = [...prev];
           const lastResult = updated[updated.length - 1];
@@ -76,7 +87,7 @@ function REPL() {
         });
         setIsExecuting(false);
       },
-      onError: (error, command) => {
+      onError: (error: string, command?: string) => {
         console.error("Command error:", error);
         setResults((prev) => {
           const updated = [...prev];
@@ -98,7 +109,7 @@ function REPL() {
     setClient(wsClient);
 
     // Connect to WebSocket
-    wsClient.connect().catch((error) => {
+    wsClient.connect().catch((error: any) => {
       console.error("Failed to connect:", error);
     });
 
@@ -108,7 +119,7 @@ function REPL() {
     };
   }, []);
 
-  const executeCommand = () => {
+  const executeCommand = async () => {
     if (!client || !isConnected || !commandInput.trim() || isExecuting) {
       return;
     }
@@ -119,10 +130,50 @@ function REPL() {
     const args = parts.slice(1);
 
     try {
-      client.execute(command, args);
+      setIsExecuting(true);
+
+      // Create a result entry for the command
+      const newResult: CommandResult = {
+        id: Date.now().toString(),
+        command,
+        args,
+        status: "running",
+        stdout: "",
+        stderr: "",
+        timestamp: new Date(),
+      };
+      setResults((prev) => [...prev, newResult]);
+
+      // Execute the command using the new async method
+      const result = await client.execute(command, args);
+
+      // Update the result with the response
+      setResults((prev) => {
+        const updated = [...prev];
+        const lastResult = updated[updated.length - 1];
+        if (lastResult && lastResult.command === command) {
+          lastResult.status = result.success ? "completed" : "error";
+          lastResult.exitCode = result.exitCode;
+          lastResult.stdout = result.stdout;
+          lastResult.stderr = result.stderr;
+        }
+        return updated;
+      });
+
       setCommandInput("");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to execute command:", error);
+      setResults((prev) => {
+        const updated = [...prev];
+        const lastResult = updated[updated.length - 1];
+        if (lastResult && lastResult.command === command) {
+          lastResult.status = "error";
+          lastResult.stderr += `\nError: ${error.message || error}`;
+        }
+        return updated;
+      });
+    } finally {
+      setIsExecuting(false);
     }
   };
 
