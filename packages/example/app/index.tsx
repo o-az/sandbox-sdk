@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import React, { useState, useEffect, useRef } from "react";
-import { WebSocketClient } from "../src/client";
+import { HttpClient } from "../src/client";
 import "./style.css";
 
 interface CommandResult {
@@ -15,8 +15,9 @@ interface CommandResult {
 }
 
 function REPL() {
-  const [client, setClient] = useState<WebSocketClient | null>(null);
+  const [client, setClient] = useState<HttpClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [commandInput, setCommandInput] = useState("");
   const [results, setResults] = useState<CommandResult[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -27,15 +28,12 @@ function REPL() {
     resultsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [results]);
 
-  // Initialize WebSocket client
+  // Initialize HTTP client
   useEffect(() => {
-    const wsClient = new WebSocketClient({
-      url: `ws://${window.location.host}/container`,
-      onConnected: (sessionId: string) => {
-        console.log("Connected with session:", sessionId);
-        setIsConnected(true);
-      },
+    const httpClient = new HttpClient({
+      baseUrl: `http://localhost:3000`,
       onCommandStart: (command: string, args: string[]) => {
+        console.log("Command started:", command, args);
         const newResult: CommandResult = {
           id: Date.now().toString(),
           command,
@@ -100,22 +98,38 @@ function REPL() {
         });
         setIsExecuting(false);
       },
-      onClose: () => {
-        setIsConnected(false);
-        console.log("WebSocket connection closed");
+      onStreamEvent: (event) => {
+        console.log("Stream event:", event);
       },
     });
 
-    setClient(wsClient);
+    setClient(httpClient);
 
-    // Connect to WebSocket
-    wsClient.connect().catch((error: any) => {
-      console.error("Failed to connect:", error);
-    });
+    // Initialize connection by creating a session
+    const initializeConnection = async () => {
+      try {
+        // Test connection with ping
+        await httpClient.ping();
+        console.log("Server is reachable");
+
+        // Create a session
+        const session = await httpClient.createSession();
+        setSessionId(session);
+        setIsConnected(true);
+        console.log("Connected with session:", session);
+      } catch (error: any) {
+        console.error("Failed to connect:", error);
+        setIsConnected(false);
+      }
+    };
+
+    initializeConnection();
 
     // Cleanup on unmount
     return () => {
-      wsClient.disconnect();
+      if (httpClient) {
+        httpClient.clearSession();
+      }
     };
   }, []);
 
@@ -144,10 +158,14 @@ function REPL() {
       };
       setResults((prev) => [...prev, newResult]);
 
-      // Execute the command using the new async method
-      console.log("! Executing command:", command, args);
-      const result = await client.execute(command, args);
-      console.log("! Result:", result);
+      // Execute the command
+      console.log("Executing command:", command, args);
+      const result = await client.execute(
+        command,
+        args,
+        sessionId || undefined
+      );
+      console.log("Result:", result);
 
       // Update the result with the response
       setResults((prev) => {
@@ -165,6 +183,53 @@ function REPL() {
       setCommandInput("");
     } catch (error: any) {
       console.error("Failed to execute command:", error);
+      setResults((prev) => {
+        const updated = [...prev];
+        const lastResult = updated[updated.length - 1];
+        if (lastResult && lastResult.command === command) {
+          lastResult.status = "error";
+          lastResult.stderr += `\nError: ${error.message || error}`;
+        }
+        return updated;
+      });
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const executeStreamingCommand = async () => {
+    if (!client || !isConnected || !commandInput.trim() || isExecuting) {
+      return;
+    }
+
+    const trimmedCommand = commandInput.trim();
+    const parts = trimmedCommand.split(" ");
+    const command = parts[0];
+    const args = parts.slice(1);
+
+    try {
+      setIsExecuting(true);
+
+      // Create a result entry for the command
+      const newResult: CommandResult = {
+        id: Date.now().toString(),
+        command,
+        args,
+        status: "running",
+        stdout: "",
+        stderr: "",
+        timestamp: new Date(),
+      };
+      setResults((prev) => [...prev, newResult]);
+
+      // Execute the command with streaming
+      console.log("Executing streaming command:", command, args);
+      await client.executeStream(command, args, sessionId || undefined);
+      console.log("Streaming command completed");
+
+      setCommandInput("");
+    } catch (error: any) {
+      console.error("Failed to execute streaming command:", error);
       setResults((prev) => {
         const updated = [...prev];
         const lastResult = updated[updated.length - 1];
@@ -219,13 +284,13 @@ function REPL() {
   return (
     <div className="repl-container">
       <div className="header">
-        <h1>WebSocket REPL</h1>
+        <h1>HTTP REPL</h1>
         <div
           className={`connection-status ${
             isConnected ? "connected" : "disconnected"
           }`}
         >
-          {isConnected ? "Connected" : "Disconnected"}
+          {isConnected ? `Connected (${sessionId})` : "Disconnected"}
         </div>
       </div>
 
@@ -238,16 +303,25 @@ function REPL() {
           onChange={(e) => setCommandInput(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Enter command (e.g., ls -la)"
-          disabled={!isConnected || isExecuting}
+          disabled={isExecuting}
         />
         <div className="action-buttons">
           <button
             type="button"
             onClick={executeCommand}
-            disabled={!isConnected || !commandInput.trim() || isExecuting}
+            disabled={!commandInput.trim() || isExecuting}
             className="btn btn-execute"
           >
             {isExecuting ? "Executing..." : "Execute"}
+          </button>
+          <button
+            type="button"
+            onClick={executeStreamingCommand}
+            disabled={!isConnected || !commandInput.trim() || isExecuting}
+            className="btn btn-stream"
+            title="Execute with real-time streaming output"
+          >
+            {isExecuting ? "Streaming..." : "Stream"}
           </button>
           <button type="button" onClick={clearResults} className="btn">
             Clear
@@ -325,6 +399,11 @@ function REPL() {
           <div className="help-item">
             <span className="help-command">date</span> - Show current date/time
           </div>
+        </div>
+        <div className="help-note">
+          <strong>Note:</strong> Use the "Stream" button for commands that
+          produce real-time output (like <code>top</code> or{" "}
+          <code>tail -f</code>).
         </div>
       </div>
     </div>

@@ -1,179 +1,223 @@
-interface WebSocketMessage {
-  type: string;
-  data?: any;
-  error?: string;
-  timestamp?: string;
-}
+import { HttpClient } from "../src/client";
 
 interface ExecuteRequest {
   command: string;
   args?: string[];
 }
 
-class WebSocketCommandTester {
-  private ws: WebSocket | null = null;
-  private messageQueue: Array<{ type: string; data?: any }> = [];
-  private isConnected = false;
+class HttpCommandTester {
+  private client: HttpClient;
+  private sessionId: string | null = null;
 
-  constructor(private url: string) {}
-
-  async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.url);
-
-      this.ws.onopen = () => {
-        console.log("✅ Connected to WebSocket server");
-        this.isConnected = true;
-        resolve();
-      };
-
-      this.ws.onmessage = (event: MessageEvent) => {
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data.toString());
-          this.handleMessage(message);
-        } catch (error) {
-          console.error("❌ Failed to parse message:", error);
+  constructor(private baseUrl: string) {
+    this.client = new HttpClient({
+      baseUrl,
+      onCommandStart: (command: string, args: string[]) => {
+        console.log(`🚀 Starting command: ${command} ${args.join(" ")}`);
+      },
+      onOutput: (
+        stream: "stdout" | "stderr",
+        data: string,
+        command: string
+      ) => {
+        const streamLabel = stream === "stderr" ? "❌ STDERR" : "📤 STDOUT";
+        console.log(`${streamLabel}: ${data.trim()}`);
+      },
+      onCommandComplete: (
+        success: boolean,
+        exitCode: number,
+        stdout: string,
+        stderr: string,
+        command: string,
+        args: string[]
+      ) => {
+        const successIcon = success ? "✅" : "❌";
+        console.log(
+          `${successIcon} Command completed with exit code: ${exitCode}`
+        );
+        if (stderr) {
+          console.log(`❌ Final stderr: ${stderr.trim()}`);
         }
-      };
-
-      this.ws.onerror = (error: Event) => {
-        console.error("❌ WebSocket error:", error);
-        reject(error);
-      };
-
-      this.ws.onclose = () => {
-        console.log("🔌 WebSocket connection closed");
-        this.isConnected = false;
-      };
+      },
+      onError: (error: string, command?: string, args?: string[]) => {
+        console.error(`❌ Error: ${error}`);
+      },
+      onStreamEvent: (event) => {
+        console.log(`📡 Stream event: ${event.type}`);
+      },
     });
   }
 
-  private handleMessage(message: WebSocketMessage): void {
-    const timestamp = message.timestamp
-      ? ` [${new Date(message.timestamp).toLocaleTimeString()}]`
-      : "";
+  async connect(): Promise<void> {
+    try {
+      // Test ping to verify server is reachable
+      console.log("🏓 Testing ping...");
+      const pingResult = await this.client.ping();
+      console.log("✅ Ping successful:", pingResult);
 
-    switch (message.type) {
-      case "connected": {
-        console.log(`🎉 ${message.data?.message}${timestamp}`);
-        console.log(`📋 Session ID: ${message.data?.sessionId}`);
-        break;
-      }
-
-      case "command_start": {
-        console.log(
-          `🚀 Starting command: ${message.data?.command} ${
-            message.data?.args?.join(" ") || ""
-          }${timestamp}`
-        );
-        break;
-      }
-
-      case "output": {
-        const stream =
-          message.data?.stream === "stderr" ? "❌ STDERR" : "📤 STDOUT";
-        const output = message.data?.data;
-        if (output) {
-          console.log(`${stream}: ${output.trim()}`);
-        }
-        break;
-      }
-
-      case "command_complete": {
-        const success = message.data?.success ? "✅" : "❌";
-        console.log(
-          `${success} Command completed with exit code: ${message.data?.exitCode}${timestamp}`
-        );
-        if (message.data?.stderr) {
-          console.log(`❌ Final stderr: ${message.data.stderr.trim()}`);
-        }
-        break;
-      }
-
-      case "pong": {
-        console.log(`🏓 Pong received${timestamp}`);
-        break;
-      }
-
-      case "list": {
-        console.log(
-          `📋 Available commands: ${message.data?.availableCommands?.join(
-            ", "
-          )}${timestamp}`
-        );
-        break;
-      }
-
-      case "error": {
-        console.error(`❌ Error: ${message.error}${timestamp}`);
-        break;
-      }
-
-      default: {
-        console.log(`❓ Unknown message type: ${message.type}`, message);
-      }
+      // Create a session
+      console.log("🔗 Creating session...");
+      this.sessionId = await this.client.createSession();
+      console.log("✅ Session created:", this.sessionId);
+    } catch (error) {
+      console.error("❌ Failed to connect:", error);
+      throw error;
     }
-  }
-
-  private sendMessage(type: string, data?: any): void {
-    if (!this.isConnected || !this.ws) {
-      throw new Error("WebSocket not connected");
-    }
-
-    const message = { type, data };
-    this.ws.send(JSON.stringify(message));
   }
 
   async executeCommand(command: string, args: string[] = []): Promise<void> {
     console.log(`\n🔧 Executing: ${command} ${args.join(" ")}`);
-    this.sendMessage("execute", { command, args });
 
-    // Wait a bit for the command to complete
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const result = await this.client.execute(
+        command,
+        args,
+        this.sessionId || undefined
+      );
+      console.log(`✅ Command executed successfully`);
+    } catch (error) {
+      console.error(`❌ Command execution failed:`, error);
+    }
+  }
+
+  async executeStreamingCommand(
+    command: string,
+    args: string[] = []
+  ): Promise<void> {
+    console.log(`\n🔧 Executing streaming: ${command} ${args.join(" ")}`);
+
+    try {
+      await this.client.executeStream(
+        command,
+        args,
+        this.sessionId || undefined
+      );
+      console.log(`✅ Streaming command completed`);
+    } catch (error) {
+      console.error(`❌ Streaming command failed:`, error);
+    }
   }
 
   async ping(): Promise<void> {
     console.log("\n🏓 Sending ping...");
-    this.sendMessage("ping");
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const result = await this.client.ping();
+      console.log(`✅ Ping successful: ${result}`);
+    } catch (error) {
+      console.error(`❌ Ping failed:`, error);
+    }
   }
 
   async listCommands(): Promise<void> {
     console.log("\n📋 Requesting available commands...");
-    this.sendMessage("list");
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const commands = await this.client.getCommands();
+      console.log(`✅ Available commands: ${commands.join(", ")}`);
+    } catch (error) {
+      console.error(`❌ Failed to get commands:`, error);
+    }
+  }
+
+  async listSessions(): Promise<void> {
+    console.log("\n📝 Listing sessions...");
+    try {
+      const sessions = await this.client.listSessions();
+      console.log(`✅ Active sessions: ${sessions.count}`);
+      sessions.sessions.forEach((session) => {
+        console.log(
+          `   - ${session.sessionId} (active: ${session.hasActiveProcess})`
+        );
+      });
+    } catch (error) {
+      console.error(`❌ Failed to list sessions:`, error);
+    }
   }
 
   async testDangerousCommand(): Promise<void> {
     console.log("\n⚠️  Testing dangerous command protection...");
-    this.sendMessage("execute", { command: "rm", args: ["-rf", "/"] });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      await this.client.execute(
+        "rm",
+        ["-rf", "/"],
+        this.sessionId || undefined
+      );
+    } catch (error) {
+      console.log("✅ Dangerous command correctly blocked");
+    }
   }
 
   async testInvalidCommand(): Promise<void> {
     console.log("\n❓ Testing invalid command...");
-    this.sendMessage("execute", { command: "nonexistentcommand12345" });
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      await this.client.execute(
+        "nonexistentcommand12345",
+        [],
+        this.sessionId || undefined
+      );
+    } catch (error) {
+      console.log("✅ Invalid command handled gracefully");
+    }
   }
 
   async testLongRunningCommand(): Promise<void> {
     console.log("\n⏱️  Testing long-running command...");
-    this.sendMessage("execute", { command: "sleep", args: ["3"] });
-    await new Promise((resolve) => setTimeout(resolve, 4000));
+    try {
+      await this.client.execute("sleep", ["3"], this.sessionId || undefined);
+      console.log("✅ Long-running command completed");
+    } catch (error) {
+      console.error(`❌ Long-running command failed:`, error);
+    }
+  }
+
+  async testStreamingCommand(): Promise<void> {
+    console.log("\n📡 Testing streaming command...");
+    try {
+      await this.client.executeStream(
+        "ls",
+        ["-la"],
+        this.sessionId || undefined
+      );
+      console.log("✅ Streaming command completed");
+    } catch (error) {
+      console.error(`❌ Streaming command failed:`, error);
+    }
+  }
+
+  async testQuickExecute(): Promise<void> {
+    console.log("\n⚡ Testing quick execute...");
+    try {
+      const { quickExecute } = await import("../src/client");
+      const result = await quickExecute("echo", ["Hello from quick execute!"]);
+      console.log(`✅ Quick execute result: ${result.stdout.trim()}`);
+    } catch (error) {
+      console.error(`❌ Quick execute failed:`, error);
+    }
+  }
+
+  async testQuickExecuteStream(): Promise<void> {
+    console.log("\n⚡ Testing quick execute stream...");
+    try {
+      const { quickExecuteStream } = await import("../src/client");
+      await quickExecuteStream("echo", ["Hello from quick execute stream!"]);
+      console.log("✅ Quick execute stream completed");
+    } catch (error) {
+      console.error(`❌ Quick execute stream failed:`, error);
+    }
   }
 
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
+    if (this.client) {
+      this.client.clearSession();
+      console.log("🔌 Session cleared");
     }
   }
 }
 
 async function runTests(): Promise<void> {
-  const tester = new WebSocketCommandTester("ws://127.0.0.1:3000");
+  const tester = new HttpCommandTester("http://127.0.0.1:3000");
 
   try {
-    console.log("🚀 Starting WebSocket command execution tests...\n");
+    console.log("🚀 Starting HTTP command execution tests...\n");
 
     // Connect to the server
     await tester.connect();
@@ -184,28 +228,40 @@ async function runTests(): Promise<void> {
     // Test 1: List available commands
     await tester.listCommands();
 
-    // Test 2: Ping the server
+    // Test 2: List sessions
+    await tester.listSessions();
+
+    // Test 3: Ping the server
     await tester.ping();
 
-    // Test 3: Simple echo command
-    await tester.executeCommand("echo", ["Hello from WebSocket!"]);
+    // Test 4: Simple echo command
+    await tester.executeCommand("echo", ["Hello from HTTP!"]);
 
-    // Test 4: List current directory
+    // Test 5: List current directory
     await tester.executeCommand("ls", ["-la"]);
 
-    // Test 5: Get current working directory
+    // Test 6: Get current working directory
     await tester.executeCommand("pwd");
 
-    // Test 6: Check system info
+    // Test 7: Check system info
     await tester.executeCommand("uname", ["-a"]);
 
-    // Test 7: Test dangerous command protection
+    // Test 8: Test streaming command
+    await tester.testStreamingCommand();
+
+    // Test 9: Test quick execute
+    await tester.testQuickExecute();
+
+    // Test 10: Test quick execute stream
+    await tester.testQuickExecuteStream();
+
+    // Test 11: Test dangerous command protection
     await tester.testDangerousCommand();
 
-    // Test 8: Test invalid command
+    // Test 12: Test invalid command
     await tester.testInvalidCommand();
 
-    // Test 9: Test long-running command
+    // Test 13: Test long-running command
     await tester.testLongRunningCommand();
 
     console.log("\n✅ All tests completed!");

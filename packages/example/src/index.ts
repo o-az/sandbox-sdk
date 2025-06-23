@@ -1,12 +1,12 @@
 import { Container, getContainer, getRandom } from "@cloudflare/containers";
-// import { WebSocketClient } from "./client";
+import { HttpClient } from "./client";
 
 type Env = {
   Sandbox: DurableObjectNamespace<Sandbox<Env>>;
 };
 
 export class Sandbox<Env = unknown> extends Container<Env> {
-  // client!: WebSocketClient;
+  client!: HttpClient;
   defaultPort = 3000; // The default port for the container to listen on
   sleepAfter = "3m"; // Sleep the container if no requests are made in this timeframe
 
@@ -16,14 +16,32 @@ export class Sandbox<Env = unknown> extends Container<Env> {
 
   override onStart() {
     console.log("Container successfully started");
-    // const ws = this.fetch("http://localhost:3000");
-    // this.client = new WebSocketClient({
-    //   url: "ws://localhost:3000",
-    // });
+    this.client = new HttpClient({
+      baseUrl: "http://localhost:3000",
+      onCommandStart: (command, args) => {
+        console.log(
+          `[Container] Command started: ${command} ${args.join(" ")}`
+        );
+      },
+      onOutput: (stream, data, command) => {
+        console.log(`[Container] [${stream}] ${data}`);
+      },
+      onCommandComplete: (success, exitCode, stdout, stderr, command, args) => {
+        console.log(
+          `[Container] Command completed: ${command}, Success: ${success}, Exit code: ${exitCode}`
+        );
+      },
+      onError: (error, command, args) => {
+        console.error(`[Container] Command error: ${error}`);
+      },
+    });
   }
 
   override onStop() {
     console.log("Container successfully shut down");
+    if (this.client) {
+      this.client.clearSession();
+    }
   }
 
   override onError(error: unknown) {
@@ -37,7 +55,7 @@ export default {
     // If you want to route requests to a specific container,
     // pass a unique container identifier to .get()
 
-    if (pathname.startsWith("/container")) {
+    if (pathname.startsWith("/api")) {
       const containerInstance = getContainer(env.Sandbox, pathname);
       return await containerInstance.containerFetch(request);
     }
@@ -58,7 +76,7 @@ export default {
     }
 
     return new Response(
-      "Call /container to start a container with a 10s timeout.\nCall /error to start a container that errors\nCall /lb to test load balancing"
+      "Call /api to start a container with a 10s timeout.\nCall /error to start a container that errors\nCall /lb to test load balancing"
     );
   },
 };

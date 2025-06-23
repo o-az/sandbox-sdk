@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "container-package-class-worker",
-  "main": "src/index.ts",
+  // "main": "src/index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
@@ -13,27 +13,27 @@
   "build": {
     "command": "bun build app/index.tsx --outdir public/dist",
     "watch_dir": "app"
-  },
-  "containers": [
-    {
-      "class_name": "Sandbox",
-      "image": "./Dockerfile",
-      "max_instances": 3,
-      "name": "container-package-class-example"
-    }
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "class_name": "Sandbox",
-        "name": "Sandbox"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "new_sqlite_classes": ["Sandbox"],
-      "tag": "v1"
-    }
-  ]
+  }
+  // "containers": [
+  //   {
+  //     "class_name": "Sandbox",
+  //     "image": "./Dockerfile",
+  //     "max_instances": 3,
+  //     "name": "container-package-class-example"
+  //   }
+  // ],
+  // "durable_objects": {
+  //   "bindings": [
+  //     {
+  //       "class_name": "Sandbox",
+  //       "name": "Sandbox"
+  //     }
+  //   ]
+  // },
+  // "migrations": [
+  //   {
+  //     "new_sqlite_classes": ["Sandbox"],
+  //     "tag": "v1"
+  //   }
+  // ]
 }

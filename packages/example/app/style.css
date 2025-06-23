@@ -151,6 +151,16 @@ body {
   background-color: #2ea043;
 }
 
+.btn-stream {
+  background-color: #1f6feb;
+  border-color: #388bfd;
+  color: white;
+}
+
+.btn-stream:hover:not(:disabled) {
+  background-color: #388bfd;
+}
+
 /* Results Area */
 .results-container {
   background-color: #0d1117;
@@ -238,36 +248,57 @@ pre {
 /* Help Section */
 .help-section {
   margin-top: 2rem;
-  padding: 1.5rem;
-  background-color: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 8px;
+  padding-top: 1.5rem;
+  border-top: 1px solid #30363d;
 }
 
 .help-section h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-top: 0;
+  color: #58a6ff;
+  font-size: 1.1rem;
   margin-bottom: 1rem;
+  font-weight: 600;
 }
 
 .help-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.75rem;
 }
 
 .help-item {
   color: #8b949e;
+  font-size: 0.9rem;
 }
 
 .help-command {
+  color: #58a6ff;
   font-family: "Fira Code", monospace;
-  background-color: rgba(88, 166, 255, 0.15);
-  color: #79c0ff;
-  padding: 0.2rem 0.5rem;
+  font-weight: 600;
+  background-color: rgba(88, 166, 255, 0.1);
+  padding: 0.2rem 0.4rem;
   border-radius: 4px;
-  margin-right: 0.5rem;
+}
+
+.help-note {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background-color: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #8b949e;
+}
+
+.help-note strong {
+  color: #58a6ff;
+}
+
+.help-note code {
+  background-color: rgba(88, 166, 255, 0.1);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: "Fira Code", monospace;
+  font-size: 0.85rem;
 }
 
 /* Scrollbar */

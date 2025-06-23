@@ -3,29 +3,58 @@ interface ExecuteRequest {
   args?: string[];
 }
 
-interface WebSocketMessage {
-  type:
-    | "execute"
-    | "ping"
-    | "list"
-    | "connected"
-    | "command_start"
-    | "output"
-    | "command_complete"
-    | "error"
-    | "pong";
-  data?: any;
-  error?: string;
-  command?: string;
-  args?: string[];
-  timestamp?: string;
-  // This is a client-side only field to help with async requests
-  _requestId?: string;
+interface ExecuteResponse {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  command: string;
+  args: string[];
+  timestamp: string;
 }
 
-interface WebSocketClientOptions {
-  url?: string;
-  onConnected?: (sessionId: string) => void;
+interface SessionResponse {
+  sessionId: string;
+  message: string;
+  timestamp: string;
+}
+
+interface SessionListResponse {
+  sessions: Array<{
+    sessionId: string;
+    hasActiveProcess: boolean;
+    createdAt: string;
+  }>;
+  count: number;
+  timestamp: string;
+}
+
+interface CommandsResponse {
+  availableCommands: string[];
+  timestamp: string;
+}
+
+interface PingResponse {
+  message: string;
+  timestamp: string;
+}
+
+interface StreamEvent {
+  type: "command_start" | "output" | "command_complete" | "error";
+  command?: string;
+  args?: string[];
+  stream?: "stdout" | "stderr";
+  data?: string;
+  success?: boolean;
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  error?: string;
+  timestamp?: string;
+}
+
+interface HttpClientOptions {
+  baseUrl?: string;
   onCommandStart?: (command: string, args: string[]) => void;
   onOutput?: (
     stream: "stdout" | "stderr",
@@ -41,29 +70,20 @@ interface WebSocketClientOptions {
     args: string[]
   ) => void;
   onError?: (error: string, command?: string, args?: string[]) => void;
-  onPong?: (timestamp: string) => void;
-  onList?: (data: any) => void;
-  onClose?: () => void;
-  onOpen?: () => void;
+  onStreamEvent?: (event: StreamEvent) => void;
 }
 
-export class WebSocketClient {
-  private ws: WebSocket | null = null;
-  protected options: WebSocketClientOptions;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
-  private _requestCounter = 0;
-  private _requestResolvers = new Map<
-    string,
-    (message: WebSocketMessage) => void
-  >();
+export class HttpClient {
+  private baseUrl: string;
+  private options: HttpClientOptions;
+  private sessionId: string | null = null;
 
-  constructor(options: WebSocketClientOptions = {}) {
+  constructor(options: HttpClientOptions = {}) {
     this.options = {
-      url: "ws://localhost:3000",
+      baseUrl: "http://localhost:3000",
       ...options,
     };
+    this.baseUrl = this.options.baseUrl!;
   }
 
   // Public methods to set event handlers
@@ -90,6 +110,10 @@ export class WebSocketClient {
     this.options.onCommandComplete = handler;
   }
 
+  setOnStreamEvent(handler: (event: StreamEvent) => void): void {
+    this.options.onStreamEvent = handler;
+  }
+
   // Public getter methods
   getOnOutput():
     | ((stream: "stdout" | "stderr", data: string, command: string) => void)
@@ -110,296 +134,329 @@ export class WebSocketClient {
     return this.options.onCommandComplete;
   }
 
-  connect(ws?: WebSocket): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.ws = ws ?? new WebSocket(this.options.url!);
-
-        this.ws.onopen = () => {
-          console.log("WebSocket connected");
-          this.reconnectAttempts = 0;
-          this.options.onOpen?.();
-          resolve();
-        };
-
-        this.ws.onmessage = (event) => {
-          this.handleMessage(event.data);
-        };
-
-        this.ws.onclose = () => {
-          console.log("WebSocket disconnected");
-          this.options.onClose?.();
-          this.attemptReconnect();
-        };
-
-        this.ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          reject(error);
-        };
-      } catch (error) {
-        reject(error);
-      }
-    });
+  getOnStreamEvent(): ((event: StreamEvent) => void) | undefined {
+    return this.options.onStreamEvent;
   }
 
-  private handleMessage(data: string) {
+  async createSession(): Promise<string> {
     try {
-      const message: WebSocketMessage = JSON.parse(data);
-      console.log(
-        `[WebSocket] Received message:`,
-        message.type,
-        message._requestId
-      );
-
-      switch (message.type) {
-        case "connected":
-          console.log("Session established:", message.data?.sessionId);
-          this.options.onConnected?.(message.data?.sessionId);
-          break;
-
-        case "command_start":
-          console.log(
-            "Command started:",
-            message.data?.command,
-            message.data?.args
-          );
-          this.options.onCommandStart?.(
-            message.data?.command,
-            message.data?.args || []
-          );
-          break;
-
-        case "output":
-          console.log(`[${message.data?.stream}] ${message.data?.data}`);
-          this.options.onOutput?.(
-            message.data?.stream,
-            message.data?.data,
-            message.data?.command
-          );
-          break;
-
-        case "command_complete":
-          console.log(
-            "Command completed:",
-            message.data?.success,
-            "Exit code:",
-            message.data?.exitCode
-          );
-          if (
-            message._requestId &&
-            this._requestResolvers.has(message._requestId)
-          ) {
-            this._requestResolvers.get(message._requestId)!(message);
-            this._requestResolvers.delete(message._requestId);
-            return;
-          }
-          this.options.onCommandComplete?.(
-            message.data?.success,
-            message.data?.exitCode,
-            message.data?.stdout,
-            message.data?.stderr,
-            message.data?.command,
-            message.data?.args || []
-          );
-          break;
-
-        case "error":
-          console.error("Server error:", message.error);
-          this.options.onError?.(message.error!, message.command, message.args);
-          break;
-
-        case "pong":
-          console.log("Pong received:", message.timestamp);
-          if (
-            message._requestId &&
-            this._requestResolvers.has(message._requestId)
-          ) {
-            this._requestResolvers.get(message._requestId)!(message);
-            this._requestResolvers.delete(message._requestId);
-            return;
-          }
-          this.options.onPong?.(message.timestamp!);
-          break;
-
-        case "list":
-          console.log("List response:", message.data);
-          if (
-            message._requestId &&
-            this._requestResolvers.has(message._requestId)
-          ) {
-            this._requestResolvers.get(message._requestId)!(message);
-            this._requestResolvers.delete(message._requestId);
-            return;
-          }
-          this.options.onList?.(message.data);
-          break;
-
-        default:
-          console.warn("Unknown message type:", message.type);
-      }
-    } catch (error) {
-      console.error("Error parsing message:", error);
-    }
-  }
-
-  private attemptReconnect() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(
-        `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
-      );
-
-      setTimeout(() => {
-        this.connect().catch((error) => {
-          console.error("Reconnection failed:", error);
-        });
-      }, this.reconnectDelay * this.reconnectAttempts);
-    } else {
-      console.error("Max reconnection attempts reached");
-    }
-  }
-
-  private _makeRequest<T>(
-    message: Omit<WebSocketMessage, "_requestId">,
-    responseType: WebSocketMessage["type"]
-  ): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const requestId = `req-${this._requestCounter++}`;
-      const requestMessage = { ...message, _requestId: requestId };
-
-      console.log(
-        `[WebSocket] Making request ${requestId}:`,
-        message.type,
-        message.data
-      );
-
-      // Add timeout to prevent hanging promises
-      const timeout = setTimeout(() => {
-        console.error(`[WebSocket] Request ${requestId} timed out`);
-        this._requestResolvers.delete(requestId);
-        reject(
-          new Error(
-            `Request timeout: ${responseType} response not received within 30 seconds`
-          )
-        );
-      }, 30000);
-
-      this._requestResolvers.set(requestId, (response) => {
-        console.log(
-          `[WebSocket] Received response for ${requestId}:`,
-          response.type,
-          response.data
-        );
-        clearTimeout(timeout);
-        if (response.type === responseType) {
-          if (responseType === "command_complete") {
-            resolve({
-              success: response.data?.success,
-              stdout: response.data?.stdout || "",
-              stderr: response.data?.stderr || "",
-              exitCode: response.data?.exitCode || 0,
-            } as T);
-          } else if (responseType === "pong") {
-            resolve({ timestamp: response.timestamp } as T);
-          } else {
-            resolve(response.data as T);
-          }
-        } else if (response.type === "error") {
-          reject(new Error(response.error));
-        }
+      const response = await fetch(`${this.baseUrl}/api/session/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
-      this.send(requestMessage);
-    });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: SessionResponse = await response.json();
+      this.sessionId = data.sessionId;
+      console.log(`[HTTP Client] Created session: ${this.sessionId}`);
+      return this.sessionId;
+    } catch (error) {
+      console.error("[HTTP Client] Error creating session:", error);
+      throw error;
+    }
   }
 
-  send(message: WebSocketMessage): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log(
-        `[WebSocket] Sending message:`,
-        message.type,
-        message._requestId
-      );
-      this.ws.send(JSON.stringify(message));
-    } else {
-      throw new Error("WebSocket is not connected");
+  async listSessions(): Promise<SessionListResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/session/list`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: SessionListResponse = await response.json();
+      console.log(`[HTTP Client] Listed ${data.count} sessions`);
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error listing sessions:", error);
+      throw error;
     }
   }
 
   async execute(
     command: string,
-    args: string[] = []
-  ): Promise<{
-    success: boolean;
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-  }> {
-    return this._makeRequest(
-      {
-        type: "execute",
-        data: { command, args },
-      },
-      "command_complete"
-    );
-  }
+    args: string[] = [],
+    sessionId?: string
+  ): Promise<ExecuteResponse> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
 
-  async ping(): Promise<string> {
-    const response = await this._makeRequest<{ timestamp: string }>(
-      { type: "ping" },
-      "pong"
-    );
-    return response.timestamp;
-  }
+      const response = await fetch(`${this.baseUrl}/api/execute`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          command,
+          args,
+          sessionId: targetSessionId,
+        }),
+      });
 
-  async list(): Promise<any> {
-    return this._makeRequest({ type: "list" }, "list");
-  }
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
 
-  disconnect(): void {
-    if (this.ws) {
-      console.log("[WebSocket] Disconnecting...");
+      const data: ExecuteResponse = await response.json();
+      console.log(
+        `[HTTP Client] Command executed: ${command}, Success: ${data.success}`
+      );
 
-      // Clear any pending request resolvers
-      this._requestResolvers.clear();
+      // Call the callback if provided
+      this.options.onCommandComplete?.(
+        data.success,
+        data.exitCode,
+        data.stdout,
+        data.stderr,
+        data.command,
+        data.args
+      );
 
-      // Close the WebSocket
-      this.ws.close();
-      this.ws = null;
-
-      console.log("[WebSocket] Disconnected");
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error executing command:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        command,
+        args
+      );
+      throw error;
     }
   }
 
-  isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+  async executeStream(
+    command: string,
+    args: string[] = [],
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await fetch(`${this.baseUrl}/api/execute/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          command,
+          args,
+          sessionId: targetSessionId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = line.slice(6); // Remove 'data: ' prefix
+                const event: StreamEvent = JSON.parse(eventData);
+
+                console.log(`[HTTP Client] Stream event: ${event.type}`);
+                this.options.onStreamEvent?.(event);
+
+                switch (event.type) {
+                  case "command_start":
+                    console.log(
+                      `[HTTP Client] Command started: ${
+                        event.command
+                      } ${event.args?.join(" ")}`
+                    );
+                    this.options.onCommandStart?.(
+                      event.command!,
+                      event.args || []
+                    );
+                    break;
+
+                  case "output":
+                    console.log(`[${event.stream}] ${event.data}`);
+                    this.options.onOutput?.(
+                      event.stream!,
+                      event.data!,
+                      event.command!
+                    );
+                    break;
+
+                  case "command_complete":
+                    console.log(
+                      `[HTTP Client] Command completed: ${event.command}, Success: ${event.success}, Exit code: ${event.exitCode}`
+                    );
+                    this.options.onCommandComplete?.(
+                      event.success!,
+                      event.exitCode!,
+                      event.stdout!,
+                      event.stderr!,
+                      event.command!,
+                      event.args || []
+                    );
+                    break;
+
+                  case "error":
+                    console.error(
+                      `[HTTP Client] Command error: ${event.error}`
+                    );
+                    this.options.onError?.(
+                      event.error!,
+                      event.command,
+                      event.args
+                    );
+                    break;
+                }
+              } catch (parseError) {
+                console.warn(
+                  "[HTTP Client] Failed to parse stream event:",
+                  parseError
+                );
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("[HTTP Client] Error in streaming execution:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        command,
+        args
+      );
+      throw error;
+    }
+  }
+
+  async ping(): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/ping`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: PingResponse = await response.json();
+      console.log(`[HTTP Client] Ping response: ${data.message}`);
+      return data.timestamp;
+    } catch (error) {
+      console.error("[HTTP Client] Error pinging server:", error);
+      throw error;
+    }
+  }
+
+  async getCommands(): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/commands`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: CommandsResponse = await response.json();
+      console.log(
+        `[HTTP Client] Available commands: ${data.availableCommands.length}`
+      );
+      return data.availableCommands;
+    } catch (error) {
+      console.error("[HTTP Client] Error getting commands:", error);
+      throw error;
+    }
+  }
+
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  setSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+  }
+
+  clearSession(): void {
+    this.sessionId = null;
   }
 }
 
 // Example usage and utility functions
-export function createClient(
-  options?: WebSocketClientOptions
-): WebSocketClient {
-  return new WebSocketClient(options);
+export function createClient(options?: HttpClientOptions): HttpClient {
+  return new HttpClient(options);
 }
 
 // Convenience function for quick command execution
 export async function quickExecute(
   command: string,
   args: string[] = [],
-  options?: WebSocketClientOptions
-): Promise<{
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}> {
+  options?: HttpClientOptions
+): Promise<ExecuteResponse> {
   const client = createClient(options);
-  await client.connect();
+  await client.createSession();
 
   try {
     return await client.execute(command, args);
   } finally {
-    client.disconnect();
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick streaming command execution
+export async function quickExecuteStream(
+  command: string,
+  args: string[] = [],
+  options?: HttpClientOptions
+): Promise<void> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    await client.executeStream(command, args);
+  } finally {
+    client.clearSession();
   }
 }

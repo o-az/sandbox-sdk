@@ -1,22 +1,53 @@
-import { WebSocketClient } from "./src/client";
+import { HttpClient } from "./src/client";
 
 async function connectionTest() {
-  console.log("🔌 Testing WebSocket Connection Only");
+  console.log("🔌 Testing HTTP Connection Only");
 
-  const client = new WebSocketClient({
-    url: "ws://localhost:3000",
-    onConnected: (sessionId) => {
-      console.log("✅ Connected:", sessionId);
+  const client = new HttpClient({
+    baseUrl: "http://localhost:3000",
+    onCommandStart: (command: string, args: string[]) => {
+      console.log("📝 Command started:", command, args);
     },
-    onError: (error) => {
-      console.error("❌ Error:", error);
+    onOutput: (stream: "stdout" | "stderr", data: string, command: string) => {
+      console.log(`📤 [${stream}] ${data.trim()}`);
+    },
+    onCommandComplete: (
+      success: boolean,
+      exitCode: number,
+      stdout: string,
+      stderr: string,
+      command: string,
+      args: string[]
+    ) => {
+      console.log(
+        `✅ Command completed: ${command}, Success: ${success}, Exit code: ${exitCode}`
+      );
+    },
+    onError: (error: string, command?: string, args?: string[]) => {
+      console.error(`❌ Error: ${error}`);
     },
   });
 
   try {
-    // Connect
-    await client.connect();
-    console.log("🔗 Connected to server");
+    // Test ping to verify server is reachable
+    console.log("🏓 Testing ping...");
+    const pingResult = await client.ping();
+    console.log("✅ Ping successful:", pingResult);
+
+    // Create a session
+    console.log("🔗 Creating session...");
+    const sessionId = await client.createSession();
+    console.log("✅ Session created:", sessionId);
+
+    // Test getting available commands
+    console.log("📋 Getting available commands...");
+    const commands = await client.getCommands();
+    console.log("✅ Available commands:", commands.length);
+
+    // Test listing sessions
+    console.log("📝 Listing sessions...");
+    const sessions = await client.listSessions();
+    console.log("✅ Active sessions:", sessions.count);
 
     // Wait a moment
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -26,16 +57,16 @@ async function connectionTest() {
     console.error("❌ Connection test failed:", error);
     throw error;
   } finally {
-    client.disconnect();
-    console.log("🔌 Disconnected");
+    client.clearSession();
+    console.log("🔌 Session cleared");
   }
 }
 
 // Add a timeout to prevent hanging
 const timeout = setTimeout(() => {
-  console.error("❌ Connection test timed out after 10 seconds");
+  console.error("❌ Connection test timed out after 15 seconds");
   process.exit(1);
-}, 10000);
+}, 15000);
 
 connectionTest()
   .then(() => {
