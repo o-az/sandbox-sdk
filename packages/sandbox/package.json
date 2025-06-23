@@ -9,6 +9,13 @@
   "dependencies": {
     "@cloudflare/containers": "^0.0.8"
   },
+  "tags": [
+    "sandbox",
+    "codegen",
+    "containers",
+    "cloudflare",
+    "durable objects"
+  ],
   "scripts": {
     "build": "tsup src/*.ts --outDir dist --dts --sourcemap --format esm"
   },
