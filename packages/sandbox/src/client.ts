@@ -71,6 +71,60 @@ export interface MkdirResponse {
   timestamp: string;
 }
 
+interface WriteFileRequest {
+  path: string;
+  content: string;
+  encoding?: string;
+  sessionId?: string;
+}
+
+export interface WriteFileResponse {
+  success: boolean;
+  exitCode: number;
+  path: string;
+  timestamp: string;
+}
+
+interface DeleteFileRequest {
+  path: string;
+  sessionId?: string;
+}
+
+export interface DeleteFileResponse {
+  success: boolean;
+  exitCode: number;
+  path: string;
+  timestamp: string;
+}
+
+interface RenameFileRequest {
+  oldPath: string;
+  newPath: string;
+  sessionId?: string;
+}
+
+export interface RenameFileResponse {
+  success: boolean;
+  exitCode: number;
+  oldPath: string;
+  newPath: string;
+  timestamp: string;
+}
+
+interface MoveFileRequest {
+  sourcePath: string;
+  destinationPath: string;
+  sessionId?: string;
+}
+
+export interface MoveFileResponse {
+  success: boolean;
+  exitCode: number;
+  sourcePath: string;
+  destinationPath: string;
+  timestamp: string;
+}
+
 interface PingResponse {
   message: string;
   timestamp: string;
@@ -82,6 +136,12 @@ interface StreamEvent {
   args?: string[];
   stream?: "stdout" | "stderr";
   data?: string;
+  message?: string;
+  path?: string;
+  oldPath?: string;
+  newPath?: string;
+  sourcePath?: string;
+  destinationPath?: string;
   success?: boolean;
   exitCode?: number;
   stdout?: string;
@@ -750,6 +810,629 @@ export class HttpClient {
     }
   }
 
+  async writeFile(
+    path: string,
+    content: string,
+    encoding: string = "utf-8",
+    sessionId?: string
+  ): Promise<WriteFileResponse> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/write`, {
+        body: JSON.stringify({
+          path,
+          content,
+          encoding,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: WriteFileResponse = await response.json();
+      console.log(
+        `[HTTP Client] File written: ${path}, Success: ${data.success}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error writing file:", error);
+      throw error;
+    }
+  }
+
+  async writeFileStream(
+    path: string,
+    content: string,
+    encoding: string = "utf-8",
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/write/stream`, {
+        body: JSON.stringify({
+          path,
+          content,
+          encoding,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = line.slice(6); // Remove 'data: ' prefix
+                const event: StreamEvent = JSON.parse(eventData);
+
+                console.log(
+                  `[HTTP Client] Write file stream event: ${event.type}`
+                );
+                this.options.onStreamEvent?.(event);
+
+                switch (event.type) {
+                  case "command_start":
+                    console.log(
+                      `[HTTP Client] Write file started: ${event.path}`
+                    );
+                    this.options.onCommandStart?.("write", [
+                      path,
+                      content,
+                      encoding,
+                    ]);
+                    break;
+
+                  case "output":
+                    console.log(`[output] ${event.message}`);
+                    this.options.onOutput?.("stdout", event.message!, "write");
+                    break;
+
+                  case "command_complete":
+                    console.log(
+                      `[HTTP Client] Write file completed: ${event.path}, Success: ${event.success}`
+                    );
+                    this.options.onCommandComplete?.(
+                      event.success!,
+                      0,
+                      "",
+                      "",
+                      "write",
+                      [path, content, encoding]
+                    );
+                    break;
+
+                  case "error":
+                    console.error(
+                      `[HTTP Client] Write file error: ${event.error}`
+                    );
+                    this.options.onError?.(event.error!, "write", [
+                      path,
+                      content,
+                      encoding,
+                    ]);
+                    break;
+                }
+              } catch (parseError) {
+                console.warn(
+                  "[HTTP Client] Failed to parse write file stream event:",
+                  parseError
+                );
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("[HTTP Client] Error in streaming write file:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        "write",
+        [path, content, encoding]
+      );
+      throw error;
+    }
+  }
+
+  async deleteFile(
+    path: string,
+    sessionId?: string
+  ): Promise<DeleteFileResponse> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/delete`, {
+        body: JSON.stringify({
+          path,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: DeleteFileResponse = await response.json();
+      console.log(
+        `[HTTP Client] File deleted: ${path}, Success: ${data.success}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error deleting file:", error);
+      throw error;
+    }
+  }
+
+  async deleteFileStream(path: string, sessionId?: string): Promise<void> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/delete/stream`, {
+        body: JSON.stringify({
+          path,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = line.slice(6); // Remove 'data: ' prefix
+                const event: StreamEvent = JSON.parse(eventData);
+
+                console.log(
+                  `[HTTP Client] Delete file stream event: ${event.type}`
+                );
+                this.options.onStreamEvent?.(event);
+
+                switch (event.type) {
+                  case "command_start":
+                    console.log(
+                      `[HTTP Client] Delete file started: ${event.path}`
+                    );
+                    this.options.onCommandStart?.("delete", [path]);
+                    break;
+
+                  case "command_complete":
+                    console.log(
+                      `[HTTP Client] Delete file completed: ${event.path}, Success: ${event.success}`
+                    );
+                    this.options.onCommandComplete?.(
+                      event.success!,
+                      0,
+                      "",
+                      "",
+                      "delete",
+                      [path]
+                    );
+                    break;
+
+                  case "error":
+                    console.error(
+                      `[HTTP Client] Delete file error: ${event.error}`
+                    );
+                    this.options.onError?.(event.error!, "delete", [path]);
+                    break;
+                }
+              } catch (parseError) {
+                console.warn(
+                  "[HTTP Client] Failed to parse delete file stream event:",
+                  parseError
+                );
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("[HTTP Client] Error in streaming delete file:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        "delete",
+        [path]
+      );
+      throw error;
+    }
+  }
+
+  async renameFile(
+    oldPath: string,
+    newPath: string,
+    sessionId?: string
+  ): Promise<RenameFileResponse> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/rename`, {
+        body: JSON.stringify({
+          oldPath,
+          newPath,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: RenameFileResponse = await response.json();
+      console.log(
+        `[HTTP Client] File renamed: ${oldPath} -> ${newPath}, Success: ${data.success}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error renaming file:", error);
+      throw error;
+    }
+  }
+
+  async renameFileStream(
+    oldPath: string,
+    newPath: string,
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/rename/stream`, {
+        body: JSON.stringify({
+          oldPath,
+          newPath,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = line.slice(6); // Remove 'data: ' prefix
+                const event: StreamEvent = JSON.parse(eventData);
+
+                console.log(
+                  `[HTTP Client] Rename file stream event: ${event.type}`
+                );
+                this.options.onStreamEvent?.(event);
+
+                switch (event.type) {
+                  case "command_start":
+                    console.log(
+                      `[HTTP Client] Rename file started: ${event.oldPath} -> ${event.newPath}`
+                    );
+                    this.options.onCommandStart?.("rename", [oldPath, newPath]);
+                    break;
+
+                  case "command_complete":
+                    console.log(
+                      `[HTTP Client] Rename file completed: ${event.oldPath} -> ${event.newPath}, Success: ${event.success}`
+                    );
+                    this.options.onCommandComplete?.(
+                      event.success!,
+                      0,
+                      "",
+                      "",
+                      "rename",
+                      [oldPath, newPath]
+                    );
+                    break;
+
+                  case "error":
+                    console.error(
+                      `[HTTP Client] Rename file error: ${event.error}`
+                    );
+                    this.options.onError?.(event.error!, "rename", [
+                      oldPath,
+                      newPath,
+                    ]);
+                    break;
+                }
+              } catch (parseError) {
+                console.warn(
+                  "[HTTP Client] Failed to parse rename file stream event:",
+                  parseError
+                );
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("[HTTP Client] Error in streaming rename file:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        "rename",
+        [oldPath, newPath]
+      );
+      throw error;
+    }
+  }
+
+  async moveFile(
+    sourcePath: string,
+    destinationPath: string,
+    sessionId?: string
+  ): Promise<MoveFileResponse> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/move`, {
+        body: JSON.stringify({
+          sourcePath,
+          destinationPath,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: MoveFileResponse = await response.json();
+      console.log(
+        `[HTTP Client] File moved: ${sourcePath} -> ${destinationPath}, Success: ${data.success}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error moving file:", error);
+      throw error;
+    }
+  }
+
+  async moveFileStream(
+    sourcePath: string,
+    destinationPath: string,
+    sessionId?: string
+  ): Promise<void> {
+    try {
+      const targetSessionId = sessionId || this.sessionId;
+
+      const response = await this.doFetch(`/api/move/stream`, {
+        body: JSON.stringify({
+          sourcePath,
+          destinationPath,
+          sessionId: targetSessionId,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const eventData = line.slice(6); // Remove 'data: ' prefix
+                const event: StreamEvent = JSON.parse(eventData);
+
+                console.log(
+                  `[HTTP Client] Move file stream event: ${event.type}`
+                );
+                this.options.onStreamEvent?.(event);
+
+                switch (event.type) {
+                  case "command_start":
+                    console.log(
+                      `[HTTP Client] Move file started: ${event.sourcePath} -> ${event.destinationPath}`
+                    );
+                    this.options.onCommandStart?.("move", [
+                      sourcePath,
+                      destinationPath,
+                    ]);
+                    break;
+
+                  case "command_complete":
+                    console.log(
+                      `[HTTP Client] Move file completed: ${event.sourcePath} -> ${event.destinationPath}, Success: ${event.success}`
+                    );
+                    this.options.onCommandComplete?.(
+                      event.success!,
+                      0,
+                      "",
+                      "",
+                      "move",
+                      [sourcePath, destinationPath]
+                    );
+                    break;
+
+                  case "error":
+                    console.error(
+                      `[HTTP Client] Move file error: ${event.error}`
+                    );
+                    this.options.onError?.(event.error!, "move", [
+                      sourcePath,
+                      destinationPath,
+                    ]);
+                    break;
+                }
+              } catch (parseError) {
+                console.warn(
+                  "[HTTP Client] Failed to parse move file stream event:",
+                  parseError
+                );
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error) {
+      console.error("[HTTP Client] Error in streaming move file:", error);
+      this.options.onError?.(
+        error instanceof Error ? error.message : "Unknown error",
+        "move",
+        [sourcePath, destinationPath]
+      );
+      throw error;
+    }
+  }
+
   async ping(): Promise<string> {
     try {
       const response = await this.doFetch(`/api/ping`, {
@@ -907,6 +1590,134 @@ export async function quickMkdirStream(
 
   try {
     await client.mkdirStream(path, recursive);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick file writing
+export async function quickWriteFile(
+  path: string,
+  content: string,
+  encoding: string = "utf-8",
+  options?: HttpClientOptions
+): Promise<WriteFileResponse> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    return await client.writeFile(path, content, encoding);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick streaming file writing
+export async function quickWriteFileStream(
+  path: string,
+  content: string,
+  encoding: string = "utf-8",
+  options?: HttpClientOptions
+): Promise<void> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    await client.writeFileStream(path, content, encoding);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick file deletion
+export async function quickDeleteFile(
+  path: string,
+  options?: HttpClientOptions
+): Promise<DeleteFileResponse> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    return await client.deleteFile(path);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick streaming file deletion
+export async function quickDeleteFileStream(
+  path: string,
+  options?: HttpClientOptions
+): Promise<void> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    await client.deleteFileStream(path);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick file renaming
+export async function quickRenameFile(
+  oldPath: string,
+  newPath: string,
+  options?: HttpClientOptions
+): Promise<RenameFileResponse> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    return await client.renameFile(oldPath, newPath);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick streaming file renaming
+export async function quickRenameFileStream(
+  oldPath: string,
+  newPath: string,
+  options?: HttpClientOptions
+): Promise<void> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    await client.renameFileStream(oldPath, newPath);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick file moving
+export async function quickMoveFile(
+  sourcePath: string,
+  destinationPath: string,
+  options?: HttpClientOptions
+): Promise<MoveFileResponse> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    return await client.moveFile(sourcePath, destinationPath);
+  } finally {
+    client.clearSession();
+  }
+}
+
+// Convenience function for quick streaming file moving
+export async function quickMoveFileStream(
+  sourcePath: string,
+  destinationPath: string,
+  options?: HttpClientOptions
+): Promise<void> {
+  const client = createClient(options);
+  await client.createSession();
+
+  try {
+    await client.moveFileStream(sourcePath, destinationPath);
   } finally {
     client.clearSession();
   }

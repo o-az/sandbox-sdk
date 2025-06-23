@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { serve } from "bun";
+import { writeFile, mkdir, unlink, rename } from "node:fs/promises";
+import { dirname } from "node:path";
 
 interface ExecuteRequest {
   command: string;
@@ -16,6 +18,30 @@ interface GitCheckoutRequest {
 interface MkdirRequest {
   path: string;
   recursive?: boolean;
+  sessionId?: string;
+}
+
+interface WriteFileRequest {
+  path: string;
+  content: string;
+  encoding?: string;
+  sessionId?: string;
+}
+
+interface DeleteFileRequest {
+  path: string;
+  sessionId?: string;
+}
+
+interface RenameFileRequest {
+  oldPath: string;
+  newPath: string;
+  sessionId?: string;
+}
+
+interface MoveFileRequest {
+  sourcePath: string;
+  destinationPath: string;
   sessionId?: string;
 }
 
@@ -256,6 +282,54 @@ const server = serve({
         case "/api/mkdir/stream":
           if (req.method === "POST") {
             return handleStreamingMkdirRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/write":
+          if (req.method === "POST") {
+            return handleWriteFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/write/stream":
+          if (req.method === "POST") {
+            return handleStreamingWriteFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/delete":
+          if (req.method === "POST") {
+            return handleDeleteFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/delete/stream":
+          if (req.method === "POST") {
+            return handleStreamingDeleteFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/rename":
+          if (req.method === "POST") {
+            return handleRenameFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/rename/stream":
+          if (req.method === "POST") {
+            return handleStreamingRenameFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/move":
+          if (req.method === "POST") {
+            return handleMoveFileRequest(req, corsHeaders);
+          }
+          break;
+
+        case "/api/move/stream":
+          if (req.method === "POST") {
+            return handleStreamingMoveFileRequest(req, corsHeaders);
           }
           break;
 
@@ -1155,6 +1229,1028 @@ async function handleStreamingMkdirRequest(
   }
 }
 
+async function handleWriteFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as WriteFileRequest;
+    const { path, content, encoding = "utf-8", sessionId } = body;
+
+    if (!path || typeof path !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (dangerousPatterns.some((pattern) => pattern.test(path))) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(
+      `[Server] Writing file: ${path} (content length: ${content.length})`
+    );
+
+    const result = await executeWriteFile(path, content, encoding, sessionId);
+
+    return new Response(
+      JSON.stringify({
+        exitCode: result.exitCode,
+        path,
+        success: result.success,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
+    );
+  } catch (error) {
+    console.error("[Server] Error in handleWriteFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to write file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleStreamingWriteFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as WriteFileRequest;
+    const { path, content, encoding = "utf-8", sessionId } = body;
+
+    if (!path || typeof path !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (dangerousPatterns.some((pattern) => pattern.test(path))) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(
+      `[Server] Writing file (streaming): ${path} (content length: ${content.length})`
+    );
+
+    const stream = new ReadableStream({
+      start(controller) {
+        (async () => {
+          try {
+            // Send command start event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  timestamp: new Date().toISOString(),
+                  type: "command_start",
+                })}\n\n`
+              )
+            );
+
+            // Ensure the directory exists
+            const dir = dirname(path);
+            if (dir !== ".") {
+              await mkdir(dir, { recursive: true });
+
+              // Send directory creation event
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({
+                    message: `Created directory: ${dir}`,
+                    type: "output",
+                  })}\n\n`
+                )
+              );
+            }
+
+            // Write the file
+            await writeFile(path, content, {
+              encoding: encoding as BufferEncoding,
+            });
+
+            console.log(`[Server] File written successfully: ${path}`);
+
+            // Send command completion event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  type: "command_complete",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          } catch (error) {
+            console.error(`[Server] Error writing file: ${path}`, error);
+
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                  type: "error",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          }
+        })();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
+        ...corsHeaders,
+      },
+    });
+  } catch (error) {
+    console.error("[Server] Error in handleStreamingWriteFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to write file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleDeleteFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as DeleteFileRequest;
+    const { path, sessionId } = body;
+
+    if (!path || typeof path !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (dangerousPatterns.some((pattern) => pattern.test(path))) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Deleting file: ${path}`);
+
+    const result = await executeDeleteFile(path, sessionId);
+
+    return new Response(
+      JSON.stringify({
+        path,
+        success: result.success,
+        exitCode: result.exitCode,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
+    );
+  } catch (error) {
+    console.error("[Server] Error in handleDeleteFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to delete file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleStreamingDeleteFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as DeleteFileRequest;
+    const { path, sessionId } = body;
+
+    if (!path || typeof path !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (dangerousPatterns.some((pattern) => pattern.test(path))) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Deleting file (streaming): ${path}`);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        (async () => {
+          try {
+            // Send command start event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  timestamp: new Date().toISOString(),
+                  type: "command_start",
+                })}\n\n`
+              )
+            );
+
+            // Delete the file
+            await executeDeleteFile(path, sessionId);
+
+            console.log(`[Server] File deleted successfully: ${path}`);
+
+            // Send command completion event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  type: "command_complete",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          } catch (error) {
+            console.error(`[Server] Error deleting file: ${path}`, error);
+
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  path,
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                  type: "error",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          }
+        })();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
+        ...corsHeaders,
+      },
+    });
+  } catch (error) {
+    console.error("[Server] Error in handleStreamingDeleteFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to delete file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleRenameFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as RenameFileRequest;
+    const { oldPath, newPath, sessionId } = body;
+
+    if (!oldPath || typeof oldPath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Old path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    if (!newPath || typeof newPath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "New path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (
+      dangerousPatterns.some(
+        (pattern) => pattern.test(oldPath) || pattern.test(newPath)
+      )
+    ) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Renaming file: ${oldPath} -> ${newPath}`);
+
+    const result = await executeRenameFile(oldPath, newPath, sessionId);
+
+    return new Response(
+      JSON.stringify({
+        oldPath,
+        newPath,
+        success: result.success,
+        exitCode: result.exitCode,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
+    );
+  } catch (error) {
+    console.error("[Server] Error in handleRenameFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to rename file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleStreamingRenameFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as RenameFileRequest;
+    const { oldPath, newPath, sessionId } = body;
+
+    if (!oldPath || typeof oldPath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Old path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    if (!newPath || typeof newPath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "New path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (
+      dangerousPatterns.some(
+        (pattern) => pattern.test(oldPath) || pattern.test(newPath)
+      )
+    ) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Renaming file (streaming): ${oldPath} -> ${newPath}`);
+
+    const stream = new ReadableStream({
+      start(controller) {
+        (async () => {
+          try {
+            // Send command start event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  oldPath,
+                  newPath,
+                  timestamp: new Date().toISOString(),
+                  type: "command_start",
+                })}\n\n`
+              )
+            );
+
+            // Rename the file
+            await executeRenameFile(oldPath, newPath, sessionId);
+
+            console.log(
+              `[Server] File renamed successfully: ${oldPath} -> ${newPath}`
+            );
+
+            // Send command completion event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  oldPath,
+                  newPath,
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  type: "command_complete",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          } catch (error) {
+            console.error(
+              `[Server] Error renaming file: ${oldPath} -> ${newPath}`,
+              error
+            );
+
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  oldPath,
+                  newPath,
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                  type: "error",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          }
+        })();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
+        ...corsHeaders,
+      },
+    });
+  } catch (error) {
+    console.error("[Server] Error in handleStreamingRenameFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to rename file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleMoveFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as MoveFileRequest;
+    const { sourcePath, destinationPath, sessionId } = body;
+
+    if (!sourcePath || typeof sourcePath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Source path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    if (!destinationPath || typeof destinationPath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Destination path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (
+      dangerousPatterns.some(
+        (pattern) => pattern.test(sourcePath) || pattern.test(destinationPath)
+      )
+    ) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(`[Server] Moving file: ${sourcePath} -> ${destinationPath}`);
+
+    const result = await executeMoveFile(
+      sourcePath,
+      destinationPath,
+      sessionId
+    );
+
+    return new Response(
+      JSON.stringify({
+        sourcePath,
+        destinationPath,
+        success: result.success,
+        exitCode: result.exitCode,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+      }
+    );
+  } catch (error) {
+    console.error("[Server] Error in handleMoveFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to move file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
+async function handleStreamingMoveFileRequest(
+  req: Request,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  try {
+    const body = (await req.json()) as MoveFileRequest;
+    const { sourcePath, destinationPath, sessionId } = body;
+
+    if (!sourcePath || typeof sourcePath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Source path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    if (!destinationPath || typeof destinationPath !== "string") {
+      return new Response(
+        JSON.stringify({
+          error: "Destination path is required and must be a string",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    // Basic safety check - prevent dangerous paths
+    const dangerousPatterns = [
+      /^\/$/, // Root directory
+      /^\/etc/, // System directories
+      /^\/var/, // System directories
+      /^\/usr/, // System directories
+      /^\/bin/, // System directories
+      /^\/sbin/, // System directories
+      /^\/boot/, // System directories
+      /^\/dev/, // System directories
+      /^\/proc/, // System directories
+      /^\/sys/, // System directories
+      /^\/tmp\/\.\./, // Path traversal attempts
+      /\.\./, // Path traversal attempts
+    ];
+
+    if (
+      dangerousPatterns.some(
+        (pattern) => pattern.test(sourcePath) || pattern.test(destinationPath)
+      )
+    ) {
+      return new Response(
+        JSON.stringify({
+          error: "Dangerous path not allowed",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+          status: 400,
+        }
+      );
+    }
+
+    console.log(
+      `[Server] Moving file (streaming): ${sourcePath} -> ${destinationPath}`
+    );
+
+    const stream = new ReadableStream({
+      start(controller) {
+        (async () => {
+          try {
+            // Send command start event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  sourcePath,
+                  destinationPath,
+                  timestamp: new Date().toISOString(),
+                  type: "command_start",
+                })}\n\n`
+              )
+            );
+
+            // Move the file
+            await executeMoveFile(sourcePath, destinationPath, sessionId);
+
+            console.log(
+              `[Server] File moved successfully: ${sourcePath} -> ${destinationPath}`
+            );
+
+            // Send command completion event
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  sourcePath,
+                  destinationPath,
+                  success: true,
+                  timestamp: new Date().toISOString(),
+                  type: "command_complete",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          } catch (error) {
+            console.error(
+              `[Server] Error moving file: ${sourcePath} -> ${destinationPath}`,
+              error
+            );
+
+            controller.enqueue(
+              new TextEncoder().encode(
+                `data: ${JSON.stringify({
+                  sourcePath,
+                  destinationPath,
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
+                  type: "error",
+                })}\n\n`
+              )
+            );
+
+            controller.close();
+          }
+        })();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Content-Type": "text/event-stream",
+        ...corsHeaders,
+      },
+    });
+  } catch (error) {
+    console.error("[Server] Error in handleStreamingMoveFileRequest:", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to move file",
+        message: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
+        status: 500,
+      }
+    );
+  }
+}
+
 function executeCommand(
   command: string,
   args: string[],
@@ -1374,6 +2470,132 @@ function executeMkdir(
   });
 }
 
+function executeWriteFile(
+  path: string,
+  content: string,
+  encoding: string,
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  exitCode: number;
+}> {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        // Ensure the directory exists
+        const dir = dirname(path);
+        if (dir !== ".") {
+          await mkdir(dir, { recursive: true });
+        }
+
+        // Write the file
+        await writeFile(path, content, {
+          encoding: encoding as BufferEncoding,
+        });
+
+        console.log(`[Server] File written successfully: ${path}`);
+        resolve({
+          exitCode: 0,
+          success: true,
+        });
+      } catch (error) {
+        console.error(`[Server] Error writing file: ${path}`, error);
+        reject(error);
+      }
+    })();
+  });
+}
+
+function executeDeleteFile(
+  path: string,
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  exitCode: number;
+}> {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        // Delete the file
+        await unlink(path);
+
+        console.log(`[Server] File deleted successfully: ${path}`);
+        resolve({
+          exitCode: 0,
+          success: true,
+        });
+      } catch (error) {
+        console.error(`[Server] Error deleting file: ${path}`, error);
+        reject(error);
+      }
+    })();
+  });
+}
+
+function executeRenameFile(
+  oldPath: string,
+  newPath: string,
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  exitCode: number;
+}> {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        // Rename the file
+        await rename(oldPath, newPath);
+
+        console.log(
+          `[Server] File renamed successfully: ${oldPath} -> ${newPath}`
+        );
+        resolve({
+          exitCode: 0,
+          success: true,
+        });
+      } catch (error) {
+        console.error(
+          `[Server] Error renaming file: ${oldPath} -> ${newPath}`,
+          error
+        );
+        reject(error);
+      }
+    })();
+  });
+}
+
+function executeMoveFile(
+  sourcePath: string,
+  destinationPath: string,
+  sessionId?: string
+): Promise<{
+  success: boolean;
+  exitCode: number;
+}> {
+  return new Promise((resolve, reject) => {
+    (async () => {
+      try {
+        // Move the file
+        await rename(sourcePath, destinationPath);
+
+        console.log(
+          `[Server] File moved successfully: ${sourcePath} -> ${destinationPath}`
+        );
+        resolve({
+          exitCode: 0,
+          success: true,
+        });
+      } catch (error) {
+        console.error(
+          `[Server] Error moving file: ${sourcePath} -> ${destinationPath}`,
+          error
+        );
+        reject(error);
+      }
+    })();
+  });
+}
+
 console.log(`🚀 Bun server running on http://localhost:${server.port}`);
 console.log(`📡 HTTP API endpoints available:`);
 console.log(`   POST /api/session/create - Create a new session`);
@@ -1386,5 +2608,13 @@ console.log(
 );
 console.log(`   POST /api/mkdir - Create a directory`);
 console.log(`   POST /api/mkdir/stream - Create a directory (streaming)`);
+console.log(`   POST /api/write - Write a file`);
+console.log(`   POST /api/write/stream - Write a file (streaming)`);
+console.log(`   POST /api/delete - Delete a file`);
+console.log(`   POST /api/delete/stream - Delete a file (streaming)`);
+console.log(`   POST /api/rename - Rename a file`);
+console.log(`   POST /api/rename/stream - Rename a file (streaming)`);
+console.log(`   POST /api/move - Move a file`);
+console.log(`   POST /api/move/stream - Move a file (streaming)`);
 console.log(`   GET  /api/ping - Health check`);
 console.log(`   GET  /api/commands - List available commands`);

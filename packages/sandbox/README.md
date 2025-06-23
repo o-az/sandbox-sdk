@@ -55,4 +55,8 @@ export default {
 - `exec(command: string, args: string[], options?: { stream?: boolean })`: Execute a command in the sandbox.
 - `gitCheckout(repoUrl: string, options: { branch?: string; targetDir?: string; stream?: boolean })`: Checkout a git repository in the sandbox.
 - `mkdir(path: string, options: { recursive?: boolean; stream?: boolean })`: Create a directory in the sandbox.
+- `writeFile(path: string, content: string, options: { encoding?: string; stream?: boolean })`: Write content to a file in the sandbox.
+- `deleteFile(path: string, options?: { stream?: boolean })`: Delete a file from the sandbox.
+- `renameFile(oldPath: string, newPath: string, options?: { stream?: boolean })`: Rename a file in the sandbox.
+- `moveFile(sourcePath: string, destinationPath: string, options?: { stream?: boolean })`: Move a file from one location to another in the sandbox.
 - `ping()`: Ping the sandbox.
