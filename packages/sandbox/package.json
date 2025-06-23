@@ -5,6 +5,12 @@
   "dependencies": {
     "@cloudflare/containers": "^0.0.8"
   },
+  "scripts": {
+    "build": "tsc -b src/**/*.ts"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
