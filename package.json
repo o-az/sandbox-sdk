@@ -16,7 +16,7 @@
     "examples/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.0.4",
+    "@biomejs/biome": "^2.0.5",
     "@changesets/changelog-github": "^0.5.1",
     "@changesets/cli": "^2.29.5",
     "@cloudflare/workers-types": "^4.20250620.0",
@@ -33,5 +33,5 @@
     "wrangler": "^4.21.0"
   },
   "private": true,
-  "packageManager": "npm@11.1.0"
+  "packageManager": "npm@11.4.2"
 }

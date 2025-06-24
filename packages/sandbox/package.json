@@ -17,7 +17,7 @@
     "durable objects"
   ],
   "scripts": {
-    "build": "tsup src/*.ts --outDir dist --dts --sourcemap --format esm"
+    "build": "rm -rf dist && tsup src/*.ts --outDir dist --dts --sourcemap --format esm"
   },
   "exports": {
     ".": {
