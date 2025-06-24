@@ -248,7 +248,7 @@ pre {
 /* Help Section */
 .help-section {
   margin-top: 2rem;
-  padding-top: 1.5rem;
+  padding: 1.5rem;
   border-top: 1px solid #30363d;
 }
 
