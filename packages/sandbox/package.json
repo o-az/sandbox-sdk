@@ -7,7 +7,7 @@
   },
   "description": "A sandboxed environment for running commands",
   "dependencies": {
-    "@cloudflare/containers": "^0.0.8"
+    "@cloudflare/containers": "^0.0.12"
   },
   "tags": [
     "sandbox",
