@@ -5,7 +5,8 @@
   "scripts": {
     "check": "biome check && tsc --noEmit",
     "build": "npm run build -w @cloudflare/sandbox",
-    "test": "echo 'No tests'"
+    "test": "echo 'No tests'",
+    "postinstall": "patch-package"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +26,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "fast-glob": "^3.3.3",
+    "patch-package": "^8.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tsup": "^8.5.0",

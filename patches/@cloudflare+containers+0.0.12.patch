@@ -1,0 +1,54 @@
+diff --git a/node_modules/@cloudflare/containers/dist/index.mjs b/node_modules/@cloudflare/containers/dist/index.mjs
+index 65681d2..93e80f3 100644
+--- a/node_modules/@cloudflare/containers/dist/index.mjs
++++ b/node_modules/@cloudflare/containers/dist/index.mjs
+@@ -60,6 +60,29 @@ var isNoInstanceError = (error) => isErrorOfType(error, NO_CONTAINER_INSTANCE_ER
+ var isRuntimeSignalledError = (error) => isErrorOfType(error, RUNTIME_SIGNALLED_ERROR);
+ var isNotListeningError = (error) => isErrorOfType(error, NOT_LISTENING_ERROR);
+ var isContainerExitNonZeroError = (error) => isErrorOfType(error, UNEXPECTED_EDIT_ERROR);
++
++/**
++ * Combines the existing user-defined signal with a signal that aborts after the timeout specified by waitInterval
++ */
++function addTimeoutSignal(existingSignal, timeoutMs) {
++  const controller = new AbortController();
++
++  // Forward existing signal abort
++  if (existingSignal?.aborted) {
++    controller.abort();
++    return controller.signal;
++  }
++
++  existingSignal?.addEventListener('abort', () => controller.abort());
++
++  // Add timeout
++  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
++
++  // Clean up timeout if signal is aborted early
++  controller.signal.addEventListener('abort', () => clearTimeout(timeoutId));
++
++  return controller.signal;
++}
+ function getExitCodeFromError(error) {
+   if (!(error instanceof Error)) {
+     return null;
+@@ -317,7 +340,8 @@ var Container = class extends DurableObject {
+         let portReady = false;
+         for (let i = 0; i < triesLeft && !portReady; i++) {
+           try {
+-            await tcpPort.fetch("http://ping", { signal: options.abort });
++            const combinedSignal = addTimeoutSignal(options.abort, options.waitInterval);
++            await tcpPort.fetch('http://ping', { signal: combinedSignal });
+             portReady = true;
+             console.log(`Port ${port} is ready`);
+           } catch (e) {
+@@ -692,7 +716,8 @@ var Container = class extends DurableObject {
+       this.renewActivityTimeout();
+       const port = this.container.getTcpPort(waitOptions.portToCheck);
+       try {
+-        await port.fetch("http://containerstarthealthcheck", { signal: waitOptions.abort });
++        const combinedSignal = addTimeoutSignal(waitOptions.abort, waitOptions.waitInterval);
++        await port.fetch('http://containerstarthealthcheck', { signal: combinedSignal });
+         return tries;
+       } catch (error) {
+         if (isNotListeningError(error) && this.container.running) {
