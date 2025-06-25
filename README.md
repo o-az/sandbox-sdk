@@ -2,7 +2,23 @@
 
 > **⚠️ Experimental** - This library is currently experimental and we're actively seeking feedback. Please try it out and let us know what you think!
 
-A library to spin up a sandboxed environment.
+A library to spin up a sandboxed environment. **If you'd like to try one of our pre-made examples, take a look at [examples/basic](./examples/basic) ready to deploy to your Cloudflare account!**
+
+First, create a Dockerfile at the root of your project, with the following content:
+
+```Dockerfile
+# If building your project on amd64, use:
+FROM docker.io/ghostwriternr/cloudflare-sandbox:0.0.4
+# If building your project on arm64, use:
+# FROM docker.io/ghostwriternr/cloudflare-sandbox-arm:0.0.4
+
+EXPOSE 3000
+
+# Run the same command as the original image
+CMD ["bun", "index.ts"]
+```
+
+> **NOTE**: In an upcoming release, this step will be removed entirely and you can reference a single Docker image published by us directly in your wrangler configuration below.
 
 First, setup your wrangler.json to use the sandbox:
 
@@ -12,7 +28,7 @@ First, setup your wrangler.json to use the sandbox:
   "containers": [
     {
       "class_name": "Sandbox",
-      "image": "./node_modules/@cloudflare/sandbox/Dockerfile",
+      "image": "./Dockerfile",
       "name": "sandbox"
     }
   ],

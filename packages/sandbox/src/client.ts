@@ -203,10 +203,31 @@ export class HttpClient {
     path: string,
     options?: RequestInit
   ): Promise<Response> {
-    if (this.options.stub) {
-      return this.options.stub.containerFetch(path, options, this.options.port);
+    const url = this.options.stub ? `stub:${path}` : `${this.baseUrl}${path}`;
+    const method = options?.method || "GET";
+
+    console.log(`[HTTP Client] Making ${method} request to ${url}`);
+
+    try {
+      let response: Response;
+
+      if (this.options.stub) {
+        response = await this.options.stub.containerFetch(path, options, this.options.port);
+      } else {
+        response = await fetch(this.baseUrl + path, options);
+      }
+
+      console.log(`[HTTP Client] Response: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        console.error(`[HTTP Client] Request failed: ${method} ${url} - ${response.status} ${response.statusText}`);
+      }
+
+      return response;
+    } catch (error) {
+      console.error(`[HTTP Client] Request error: ${method} ${url}`, error);
+      throw error;
     }
-    return fetch(this.baseUrl + path, options);
   }
   // Public methods to set event handlers
   setOnOutput(

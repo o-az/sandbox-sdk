@@ -17,7 +17,9 @@
     "durable objects"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsup src/*.ts --outDir dist --dts --sourcemap --format esm"
+    "build": "rm -rf dist && tsup src/*.ts --outDir dist --dts --sourcemap --format esm",
+    "docker:build": "docker build -t ghostwriternr/cloudflare-sandbox:$npm_package_version .",
+    "docker:publish": "docker push docker.io/ghostwriternr/cloudflare-sandbox:$npm_package_version"
   },
   "exports": {
     ".": {
