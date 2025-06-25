@@ -374,6 +374,7 @@ const server = serve({
       );
     }
   },
+  hostname: "0.0.0.0",
   port: 3000,
 } as any);
 
@@ -2874,7 +2875,7 @@ function executeMoveFile(
   });
 }
 
-console.log(`🚀 Bun server running on http://localhost:${server.port}`);
+console.log(`🚀 Bun server running on http://0.0.0.0:${server.port}`);
 console.log(`📡 HTTP API endpoints available:`);
 console.log(`   POST /api/session/create - Create a new session`);
 console.log(`   GET  /api/session/list - List all sessions`);
