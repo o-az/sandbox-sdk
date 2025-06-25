@@ -18,8 +18,8 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsup src/*.ts --outDir dist --dts --sourcemap --format esm",
-    "docker:build": "wrangler containers build -t $npm_package_version .",
-    "docker:publish": "wrangler containers push registry.cloudflare.com/8acffcc765d5baa91c873d1459ba1a19/sandbox:latest && wrangler containers push registry.cloudflare.com/8acffcc765d5baa91c873d1459ba1a19/sandbox:$npm_package_version"
+    "docker:build": "wrangler containers build -t sandbox:$npm_package_version .",
+    "docker:publish": "wrangler containers push registry.cloudflare.com/5c1bacebd61f928ebde500c90d917c07/sandbox:$npm_package_version"
   },
   "exports": {
     ".": {

@@ -17,7 +17,7 @@
   "containers": [
     {
       "class_name": "Sandbox",
-      "image": "registry.cloudflare.com/8acffcc765d5baa91c873d1459ba1a19/sandbox:0.0.4",
+      "image": "./Dockerfile",
       "name": "sandbox",
       "max_instances": 1
     }
