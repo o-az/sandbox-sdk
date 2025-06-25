@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM registry.cloudflare.com/5c1bacebd61f928ebde500c90d917c07/sandbox:0.0.4
+FROM docker.io/naresh942/cloudflare-sandbox:0.0.4
 
 EXPOSE 3000
 
