@@ -19,7 +19,8 @@
   "scripts": {
     "build": "rm -rf dist && tsup src/*.ts --outDir dist --dts --sourcemap --format esm",
     "docker:build": "docker build -t ghostwriternr/cloudflare-sandbox:$npm_package_version .",
-    "docker:publish": "docker push docker.io/ghostwriternr/cloudflare-sandbox:$npm_package_version"
+    "docker:publish": "docker push docker.io/ghostwriternr/cloudflare-sandbox:$npm_package_version",
+    "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 -t docker.io/naresh942/cloudflare-sandbox:$npm_package_version --push ."
   },
   "exports": {
     ".": {
