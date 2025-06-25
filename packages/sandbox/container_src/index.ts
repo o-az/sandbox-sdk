@@ -84,6 +84,8 @@ const server = serve({
     const url = new URL(req.url);
     const pathname = url.pathname;
 
+    console.log(`[Container] Incoming ${req.method} request to ${pathname}`);
+
     // Handle CORS
     const corsHeaders = {
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
@@ -93,11 +95,13 @@ const server = serve({
 
     // Handle preflight requests
     if (req.method === "OPTIONS") {
+      console.log(`[Container] Handling CORS preflight for ${pathname}`);
       return new Response(null, { headers: corsHeaders, status: 200 });
     }
 
     try {
       // Handle different routes
+      console.log(`[Container] Processing ${req.method} ${pathname}`);
       switch (pathname) {
         case "/":
           return new Response("Hello from Bun server! 🚀", {
@@ -352,13 +356,14 @@ const server = serve({
           break;
 
         default:
+          console.log(`[Container] Route not found: ${pathname}`);
           return new Response("Not Found", {
             headers: corsHeaders,
             status: 404,
           });
       }
     } catch (error) {
-      console.error("[Server] Error handling request:", error);
+      console.error(`[Container] Error handling ${req.method} ${pathname}:`, error);
       return new Response(
         JSON.stringify({
           error: "Internal server error",
