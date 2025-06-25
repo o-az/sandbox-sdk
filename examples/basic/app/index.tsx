@@ -17,7 +17,7 @@ interface CommandResult {
 
 function REPL() {
   const [client, setClient] = useState<HttpClient | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [commandInput, setCommandInput] = useState("");
   const [results, setResults] = useState<CommandResult[]>([]);
@@ -109,6 +109,8 @@ function REPL() {
     // Initialize connection by creating a session
     const initializeConnection = async () => {
       try {
+        setConnectionStatus("connecting");
+
         // Test connection with ping
         await httpClient.ping();
         console.log("Server is reachable");
@@ -116,11 +118,11 @@ function REPL() {
         // Create a session
         const session = await httpClient.createSession();
         setSessionId(session);
-        setIsConnected(true);
+        setConnectionStatus("connected");
         console.log("Connected with session:", session);
       } catch (error: any) {
         console.error("Failed to connect:", error);
-        setIsConnected(false);
+        setConnectionStatus("disconnected");
       }
     };
 
@@ -135,7 +137,7 @@ function REPL() {
   }, []);
 
   const executeCommand = async () => {
-    if (!client || !isConnected || !commandInput.trim() || isExecuting) {
+    if (!client || connectionStatus !== "connected" || !commandInput.trim() || isExecuting) {
       return;
     }
 
@@ -199,7 +201,7 @@ function REPL() {
   };
 
   const executeStreamingCommand = async () => {
-    if (!client || !isConnected || !commandInput.trim() || isExecuting) {
+    if (!client || connectionStatus !== "connected" || !commandInput.trim() || isExecuting) {
       return;
     }
 
@@ -287,11 +289,13 @@ function REPL() {
       <div className="header">
         <h1>HTTP REPL</h1>
         <div
-          className={`connection-status ${
-            isConnected ? "connected" : "disconnected"
-          }`}
+          className={`connection-status ${connectionStatus}`}
         >
-          {isConnected ? `Connected (${sessionId})` : "Disconnected"}
+          {connectionStatus === "connected"
+            ? `Connected (${sessionId})`
+            : connectionStatus === "connecting"
+            ? "Connecting..."
+            : "Disconnected"}
         </div>
       </div>
 
@@ -318,7 +322,7 @@ function REPL() {
           <button
             type="button"
             onClick={executeStreamingCommand}
-            disabled={!isConnected || !commandInput.trim() || isExecuting}
+            disabled={connectionStatus !== "connected" || !commandInput.trim() || isExecuting}
             className="btn btn-stream"
             title="Execute with real-time streaming output"
           >
