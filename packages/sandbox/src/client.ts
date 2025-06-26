@@ -212,7 +212,7 @@ export class HttpClient {
       let response: Response;
 
       if (this.options.stub) {
-        response = await this.options.stub.containerFetch(path, options, this.options.port);
+        response = await this.options.stub.containerFetch(this.baseUrl + path, options, this.options.port);
       } else {
         response = await fetch(this.baseUrl + path, options);
       }
