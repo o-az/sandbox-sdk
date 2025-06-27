@@ -19,7 +19,9 @@ export class Sandbox<Env = unknown> extends Container<Env> {
         );
       },
       onCommandStart: (command, args) => {
-        console.log(`[Container] Command started: ${command} ${args.join(" ")}`);
+        console.log(
+          `[Container] Command started: ${command} ${args.join(" ")}`
+        );
       },
       onError: (error, command, args) => {
         console.error(`[Container] Command error: ${error}`);
@@ -74,7 +76,7 @@ export class Sandbox<Env = unknown> extends Container<Env> {
 
   async mkdir(
     path: string,
-    options: { recursive?: boolean; stream?: boolean }
+    options: { recursive?: boolean; stream?: boolean } = {}
   ) {
     if (options?.stream) {
       return this.client.mkdirStream(path, options.recursive);
@@ -85,7 +87,7 @@ export class Sandbox<Env = unknown> extends Container<Env> {
   async writeFile(
     path: string,
     content: string,
-    options: { encoding?: string; stream?: boolean }
+    options: { encoding?: string; stream?: boolean } = {}
   ) {
     if (options?.stream) {
       return this.client.writeFileStream(path, content, options.encoding);
@@ -93,7 +95,7 @@ export class Sandbox<Env = unknown> extends Container<Env> {
     return this.client.writeFile(path, content, options.encoding);
   }
 
-  async deleteFile(path: string, options: { stream?: boolean }) {
+  async deleteFile(path: string, options: { stream?: boolean } = {}) {
     if (options?.stream) {
       return this.client.deleteFileStream(path);
     }
@@ -103,7 +105,7 @@ export class Sandbox<Env = unknown> extends Container<Env> {
   async renameFile(
     oldPath: string,
     newPath: string,
-    options: { stream?: boolean }
+    options: { stream?: boolean } = {}
   ) {
     if (options?.stream) {
       return this.client.renameFileStream(oldPath, newPath);
@@ -114,7 +116,7 @@ export class Sandbox<Env = unknown> extends Container<Env> {
   async moveFile(
     sourcePath: string,
     destinationPath: string,
-    options: { stream?: boolean }
+    options: { stream?: boolean } = {}
   ) {
     if (options?.stream) {
       return this.client.moveFileStream(sourcePath, destinationPath);
@@ -124,7 +126,7 @@ export class Sandbox<Env = unknown> extends Container<Env> {
 
   async readFile(
     path: string,
-    options: { encoding?: string; stream?: boolean }
+    options: { encoding?: string; stream?: boolean } = {}
   ) {
     if (options?.stream) {
       return this.client.readFileStream(path, options.encoding);

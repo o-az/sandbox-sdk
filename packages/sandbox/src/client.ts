@@ -203,7 +203,9 @@ export class HttpClient {
     path: string,
     options?: RequestInit
   ): Promise<Response> {
-    const url = this.options.stub ? `stub:${path}` : `${this.baseUrl}${path}`;
+    const url = this.options.stub
+      ? `http://localhost:${this.options.port}${path}`
+      : `${this.baseUrl}${path}`;
     const method = options?.method || "GET";
 
     console.log(`[HTTP Client] Making ${method} request to ${url}`);
@@ -212,15 +214,23 @@ export class HttpClient {
       let response: Response;
 
       if (this.options.stub) {
-        response = await this.options.stub.containerFetch(this.baseUrl + path, options, this.options.port);
+        response = await this.options.stub.containerFetch(
+          url,
+          options,
+          this.options.port
+        );
       } else {
-        response = await fetch(this.baseUrl + path, options);
+        response = await fetch(url, options);
       }
 
-      console.log(`[HTTP Client] Response: ${response.status} ${response.statusText}`);
+      console.log(
+        `[HTTP Client] Response: ${response.status} ${response.statusText}`
+      );
 
       if (!response.ok) {
-        console.error(`[HTTP Client] Request failed: ${method} ${url} - ${response.status} ${response.statusText}`);
+        console.error(
+          `[HTTP Client] Request failed: ${method} ${url} - ${response.status} ${response.statusText}`
+        );
       }
 
       return response;

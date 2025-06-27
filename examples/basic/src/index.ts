@@ -15,6 +15,14 @@ export default {
       return sandbox.containerFetch(request);
     }
 
+    if (pathname.startsWith("/test-file")) {
+      // write a file to the sandbox
+      const sandbox = getSandbox(env.Sandbox, "my-sandbox");
+      await sandbox.writeFile("/test-file.txt", "Hello, world!" + Date.now());
+      const file = await sandbox.readFile("/test-file.txt");
+      return new Response(file!.content, { status: 200 });
+    }
+
     return new Response("Not found", { status: 404 });
   },
 };
