@@ -50,9 +50,9 @@ npm install @cloudflare/sandbox
 1. **Create a Dockerfile** (temporary requirement, will be removed in future releases):
 
 ```dockerfile
-FROM docker.io/ghostwriternr/cloudflare-sandbox:0.0.5
+FROM docker.io/ghostwriternr/cloudflare-sandbox:0.0.9
 # If building your project on arm64, use:
-# FROM docker.io/ghostwriternr/cloudflare-sandbox-arm:0.0.5
+# FROM docker.io/ghostwriternr/cloudflare-sandbox-arm:0.0.9
 
 EXPOSE 3000
 
