@@ -1,9 +1,10 @@
-import type { DurableObject } from "cloudflare:workers";
 import type { Sandbox } from "./index";
 
 interface ExecuteRequest {
   command: string;
   args?: string[];
+  sessionId?: string;
+  background?: boolean;
 }
 
 export interface ExecuteResponse {
@@ -136,6 +137,37 @@ export interface MoveFileResponse {
   exitCode: number;
   sourcePath: string;
   destinationPath: string;
+  timestamp: string;
+}
+
+interface PreviewInfo {
+  url: string;
+  port: number;
+  name?: string;
+}
+
+interface ExposedPort extends PreviewInfo {
+  exposedAt: string;
+  timestamp: string;
+}
+
+interface ExposePortResponse {
+  success: boolean;
+  port: number;
+  name?: string;
+  exposedAt: string;
+  timestamp: string;
+}
+
+interface UnexposePortResponse {
+  success: boolean;
+  port: number;
+  timestamp: string;
+}
+
+interface GetExposedPortsResponse {
+  ports: ExposedPort[];
+  count: number;
   timestamp: string;
 }
 
@@ -276,13 +308,13 @@ export class HttpClient {
 
   getOnCommandComplete():
     | ((
-        success: boolean,
-        exitCode: number,
-        stdout: string,
-        stderr: string,
-        command: string,
-        args: string[]
-      ) => void)
+      success: boolean,
+      exitCode: number,
+      stdout: string,
+      stderr: string,
+      command: string,
+      args: string[]
+    ) => void)
     | undefined {
     return this.options.onCommandComplete;
   }
@@ -339,7 +371,8 @@ export class HttpClient {
   async execute(
     command: string,
     args: string[] = [],
-    sessionId?: string
+    sessionId?: string,
+    background: boolean = false,
   ): Promise<ExecuteResponse> {
     try {
       const targetSessionId = sessionId || this.sessionId;
@@ -348,8 +381,9 @@ export class HttpClient {
         body: JSON.stringify({
           args,
           command,
+          background,
           sessionId: targetSessionId,
-        }),
+        } as ExecuteRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -395,7 +429,8 @@ export class HttpClient {
   async executeStream(
     command: string,
     args: string[] = [],
-    sessionId?: string
+    sessionId?: string,
+    background: boolean = false
   ): Promise<void> {
     try {
       const targetSessionId = sessionId || this.sessionId;
@@ -404,6 +439,7 @@ export class HttpClient {
         body: JSON.stringify({
           args,
           command,
+          background,
           sessionId: targetSessionId,
         }),
         headers: {
@@ -451,8 +487,7 @@ export class HttpClient {
                 switch (event.type) {
                   case "command_start":
                     console.log(
-                      `[HTTP Client] Command started: ${
-                        event.command
+                      `[HTTP Client] Command started: ${event.command
                       } ${event.args?.join(" ")}`
                     );
                     this.options.onCommandStart?.(
@@ -533,7 +568,7 @@ export class HttpClient {
           repoUrl,
           sessionId: targetSessionId,
           targetDir,
-        }),
+        } as GitCheckoutRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -624,8 +659,7 @@ export class HttpClient {
                 switch (event.type) {
                   case "command_start":
                     console.log(
-                      `[HTTP Client] Git checkout started: ${
-                        event.command
+                      `[HTTP Client] Git checkout started: ${event.command
                       } ${event.args?.join(" ")}`
                     );
                     this.options.onCommandStart?.(
@@ -704,7 +738,7 @@ export class HttpClient {
           path,
           recursive,
           sessionId: targetSessionId,
-        }),
+        } as MkdirRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -745,7 +779,7 @@ export class HttpClient {
           path,
           recursive,
           sessionId: targetSessionId,
-        }),
+        } as MkdirRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -791,8 +825,7 @@ export class HttpClient {
                 switch (event.type) {
                   case "command_start":
                     console.log(
-                      `[HTTP Client] Mkdir started: ${
-                        event.command
+                      `[HTTP Client] Mkdir started: ${event.command
                       } ${event.args?.join(" ")}`
                     );
                     this.options.onCommandStart?.(
@@ -871,7 +904,7 @@ export class HttpClient {
           encoding,
           path,
           sessionId: targetSessionId,
-        }),
+        } as WriteFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -914,7 +947,7 @@ export class HttpClient {
           encoding,
           path,
           sessionId: targetSessionId,
-        }),
+        } as WriteFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1037,7 +1070,7 @@ export class HttpClient {
           encoding,
           path,
           sessionId: targetSessionId,
-        }),
+        } as ReadFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1078,7 +1111,7 @@ export class HttpClient {
           encoding,
           path,
           sessionId: targetSessionId,
-        }),
+        } as ReadFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1133,10 +1166,8 @@ export class HttpClient {
 
                   case "command_complete":
                     console.log(
-                      `[HTTP Client] Read file completed: ${
-                        event.path
-                      }, Success: ${event.success}, Content length: ${
-                        event.content?.length || 0
+                      `[HTTP Client] Read file completed: ${event.path
+                      }, Success: ${event.success}, Content length: ${event.content?.length || 0
                       }`
                     );
                     this.options.onCommandComplete?.(
@@ -1193,7 +1224,7 @@ export class HttpClient {
         body: JSON.stringify({
           path,
           sessionId: targetSessionId,
-        }),
+        } as DeleteFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1229,7 +1260,7 @@ export class HttpClient {
         body: JSON.stringify({
           path,
           sessionId: targetSessionId,
-        }),
+        } as DeleteFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1339,7 +1370,7 @@ export class HttpClient {
           newPath,
           oldPath,
           sessionId: targetSessionId,
-        }),
+        } as RenameFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1380,7 +1411,7 @@ export class HttpClient {
           newPath,
           oldPath,
           sessionId: targetSessionId,
-        }),
+        } as RenameFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1493,7 +1524,7 @@ export class HttpClient {
           destinationPath,
           sessionId: targetSessionId,
           sourcePath,
-        }),
+        } as MoveFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1534,7 +1565,7 @@ export class HttpClient {
           destinationPath,
           sessionId: targetSessionId,
           sourcePath,
-        }),
+        } as MoveFileRequest),
         headers: {
           "Content-Type": "application/json",
         },
@@ -1633,6 +1664,104 @@ export class HttpClient {
         "move",
         [sourcePath, destinationPath]
       );
+      throw error;
+    }
+  }
+
+  async exposePort(port: number, name?: string): Promise<ExposePortResponse> {
+    try {
+      const response = await this.doFetch(`/api/expose-port`, {
+        body: JSON.stringify({
+          port,
+          name,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        console.log(errorData);
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: ExposePortResponse = await response.json();
+      console.log(
+        `[HTTP Client] Port exposed: ${port}${name ? ` (${name})` : ""}, Success: ${data.success}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error exposing port:", error);
+      throw error;
+    }
+  }
+
+  async unexposePort(port: number): Promise<UnexposePortResponse> {
+    try {
+      const response = await this.doFetch(`/api/unexpose-port`, {
+        body: JSON.stringify({
+          port,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: UnexposePortResponse = await response.json();
+      console.log(
+        `[HTTP Client] Port unexposed: ${port}, Success: ${data.success}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error unexposing port:", error);
+      throw error;
+    }
+  }
+
+  async getExposedPorts(): Promise<GetExposedPortsResponse> {
+    try {
+      const response = await this.doFetch(`/api/exposed-ports`, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: GetExposedPortsResponse = await response.json();
+      console.log(
+        `[HTTP Client] Got ${data.count} exposed ports`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error getting exposed ports:", error);
       throw error;
     }
   }
