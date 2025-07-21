@@ -33,12 +33,6 @@ The Cloudflare Sandbox SDK enables you to run isolated code environments directl
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Node.js ≥ 18
-- Cloudflare account with [Containers platform access](https://blog.cloudflare.com/cloudflare-containers-coming-2025/)
-- Wrangler CLI installed (`npm install -g wrangler`)
-
 ### Installation
 
 ```bash
@@ -115,6 +109,7 @@ export default {
 ### Core Methods
 
 #### `exec(command, args, options?)`
+
 Execute a command in the sandbox.
 
 ```typescript
@@ -123,6 +118,7 @@ console.log(result.stdout);
 ```
 
 #### `writeFile(path, content, options?)`
+
 Write content to a file.
 
 ```typescript
@@ -130,6 +126,7 @@ await sandbox.writeFile("/app.js", "console.log('Hello!');");
 ```
 
 #### `readFile(path, options?)`
+
 Read a file from the sandbox.
 
 ```typescript
@@ -138,12 +135,13 @@ console.log(file.content);
 ```
 
 #### `gitCheckout(repoUrl, options?)`
+
 Clone a git repository.
 
 ```typescript
 await sandbox.gitCheckout("https://github.com/user/repo", {
   branch: "main",
-  targetDir: "my-project"
+  targetDir: "my-project",
 });
 ```
 
@@ -177,7 +175,7 @@ export default {
 
     // Your custom routes here
     // ...
-  }
+  },
 };
 ```
 
@@ -189,6 +187,7 @@ console.log(preview.url); // https://3000-sandbox-id.your-worker.dev
 ```
 
 The SDK handles:
+
 - Production subdomain routing (`3000-sandbox-id.domain.com`)
 - Local development routing (`localhost:8787/preview/3000/sandbox-id`)
 - All localhost variants (127.0.0.1, ::1, etc.)
@@ -209,6 +208,7 @@ EXPOSE 3001  # For any additional services
 ```
 
 Without the `EXPOSE` instruction in local development, you'll see this error:
+
 ```
 connect(): Connection refused: container port not found. Make sure you exposed the port in your container definition.
 ```
@@ -228,7 +228,9 @@ For more details, see the [Cloudflare Containers local development guide](https:
 const sandbox = getSandbox(env.Sandbox, "node-app");
 
 // Write a simple Express server
-await sandbox.writeFile("/app.js", `
+await sandbox.writeFile(
+  "/app.js",
+  `
   const express = require('express');
   const app = express();
 
@@ -237,7 +239,8 @@ await sandbox.writeFile("/app.js", `
   });
 
   app.listen(3000);
-`);
+`
+);
 
 // Install dependencies and start the server
 await sandbox.exec("npm", ["init", "-y"]);
@@ -263,11 +266,13 @@ const testResult = await sandbox.exec("npm", ["test"]);
 // Build the project
 const buildResult = await sandbox.exec("npm", ["run", "build"]);
 
-return new Response(JSON.stringify({
-  tests: testResult.exitCode === 0 ? "passed" : "failed",
-  build: buildResult.exitCode === 0 ? "success" : "failed",
-  output: testResult.stdout
-}));
+return new Response(
+  JSON.stringify({
+    tests: testResult.exitCode === 0 ? "passed" : "failed",
+    build: buildResult.exitCode === 0 ? "success" : "failed",
+    output: testResult.stdout,
+  })
+);
 ```
 
 ### Interactive Development Environment
@@ -294,14 +299,15 @@ await sandbox.writeFile("/src/App.jsx", updatedCode);
 
 ```typescript
 // Create and start a web server
-await sandbox.writeFile("/server.js", `
-  Bun.serve({
+await sandbox.writeFile(
+  "/server.js",
+  `Bun.serve({
     port: 8080,
     fetch(req) {
       return new Response("Hello from sandbox!");
     }
-  });
-`);
+  });`
+);
 
 await sandbox.exec("bun", ["run", "/server.js"]);
 
@@ -359,14 +365,15 @@ Enable verbose logging:
 
 ```typescript
 const sandbox = getSandbox(env.Sandbox, "debug-sandbox");
-sandbox.client.onCommandStart = (cmd, args) => console.log(`Starting: ${cmd} ${args.join(' ')}`);
+sandbox.client.onCommandStart = (cmd, args) =>
+  console.log(`Starting: ${cmd} ${args.join(" ")}`);
 sandbox.client.onOutput = (stream, data) => console.log(`[${stream}] ${data}`);
-sandbox.client.onCommandComplete = (success, code) => console.log(`Completed: ${success} (${code})`);
+sandbox.client.onCommandComplete = (success, code) =>
+  console.log(`Completed: ${success} (${code})`);
 ```
 
 ## 🚧 Known Limitations
 
-- Containers require early access to Cloudflare's platform
 - Maximum container runtime is limited by Durable Object constraints
 - WebSocket support for preview URLs coming soon
 - Some system calls may be restricted in the container environment
