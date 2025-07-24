@@ -98,7 +98,7 @@ export default {
     const sandbox = getSandbox(env.Sandbox, "my-sandbox");
 
     // Execute a command
-    const result = await sandbox.exec("echo", ["Hello from the edge!"]);
+    const result = await sandbox.exec("echo 'Hello from the edge!'");
     return new Response(result.stdout);
   },
 };
@@ -108,13 +108,51 @@ export default {
 
 ### Core Methods
 
-#### `exec(command, args, options?)`
+#### Command Execution
 
-Execute a command in the sandbox.
+**`exec(command, options?)`** - Enhanced command execution that always returns results
 
 ```typescript
-const result = await sandbox.exec("npm", ["install", "express"]);
-console.log(result.stdout);
+// Simple execution
+const result = await sandbox.exec("npm install express");
+console.log(result.stdout, result.exitCode);
+
+// With streaming callbacks
+const result = await sandbox.exec("npm run build", {
+  stream: true,
+  onOutput: (stream, data) => console.log(`[${stream}] ${data}`)
+});
+```
+
+**`execStream(command, options?)`** - Dedicated streaming method returning SSE stream
+
+```typescript
+import { parseSSEStream, type ExecEvent } from '@cloudflare/sandbox';
+
+const stream = await sandbox.execStream("npm run test");
+for await (const event of parseSSEStream<ExecEvent>(stream)) {
+  switch (event.type) {
+    case 'stdout':
+      console.log(`Test output: ${event.data}`);
+      break;
+    case 'complete':
+      console.log(`Tests ${event.exitCode === 0 ? 'passed' : 'failed'}`);
+      break;
+  }
+}
+```
+
+**`startProcess(command, options?)`** - Start background processes with lifecycle management
+
+```typescript
+const process = await sandbox.startProcess("node server.js");
+console.log(`Started process ${process.id} with PID ${process.pid}`);
+
+// Monitor the process
+const logStream = await sandbox.streamProcessLogs(process.id);
+for await (const log of parseSSEStream<LogEvent>(logStream)) {
+  console.log(`Server: ${log.data}`);
+}
 ```
 
 #### `writeFile(path, content, options?)`
@@ -145,7 +183,16 @@ await sandbox.gitCheckout("https://github.com/user/repo", {
 });
 ```
 
-### File System Methods
+#### Process Management
+
+- `listProcesses()` - List all running processes
+- `getProcess(id)` - Get detailed process status
+- `killProcess(id, signal?)` - Terminate specific processes
+- `killAllProcesses()` - Kill all processes
+- `streamProcessLogs(id, options?)` - Stream logs from running processes
+- `getProcessLogs(id)` - Get accumulated process output
+
+#### File System Methods
 
 - `writeFile(path, content, options?)` - Write content to a file
 - `readFile(path, options?)` - Read a file from the sandbox
@@ -153,8 +200,9 @@ await sandbox.gitCheckout("https://github.com/user/repo", {
 - `deleteFile(path)` - Delete a file
 - `renameFile(oldPath, newPath)` - Rename a file
 - `moveFile(sourcePath, destinationPath)` - Move a file
+- `gitCheckout(repoUrl, options?)` - Clone git repositories
 
-### Network Methods
+#### Network Methods
 
 - `exposePort(port, options?)` - Expose a port and get a public URL
 - `unexposePort(port)` - Remove port exposure
@@ -188,8 +236,7 @@ console.log(preview.url); // https://3000-sandbox-id.your-worker.dev
 
 The SDK handles:
 
-- Production subdomain routing (`3000-sandbox-id.domain.com`)
-- Local development routing (`localhost:8787/preview/3000/sandbox-id`)
+- Subdomain routing (`3000-sandbox-id.domain.com`) for both production and local development
 - All localhost variants (127.0.0.1, ::1, etc.)
 - Request forwarding with proper headers
 
@@ -243,9 +290,9 @@ await sandbox.writeFile(
 );
 
 // Install dependencies and start the server
-await sandbox.exec("npm", ["init", "-y"]);
-await sandbox.exec("npm", ["install", "express"]);
-await sandbox.exec("node", ["app.js"]);
+await sandbox.exec("npm init -y");
+await sandbox.exec("npm install express");
+const server = await sandbox.startProcess("node app.js");
 
 // Expose it to the internet
 const preview = await sandbox.exposePort(3000);
@@ -261,10 +308,10 @@ const sandbox = getSandbox(env.Sandbox, "test-env");
 await sandbox.gitCheckout("https://github.com/user/project");
 
 // Run tests
-const testResult = await sandbox.exec("npm", ["test"]);
+const testResult = await sandbox.exec("npm test");
 
 // Build the project
-const buildResult = await sandbox.exec("npm", ["run", "build"]);
+const buildResult = await sandbox.exec("npm run build");
 
 return new Response(
   JSON.stringify({
@@ -283,10 +330,10 @@ const sandbox = getSandbox(env.Sandbox, "dev-env");
 
 // Set up the project
 await sandbox.gitCheckout("https://github.com/user/my-app");
-await sandbox.exec("npm", ["install"]);
+await sandbox.exec("npm install");
 
 // Start dev server
-await sandbox.exec("npm", ["run", "dev"]);
+const devServer = await sandbox.startProcess("npm run dev");
 
 // Expose the dev server
 const preview = await sandbox.exposePort(3000, { name: "dev-server" });
@@ -309,7 +356,7 @@ await sandbox.writeFile(
   });`
 );
 
-await sandbox.exec("bun", ["run", "/server.js"]);
+const server = await sandbox.startProcess("bun run /server.js");
 
 // Expose the port - returns a public URL
 const preview = await sandbox.exposePort(8080);
@@ -330,19 +377,78 @@ The SDK leverages Cloudflare's infrastructure:
 
 ## 🛠️ Advanced Usage
 
-### Streaming Output
+### AsyncIterable Streaming Support
 
-For long-running commands, use streaming:
+The SDK provides powerful streaming capabilities with typed AsyncIterable support:
 
 ```typescript
-const response = await sandbox.exec("npm", ["install"], { stream: true });
+import { parseSSEStream, type ExecEvent } from '@cloudflare/sandbox';
 
-// Process the stream
-const reader = response.body.getReader();
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  console.log(new TextDecoder().decode(value));
+// Stream command execution
+const stream = await sandbox.execStream('npm run build');
+for await (const event of parseSSEStream<ExecEvent>(stream)) {
+  switch (event.type) {
+    case 'start':
+      console.log(`Build started: ${event.command}`);
+      break;
+    case 'stdout':
+      console.log(`Build: ${event.data}`);
+      break;
+    case 'complete':
+      console.log(`Exit code: ${event.exitCode}`);
+      break;
+    case 'error':
+      console.error(`Error: ${event.error}`);
+      break;
+  }
+}
+```
+
+#### Streaming Utilities
+
+The SDK exports utilities for working with Server-Sent Event streams:
+
+- **`parseSSEStream<T>(stream)`** - Convert ReadableStream to typed AsyncIterable
+- **`responseToAsyncIterable<T>(response)`** - Convert SSE Response to AsyncIterable
+- **`asyncIterableToSSEStream<T>(iterable)`** - Convert AsyncIterable back to SSE stream
+
+#### Advanced Streaming Examples
+
+**CI/CD Build System:**
+```typescript
+export async function runBuild(env: Env, buildId: string) {
+  const sandbox = getSandbox(env.SANDBOX, buildId);
+  const stream = await sandbox.execStream('npm run build');
+
+  for await (const event of parseSSEStream<ExecEvent>(stream)) {
+    switch (event.type) {
+      case 'start':
+        await env.BUILDS.put(buildId, { status: 'running' });
+        break;
+      case 'complete':
+        await env.BUILDS.put(buildId, {
+          status: event.exitCode === 0 ? 'success' : 'failed',
+          exitCode: event.exitCode
+        });
+        break;
+    }
+  }
+}
+```
+
+**System Monitoring:**
+```typescript
+const monitor = await sandbox.startProcess('tail -f /var/log/system.log');
+const logStream = await sandbox.streamProcessLogs(monitor.id);
+
+for await (const log of parseSSEStream<LogEvent>(logStream)) {
+  if (log.type === 'stdout' && log.data.includes('ERROR')) {
+    await env.ALERTS.send({
+      severity: 'high',
+      message: log.data,
+      timestamp: log.timestamp
+    });
+  }
 }
 ```
 
@@ -354,9 +460,9 @@ Maintain context across commands:
 const sessionId = crypto.randomUUID();
 
 // Commands in the same session share working directory
-await sandbox.exec("cd", ["/app"], { sessionId });
-await sandbox.exec("npm", ["install"], { sessionId });
-await sandbox.exec("npm", ["start"], { sessionId });
+await sandbox.exec("cd /app", { sessionId });
+await sandbox.exec("npm install", { sessionId });
+const app = await sandbox.startProcess("npm start", { sessionId });
 ```
 
 ## 🔍 Debugging
@@ -399,17 +505,16 @@ npm run build
 
 ## 📄 License
 
-[MIT License](LICENSE) - feel free to use this in your projects!
+[MIT License](LICENSE)
 
 ## 🙌 Acknowledgments
 
-Built with ❤️ by the Cloudflare team. Special thanks to all early adopters and contributors who are helping shape the future of edge computing.
+Built with ❤️ by the Cloudflare team. Special thanks to all early adopters and contributors.
 
 ---
 
 <div align="center">
   <p>
-    <a href="https://developers.cloudflare.com">Docs</a> •
     <a href="https://github.com/cloudflare/sandbox-sdk/issues">Issues</a> •
     <a href="https://discord.gg/cloudflaredev">Discord</a> •
     <a href="https://twitter.com/CloudflareDev">Twitter</a>
