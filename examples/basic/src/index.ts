@@ -1,183 +1,250 @@
-import { proxyToSandbox, getSandbox, type Sandbox } from "@cloudflare/sandbox";
+import { getSandbox, proxyToSandbox, type Sandbox } from "@cloudflare/sandbox";
+import {
+  executeCommand,
+  executeCommandStream,
+  exposePort,
+  getProcess,
+  getProcessLogs,
+  killProcesses,
+  listProcesses,
+  startProcess,
+  streamProcessLogs,
+  unexposePort,
+  readFile,
+  deleteFile,
+  renameFile,
+  moveFile,
+  createDirectory,
+  gitCheckout,
+  setupNextjs,
+  setupReact,
+  setupVue,
+  setupStatic,
+} from "./endpoints";
+import { corsHeaders, errorResponse, jsonResponse, parseJsonBody } from "./http";
 
 export { Sandbox } from "@cloudflare/sandbox";
 
+// Helper function to generate cryptographically secure random strings
+function generateSecureRandomString(length: number = 12): string {
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
 type Env = {
   Sandbox: DurableObjectNamespace<Sandbox>;
+  ASSETS: Fetcher;
 };
+
+// Helper to get sandbox instance with user-specific ID
+function getUserSandbox(env: Env) {
+  // For demo purposes, use a fixed sandbox ID. In production, you might extract from:
+  // - Authentication headers
+  // - URL parameters
+  // - Session cookies
+  const sandboxId = "demo-user-sandbox";
+  return getSandbox(env.Sandbox, sandboxId);
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Route requests to exposed container ports via their preview URLs
+    // Handle CORS preflight requests
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 200, headers: corsHeaders() });
+    }
+
+    // PRIORITY: Route requests to exposed container ports via their preview URLs
+    // This must happen BEFORE any other routing to bypass Wrangler's asset serving
     const proxyResponse = await proxyToSandbox(request, env);
     if (proxyResponse) return proxyResponse;
 
-    // Custom routes
     const url = new URL(request.url);
     const pathname = url.pathname;
 
-    if (pathname.startsWith("/api")) {
-      const sandbox = getSandbox(env.Sandbox, "my-sandbox");
-      return sandbox.containerFetch(request, 3000);
-    }
+    try {
+      const sandbox = getUserSandbox(env) as unknown as Sandbox<unknown>;
 
-    if (pathname.startsWith("/test-file")) {
-      const sandbox = getSandbox(env.Sandbox, "my-sandbox");
-      await sandbox.writeFile("test-file.txt", "Hello, world! " + Date.now());
-      const file = await sandbox.readFile("test-file.txt");
-      return new Response(file!.content, { status: 200 });
-    }
+      // Command Execution API
+      if (pathname === "/api/execute" && request.method === "POST") {
+        return await executeCommand(sandbox, request);
+      }
 
-    if (pathname.startsWith("/test-preview")) {
-      const sandboxId = "test-preview-sandbox";
-      const sandbox = getSandbox(env.Sandbox, sandboxId);
+      // Streaming Command Execution API
+      if (pathname === "/api/execute/stream" && request.method === "POST") {
+        return await executeCommandStream(sandbox, request);
+      }
 
-      // Create a simple Bun HTTP server
-      await sandbox.writeFile("server.js", `
-        Bun.serve({
-          port: 8080,
-          fetch(req) {
-            const url = new URL(req.url);
-            console.log(\`Server received request: \${req.method} \${url.pathname}\`);
+      // Process Management APIs - Check if methods exist
+      if (pathname === "/api/process/list" && request.method === "GET") {
+        return await listProcesses(sandbox);
+      }
 
-            if (url.pathname === "/") {
-              return new Response("Hello from Bun server! 🎉", {
-                headers: { "Content-Type": "text/plain" }
-              });
-            }
+      if (pathname === "/api/process/start" && request.method === "POST") {
+        return await startProcess(sandbox, request);
+      }
 
-            if (url.pathname === "/api/status") {
-              return new Response(JSON.stringify({
-                status: "running",
-                timestamp: new Date().toISOString(),
-                message: "Bun server is working!"
-              }), {
-                headers: { "Content-Type": "application/json" }
-              });
-            }
+      if (pathname.startsWith("/api/process/") && request.method === "DELETE") {
+        return await killProcesses(sandbox, pathname);
+      }
 
-            return new Response("Not found", { status: 404 });
-          },
+      if (pathname.startsWith("/api/process/") && pathname.endsWith("/logs") && request.method === "GET") {
+        return await getProcessLogs(sandbox, pathname);
+      }
+
+      if (pathname.startsWith("/api/process/") && pathname.endsWith("/stream") && request.method === "GET") {
+        return await streamProcessLogs(sandbox, pathname);
+      }
+
+      if (pathname.startsWith("/api/process/") && request.method === "GET") {
+        return await getProcess(sandbox, pathname);
+      }
+
+      // Port Management APIs
+      if (pathname === "/api/expose-port" && request.method === "POST") {
+        return await exposePort(sandbox, request);
+      }
+
+      if (pathname === "/api/unexpose-port" && request.method === "POST") {
+        return await unexposePort(sandbox, request);
+      }
+
+      if (pathname === "/api/exposed-ports" && request.method === "GET") {
+        // Automatically capture hostname from request
+        const hostname = new URL(request.url).host;
+        const ports = await sandbox.getExposedPorts(hostname);
+        return jsonResponse({ ports });
+      }
+
+      // File Operations API
+      if (pathname === "/api/write" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const { path, content, encoding } = body;
+
+        if (!path || content === undefined) {
+          return errorResponse("Path and content are required");
+        }
+
+        await sandbox.writeFile(path, content, { encoding });
+        return jsonResponse({ message: "File written", path });
+      }
+
+      if (pathname === "/api/read" && request.method === "POST") {
+        return await readFile(sandbox, request);
+      }
+
+      if (pathname === "/api/delete" && request.method === "POST") {
+        return await deleteFile(sandbox, request);
+      }
+
+      if (pathname === "/api/rename" && request.method === "POST") {
+        return await renameFile(sandbox, request);
+      }
+
+      if (pathname === "/api/move" && request.method === "POST") {
+        return await moveFile(sandbox, request);
+      }
+
+      if (pathname === "/api/mkdir" && request.method === "POST") {
+        return await createDirectory(sandbox, request);
+      }
+
+      if (pathname === "/api/git/checkout" && request.method === "POST") {
+        return await gitCheckout(sandbox, request);
+      }
+
+      // Template Setup APIs
+      if (pathname === "/api/templates/nextjs" && request.method === "POST") {
+        return await setupNextjs(sandbox, request);
+      }
+
+      if (pathname === "/api/templates/react" && request.method === "POST") {
+        return await setupReact(sandbox, request);
+      }
+
+      if (pathname === "/api/templates/vue" && request.method === "POST") {
+        return await setupVue(sandbox, request);
+      }
+
+      if (pathname === "/api/templates/static" && request.method === "POST") {
+        return await setupStatic(sandbox, request);
+      }
+
+      // Session Management APIs
+      if (pathname === "/api/session/create" && request.method === "POST") {
+        const body = await parseJsonBody(request);
+        const sessionId = body.sessionId || `session_${Date.now()}_${generateSecureRandomString()}`;
+
+        // Sessions are managed automatically by the SDK, just return the ID
+        return jsonResponse(sessionId);
+      }
+
+      if (pathname.startsWith("/api/session/clear/") && request.method === "POST") {
+        const sessionId = pathname.split("/").pop();
+
+        // In a real implementation, you might want to clean up session state
+        // For now, just return success
+        return jsonResponse({ message: "Session cleared", sessionId });
+      }
+
+      // Health check endpoint
+      if (pathname === "/health") {
+        return jsonResponse({
+          status: "healthy",
+          timestamp: new Date().toISOString(),
+          message: "Sandbox SDK Tester is running",
+          apis: [
+            "POST /api/execute - Execute commands",
+            "POST /api/execute/stream - Execute with streaming",
+            "GET /api/process/list - List processes",
+            "POST /api/process/start - Start process",
+            "DELETE /api/process/{id} - Kill process",
+            "GET /api/process/{id}/logs - Get process logs",
+            "GET /api/process/{id}/stream - Stream process logs",
+            "POST /api/expose-port - Expose port",
+            "GET /api/exposed-ports - List exposed ports",
+            "POST /api/write - Write file",
+            "POST /api/read - Read file",
+            "POST /api/delete - Delete file",
+            "POST /api/rename - Rename file",
+            "POST /api/move - Move file",
+            "POST /api/mkdir - Create directory",
+            "POST /api/git/checkout - Git checkout",
+            "POST /api/templates/nextjs - Setup Next.js project",
+            "POST /api/templates/react - Setup React project",
+            "POST /api/templates/vue - Setup Vue project",
+            "POST /api/templates/static - Setup static site"
+          ]
         });
+      }
 
-        console.log("Bun server running on port 8080");
-      `);
+      // Ping endpoint that actually initializes the container
+      if (pathname === "/api/ping") {
+        try {
+          // Test the actual sandbox connection by calling a simple method
+          // This will initialize the sandbox if it's not already running
+          await sandbox.exec("echo 'Sandbox initialized'");
+          return jsonResponse({
+            message: "pong",
+            timestamp: new Date().toISOString(),
+            sandboxStatus: "ready"
+          });
+        } catch (error: any) {
+          return jsonResponse({
+            message: "pong",
+            timestamp: new Date().toISOString(),
+            sandboxStatus: "initializing",
+            error: error.message
+          }, 202); // 202 Accepted - processing in progress
+        }
+      }
 
-      // Start the Bun server in the background
-      await sandbox.exec("bun", ["run", "server.js"], { background: true });
+      // Fallback: serve static assets for all other requests
+      return env.ASSETS.fetch(request);
 
-      // Wait a moment for the server to start
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Expose the port
-      const preview = await sandbox.exposePort(8080, { name: "bun-server" });
-
-      return new Response(JSON.stringify({
-        message: "Bun server started and exposed",
-        preview,
-        sandboxId: sandboxId,
-        note: "Access your server at the preview URL"
-      }), {
-        headers: { "Content-Type": "application/json" },
-      });
+    } catch (error: any) {
+      console.error("API Error:", error);
+      return errorResponse(`Internal server error: ${error.message}`, 500);
     }
-
-    if (pathname.startsWith("/test-check")) {
-      const sandboxId = "test-preview-sandbox";
-      const sandbox = getSandbox(env.Sandbox, sandboxId);
-
-      // Check running processes
-      const ps = await sandbox.exec("ps", ["aux"]);
-
-      // Check exposed ports
-      const exposedPorts = await sandbox.getExposedPorts();
-
-      return new Response(JSON.stringify({
-        processes: ps,
-        exposedPorts: exposedPorts,
-      }, null, 2), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (pathname.startsWith("/test-multi-port")) {
-      const sandboxId = "multi-port-sandbox";
-      const sandbox = getSandbox(env.Sandbox, sandboxId);
-
-      // Create an API server on port 3001 (avoiding 3000)
-      await sandbox.writeFile("api-server.js", `
-        Bun.serve({
-          port: 3001,
-          fetch(req) {
-            const url = new URL(req.url);
-            console.log(\`API server received: \${req.method} \${url.pathname}\`);
-
-            if (url.pathname === "/api/data") {
-              return new Response(JSON.stringify({
-                data: "from API server",
-                port: 3001,
-                timestamp: new Date().toISOString()
-              }), {
-                headers: { "Content-Type": "application/json" }
-              });
-            }
-
-            return new Response("API Not Found", { status: 404 });
-          },
-        });
-        console.log("API server running on port 3001");
-      `);
-
-      // Create a web server on port 8080
-      await sandbox.writeFile("web-server.js", `
-        Bun.serve({
-          port: 8080,
-          fetch(req) {
-            const url = new URL(req.url);
-            console.log(\`Web server received: \${req.method} \${url.pathname}\`);
-
-            const html = \`
-              <!DOCTYPE html>
-              <html>
-              <head><title>Multi-Port Demo</title></head>
-              <body>
-                <h1>Web Server on Port 8080</h1>
-                <p>This is the main web server.</p>
-                <p>The API server is running on port 3001.</p>
-                <p>Current time: \${new Date().toISOString()}</p>
-              </body>
-              </html>
-            \`;
-
-            return new Response(html, {
-              headers: { "Content-Type": "text/html" }
-            });
-          },
-        });
-        console.log("Web server running on port 8080");
-      `);
-
-      // Start both servers
-      await sandbox.exec("bun", ["run", "api-server.js"], { background: true });
-      await sandbox.exec("bun", ["run", "web-server.js"], { background: true });
-
-      // Expose both ports
-      const apiPreview = await sandbox.exposePort(3001, { name: "api-server" });
-      const webPreview = await sandbox.exposePort(8080, { name: "web-server" });
-
-      return new Response(JSON.stringify({
-        message: "Multiple servers started successfully",
-        servers: {
-          api: apiPreview,
-          web: webPreview
-        },
-        sandboxId: sandboxId,
-        note: "Each server is accessible at its own preview URL"
-      }, null, 2), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response("Not found", { status: 404 });
   },
 };

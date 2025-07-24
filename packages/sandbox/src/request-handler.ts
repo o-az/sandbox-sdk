@@ -1,4 +1,9 @@
 import { getSandbox, type Sandbox } from "./sandbox";
+import {
+  logSecurityEvent,
+  sanitizeSandboxId,
+  validatePort
+} from "./security";
 
 export interface SandboxEnv {
   Sandbox: DurableObjectNamespace<Sandbox>;
@@ -57,29 +62,74 @@ export async function proxyToSandbox<E extends SandboxEnv>(
 }
 
 function extractSandboxRoute(url: URL): RouteInfo | null {
-  // Production: subdomain pattern {port}-{sandboxId}.{domain}
-  const subdomainMatch = url.hostname.match(/^(\d+)-([a-zA-Z0-9-]+)\./);
-  if (subdomainMatch) {
-    return {
-      port: parseInt(subdomainMatch[1]),
-      sandboxId: subdomainMatch[2],
-      path: url.pathname,
-    };
-  }
+  // Parse subdomain pattern: port-sandboxId.domain
+  const subdomainMatch = url.hostname.match(/^(\d{4,5})-([^.-][^.]*[^.-]|[^.-])\.(.+)$/);
 
-  // Development: path pattern /preview/{port}/{sandboxId}/*
-  if (isLocalhostPattern(url.hostname)) {
-    const pathMatch = url.pathname.match(/^\/preview\/(\d+)\/([^/]+)(\/.*)?$/);
-    if (pathMatch) {
-      return {
-        port: parseInt(pathMatch[1]),
-        sandboxId: pathMatch[2],
-        path: pathMatch[3] || "/",
-      };
+  if (!subdomainMatch) {
+    // Log malformed subdomain attempts
+    if (url.hostname.includes('-') && url.hostname.includes('.')) {
+      logSecurityEvent('MALFORMED_SUBDOMAIN_ATTEMPT', {
+        hostname: url.hostname,
+        url: url.toString()
+      }, 'medium');
     }
+    return null;
   }
 
-  return null;
+  const portStr = subdomainMatch[1];
+  const sandboxId = subdomainMatch[2];
+  const domain = subdomainMatch[3];
+
+  const port = parseInt(portStr, 10);
+  if (!validatePort(port)) {
+    logSecurityEvent('INVALID_PORT_IN_SUBDOMAIN', {
+      port,
+      portStr,
+      sandboxId,
+      hostname: url.hostname,
+      url: url.toString()
+    }, 'high');
+    return null;
+  }
+
+  let sanitizedSandboxId: string;
+  try {
+    sanitizedSandboxId = sanitizeSandboxId(sandboxId);
+  } catch (error) {
+    logSecurityEvent('INVALID_SANDBOX_ID_IN_SUBDOMAIN', {
+      sandboxId,
+      port,
+      hostname: url.hostname,
+      url: url.toString(),
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, 'high');
+    return null;
+  }
+
+  // DNS subdomain length limit is 63 characters
+  if (sandboxId.length > 63) {
+    logSecurityEvent('SANDBOX_ID_LENGTH_VIOLATION', {
+      sandboxId,
+      length: sandboxId.length,
+      port,
+      hostname: url.hostname
+    }, 'medium');
+    return null;
+  }
+
+  logSecurityEvent('SANDBOX_ROUTE_EXTRACTED', {
+    port,
+    sandboxId: sanitizedSandboxId,
+    domain,
+    path: url.pathname || "/",
+    hostname: url.hostname
+  }, 'low');
+
+  return {
+    port,
+    sandboxId: sanitizedSandboxId,
+    path: url.pathname || "/",
+  };
 }
 
 export function isLocalhostPattern(hostname: string): boolean {
@@ -92,4 +142,3 @@ export function isLocalhostPattern(hostname: string): boolean {
     hostPart === "0.0.0.0"
   );
 }
-

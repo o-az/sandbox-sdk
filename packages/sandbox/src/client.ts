@@ -1,10 +1,15 @@
 import type { Sandbox } from "./index";
+import type {
+  GetProcessLogsResponse,
+  GetProcessResponse,
+  ListProcessesResponse,
+  StartProcessRequest,
+  StartProcessResponse
+} from "./types";
 
 interface ExecuteRequest {
   command: string;
-  args?: string[];
   sessionId?: string;
-  background?: boolean;
 }
 
 export interface ExecuteResponse {
@@ -13,7 +18,6 @@ export interface ExecuteResponse {
   stderr: string;
   exitCode: number;
   command: string;
-  args: string[];
   timestamp: string;
 }
 
@@ -176,32 +180,11 @@ interface PingResponse {
   timestamp: string;
 }
 
-interface StreamEvent {
-  type: "command_start" | "output" | "command_complete" | "error";
-  command?: string;
-  args?: string[];
-  stream?: "stdout" | "stderr";
-  data?: string;
-  message?: string;
-  path?: string;
-  oldPath?: string;
-  newPath?: string;
-  sourcePath?: string;
-  destinationPath?: string;
-  content?: string;
-  success?: boolean;
-  exitCode?: number;
-  stdout?: string;
-  stderr?: string;
-  error?: string;
-  timestamp?: string;
-}
-
 interface HttpClientOptions {
   stub?: Sandbox;
   baseUrl?: string;
   port?: number;
-  onCommandStart?: (command: string, args: string[]) => void;
+  onCommandStart?: (command: string) => void;
   onOutput?: (
     stream: "stdout" | "stderr",
     data: string,
@@ -212,11 +195,9 @@ interface HttpClientOptions {
     exitCode: number,
     stdout: string,
     stderr: string,
-    command: string,
-    args: string[]
+    command: string
   ) => void;
-  onError?: (error: string, command?: string, args?: string[]) => void;
-  onStreamEvent?: (event: StreamEvent) => void;
+  onError?: (error: string, command?: string) => void;
 }
 
 export class HttpClient {
@@ -271,117 +252,17 @@ export class HttpClient {
       throw error;
     }
   }
-  // Public methods to set event handlers
-  setOnOutput(
-    handler: (
-      stream: "stdout" | "stderr",
-      data: string,
-      command: string
-    ) => void
-  ): void {
-    this.options.onOutput = handler;
-  }
-
-  setOnCommandComplete(
-    handler: (
-      success: boolean,
-      exitCode: number,
-      stdout: string,
-      stderr: string,
-      command: string,
-      args: string[]
-    ) => void
-  ): void {
-    this.options.onCommandComplete = handler;
-  }
-
-  setOnStreamEvent(handler: (event: StreamEvent) => void): void {
-    this.options.onStreamEvent = handler;
-  }
-
-  // Public getter methods
-  getOnOutput():
-    | ((stream: "stdout" | "stderr", data: string, command: string) => void)
-    | undefined {
-    return this.options.onOutput;
-  }
-
-  getOnCommandComplete():
-    | ((
-      success: boolean,
-      exitCode: number,
-      stdout: string,
-      stderr: string,
-      command: string,
-      args: string[]
-    ) => void)
-    | undefined {
-    return this.options.onCommandComplete;
-  }
-
-  getOnStreamEvent(): ((event: StreamEvent) => void) | undefined {
-    return this.options.onStreamEvent;
-  }
-
-  async createSession(): Promise<string> {
-    try {
-      const response = await this.doFetch(`/api/session/create`, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: SessionResponse = await response.json();
-      this.sessionId = data.sessionId;
-      console.log(`[HTTP Client] Created session: ${this.sessionId}`);
-      return this.sessionId;
-    } catch (error) {
-      console.error("[HTTP Client] Error creating session:", error);
-      throw error;
-    }
-  }
-
-  async listSessions(): Promise<SessionListResponse> {
-    try {
-      const response = await this.doFetch(`/api/session/list`, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "GET",
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: SessionListResponse = await response.json();
-      console.log(`[HTTP Client] Listed ${data.count} sessions`);
-      return data;
-    } catch (error) {
-      console.error("[HTTP Client] Error listing sessions:", error);
-      throw error;
-    }
-  }
 
   async execute(
     command: string,
-    args: string[] = [],
-    sessionId?: string,
-    background: boolean = false,
+    sessionId?: string
   ): Promise<ExecuteResponse> {
     try {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/execute`, {
         body: JSON.stringify({
-          args,
           command,
-          background,
           sessionId: targetSessionId,
         } as ExecuteRequest),
         headers: {
@@ -410,8 +291,7 @@ export class HttpClient {
         data.exitCode,
         data.stdout,
         data.stderr,
-        data.command,
-        data.args
+        data.command
       );
 
       return data;
@@ -419,31 +299,28 @@ export class HttpClient {
       console.error("[HTTP Client] Error executing command:", error);
       this.options.onError?.(
         error instanceof Error ? error.message : "Unknown error",
-        command,
-        args
+        command
       );
       throw error;
     }
   }
 
-  async executeStream(
+
+  async executeCommandStream(
     command: string,
-    args: string[] = [],
-    sessionId?: string,
-    background: boolean = false
-  ): Promise<void> {
+    sessionId?: string
+  ): Promise<ReadableStream<Uint8Array>> {
     try {
       const targetSessionId = sessionId || this.sessionId;
 
       const response = await this.doFetch(`/api/execute/stream`, {
         body: JSON.stringify({
-          args,
           command,
-          background,
           sessionId: targetSessionId,
         }),
         headers: {
           "Content-Type": "application/json",
+          "Accept": "text/event-stream",
         },
         method: "POST",
       });
@@ -461,94 +338,13 @@ export class HttpClient {
         throw new Error("No response body for streaming request");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(`[HTTP Client] Stream event: ${event.type}`);
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Command started: ${event.command
-                      } ${event.args?.join(" ")}`
-                    );
-                    this.options.onCommandStart?.(
-                      event.command!,
-                      event.args || []
-                    );
-                    break;
-
-                  case "output":
-                    console.log(`[${event.stream}] ${event.data}`);
-                    this.options.onOutput?.(
-                      event.stream!,
-                      event.data!,
-                      event.command!
-                    );
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Command completed: ${event.command}, Success: ${event.success}, Exit code: ${event.exitCode}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      event.exitCode!,
-                      event.stdout!,
-                      event.stderr!,
-                      event.command!,
-                      event.args || []
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Command error: ${event.error}`
-                    );
-                    this.options.onError?.(
-                      event.error!,
-                      event.command,
-                      event.args
-                    );
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming execution:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        command,
-        args
+      console.log(
+        `[HTTP Client] Started command stream: ${command}`
       );
+
+      return response.body;
+    } catch (error) {
+      console.error("[HTTP Client] Error in command stream:", error);
       throw error;
     }
   }
@@ -596,134 +392,6 @@ export class HttpClient {
     }
   }
 
-  async gitCheckoutStream(
-    repoUrl: string,
-    branch: string = "main",
-    targetDir?: string,
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/git/checkout/stream`, {
-        body: JSON.stringify({
-          branch,
-          repoUrl,
-          sessionId: targetSessionId,
-          targetDir,
-        }),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(
-                  `[HTTP Client] Git checkout stream event: ${event.type}`
-                );
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Git checkout started: ${event.command
-                      } ${event.args?.join(" ")}`
-                    );
-                    this.options.onCommandStart?.(
-                      event.command!,
-                      event.args || []
-                    );
-                    break;
-
-                  case "output":
-                    console.log(`[${event.stream}] ${event.data}`);
-                    this.options.onOutput?.(
-                      event.stream!,
-                      event.data!,
-                      event.command!
-                    );
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Git checkout completed: ${event.command}, Success: ${event.success}, Exit code: ${event.exitCode}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      event.exitCode!,
-                      event.stdout!,
-                      event.stderr!,
-                      event.command!,
-                      event.args || []
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Git checkout error: ${event.error}`
-                    );
-                    this.options.onError?.(
-                      event.error!,
-                      event.command,
-                      event.args
-                    );
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse git checkout stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming git checkout:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "git clone",
-        [branch, repoUrl, targetDir || ""]
-      );
-      throw error;
-    }
-  }
 
   async mkdir(
     path: string,
@@ -766,128 +434,6 @@ export class HttpClient {
     }
   }
 
-  async mkdirStream(
-    path: string,
-    recursive: boolean = false,
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/mkdir/stream`, {
-        body: JSON.stringify({
-          path,
-          recursive,
-          sessionId: targetSessionId,
-        } as MkdirRequest),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(`[HTTP Client] Mkdir stream event: ${event.type}`);
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Mkdir started: ${event.command
-                      } ${event.args?.join(" ")}`
-                    );
-                    this.options.onCommandStart?.(
-                      event.command!,
-                      event.args || []
-                    );
-                    break;
-
-                  case "output":
-                    console.log(`[${event.stream}] ${event.data}`);
-                    this.options.onOutput?.(
-                      event.stream!,
-                      event.data!,
-                      event.command!
-                    );
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Mkdir completed: ${event.command}, Success: ${event.success}, Exit code: ${event.exitCode}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      event.exitCode!,
-                      event.stdout!,
-                      event.stderr!,
-                      event.command!,
-                      event.args || []
-                    );
-                    break;
-
-                  case "error":
-                    console.error(`[HTTP Client] Mkdir error: ${event.error}`);
-                    this.options.onError?.(
-                      event.error!,
-                      event.command,
-                      event.args
-                    );
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse mkdir stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming mkdir:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "mkdir",
-        recursive ? ["-p", path] : [path]
-      );
-      throw error;
-    }
-  }
 
   async writeFile(
     path: string,
@@ -932,130 +478,6 @@ export class HttpClient {
     }
   }
 
-  async writeFileStream(
-    path: string,
-    content: string,
-    encoding: string = "utf-8",
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/write/stream`, {
-        body: JSON.stringify({
-          content,
-          encoding,
-          path,
-          sessionId: targetSessionId,
-        } as WriteFileRequest),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(
-                  `[HTTP Client] Write file stream event: ${event.type}`
-                );
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Write file started: ${event.path}`
-                    );
-                    this.options.onCommandStart?.("write", [
-                      path,
-                      content,
-                      encoding,
-                    ]);
-                    break;
-
-                  case "output":
-                    console.log(`[output] ${event.message}`);
-                    this.options.onOutput?.("stdout", event.message!, "write");
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Write file completed: ${event.path}, Success: ${event.success}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      0,
-                      "",
-                      "",
-                      "write",
-                      [path, content, encoding]
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Write file error: ${event.error}`
-                    );
-                    this.options.onError?.(event.error!, "write", [
-                      path,
-                      content,
-                      encoding,
-                    ]);
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse write file stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming write file:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "write",
-        [path, content, encoding]
-      );
-      throw error;
-    }
-  }
 
   async readFile(
     path: string,
@@ -1098,120 +520,6 @@ export class HttpClient {
     }
   }
 
-  async readFileStream(
-    path: string,
-    encoding: string = "utf-8",
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/read/stream`, {
-        body: JSON.stringify({
-          encoding,
-          path,
-          sessionId: targetSessionId,
-        } as ReadFileRequest),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(
-                  `[HTTP Client] Read file stream event: ${event.type}`
-                );
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Read file started: ${event.path}`
-                    );
-                    this.options.onCommandStart?.("read", [path, encoding]);
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Read file completed: ${event.path
-                      }, Success: ${event.success}, Content length: ${event.content?.length || 0
-                      }`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      0,
-                      event.content || "",
-                      "",
-                      "read",
-                      [path, encoding]
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Read file error: ${event.error}`
-                    );
-                    this.options.onError?.(event.error!, "read", [
-                      path,
-                      encoding,
-                    ]);
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse read file stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming read file:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "read",
-        [path, encoding]
-      );
-      throw error;
-    }
-  }
 
   async deleteFile(
     path: string,
@@ -1252,110 +560,6 @@ export class HttpClient {
     }
   }
 
-  async deleteFileStream(path: string, sessionId?: string): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/delete/stream`, {
-        body: JSON.stringify({
-          path,
-          sessionId: targetSessionId,
-        } as DeleteFileRequest),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(
-                  `[HTTP Client] Delete file stream event: ${event.type}`
-                );
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Delete file started: ${event.path}`
-                    );
-                    this.options.onCommandStart?.("delete", [path]);
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Delete file completed: ${event.path}, Success: ${event.success}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      0,
-                      "",
-                      "",
-                      "delete",
-                      [path]
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Delete file error: ${event.error}`
-                    );
-                    this.options.onError?.(event.error!, "delete", [path]);
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse delete file stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming delete file:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "delete",
-        [path]
-      );
-      throw error;
-    }
-  }
 
   async renameFile(
     oldPath: string,
@@ -1398,118 +602,6 @@ export class HttpClient {
     }
   }
 
-  async renameFileStream(
-    oldPath: string,
-    newPath: string,
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/rename/stream`, {
-        body: JSON.stringify({
-          newPath,
-          oldPath,
-          sessionId: targetSessionId,
-        } as RenameFileRequest),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(
-                  `[HTTP Client] Rename file stream event: ${event.type}`
-                );
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Rename file started: ${event.oldPath} -> ${event.newPath}`
-                    );
-                    this.options.onCommandStart?.("rename", [oldPath, newPath]);
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Rename file completed: ${event.oldPath} -> ${event.newPath}, Success: ${event.success}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      0,
-                      "",
-                      "",
-                      "rename",
-                      [oldPath, newPath]
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Rename file error: ${event.error}`
-                    );
-                    this.options.onError?.(event.error!, "rename", [
-                      oldPath,
-                      newPath,
-                    ]);
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse rename file stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming rename file:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "rename",
-        [oldPath, newPath]
-      );
-      throw error;
-    }
-  }
 
   async moveFile(
     sourcePath: string,
@@ -1552,121 +644,6 @@ export class HttpClient {
     }
   }
 
-  async moveFileStream(
-    sourcePath: string,
-    destinationPath: string,
-    sessionId?: string
-  ): Promise<void> {
-    try {
-      const targetSessionId = sessionId || this.sessionId;
-
-      const response = await this.doFetch(`/api/move/stream`, {
-        body: JSON.stringify({
-          destinationPath,
-          sessionId: targetSessionId,
-          sourcePath,
-        } as MoveFileRequest),
-        headers: {
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errorData.error || `HTTP error! status: ${response.status}`
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("No response body for streaming request");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const eventData = line.slice(6); // Remove 'data: ' prefix
-                const event: StreamEvent = JSON.parse(eventData);
-
-                console.log(
-                  `[HTTP Client] Move file stream event: ${event.type}`
-                );
-                this.options.onStreamEvent?.(event);
-
-                switch (event.type) {
-                  case "command_start":
-                    console.log(
-                      `[HTTP Client] Move file started: ${event.sourcePath} -> ${event.destinationPath}`
-                    );
-                    this.options.onCommandStart?.("move", [
-                      sourcePath,
-                      destinationPath,
-                    ]);
-                    break;
-
-                  case "command_complete":
-                    console.log(
-                      `[HTTP Client] Move file completed: ${event.sourcePath} -> ${event.destinationPath}, Success: ${event.success}`
-                    );
-                    this.options.onCommandComplete?.(
-                      event.success!,
-                      0,
-                      "",
-                      "",
-                      "move",
-                      [sourcePath, destinationPath]
-                    );
-                    break;
-
-                  case "error":
-                    console.error(
-                      `[HTTP Client] Move file error: ${event.error}`
-                    );
-                    this.options.onError?.(event.error!, "move", [
-                      sourcePath,
-                      destinationPath,
-                    ]);
-                    break;
-                }
-              } catch (parseError) {
-                console.warn(
-                  "[HTTP Client] Failed to parse move file stream event:",
-                  parseError
-                );
-              }
-            }
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-    } catch (error) {
-      console.error("[HTTP Client] Error in streaming move file:", error);
-      this.options.onError?.(
-        error instanceof Error ? error.message : "Unknown error",
-        "move",
-        [sourcePath, destinationPath]
-      );
-      throw error;
-    }
-  }
 
   async exposePort(port: number, name?: string): Promise<ExposePortResponse> {
     try {
@@ -1823,267 +800,239 @@ export class HttpClient {
   clearSession(): void {
     this.sessionId = null;
   }
-}
 
-// Example usage and utility functions
-export function createClient(options?: HttpClientOptions): HttpClient {
-  return new HttpClient(options);
-}
+  // Process management methods
+  async startProcess(
+    command: string,
+    options?: {
+      processId?: string;
+      sessionId?: string;
+      timeout?: number;
+      env?: Record<string, string>;
+      cwd?: string;
+      encoding?: string;
+      autoCleanup?: boolean;
+    }
+  ): Promise<StartProcessResponse> {
+    try {
+      const targetSessionId = options?.sessionId || this.sessionId;
 
-// Convenience function for quick command execution
-export async function quickExecute(
-  command: string,
-  args: string[] = [],
-  options?: HttpClientOptions
-): Promise<ExecuteResponse> {
-  const client = createClient(options);
-  await client.createSession();
+      const response = await this.doFetch("/api/process/start", {
+        body: JSON.stringify({
+          command,
+          options: {
+            ...options,
+            sessionId: targetSessionId,
+          },
+        } as StartProcessRequest),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
 
-  try {
-    return await client.execute(command, args);
-  } finally {
-    client.clearSession();
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: StartProcessResponse = await response.json();
+      console.log(
+        `[HTTP Client] Process started: ${command}, ID: ${data.process.id}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error starting process:", error);
+      throw error;
+    }
   }
-}
 
-// Convenience function for quick streaming command execution
-export async function quickExecuteStream(
-  command: string,
-  args: string[] = [],
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
+  async listProcesses(): Promise<ListProcessesResponse> {
+    try {
+      const response = await this.doFetch("/api/process/list", {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      });
 
-  try {
-    await client.executeStream(command, args);
-  } finally {
-    client.clearSession();
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: ListProcessesResponse = await response.json();
+      console.log(
+        `[HTTP Client] Listed ${data.processes.length} processes`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error listing processes:", error);
+      throw error;
+    }
   }
-}
 
-// Convenience function for quick git checkout
-export async function quickGitCheckout(
-  repoUrl: string,
-  branch: string = "main",
-  targetDir?: string,
-  options?: HttpClientOptions
-): Promise<GitCheckoutResponse> {
-  const client = createClient(options);
-  await client.createSession();
+  async getProcess(processId: string): Promise<GetProcessResponse> {
+    try {
+      const response = await this.doFetch(`/api/process/${processId}`, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      });
 
-  try {
-    return await client.gitCheckout(repoUrl, branch, targetDir);
-  } finally {
-    client.clearSession();
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: GetProcessResponse = await response.json();
+      console.log(
+        `[HTTP Client] Got process ${processId}: ${data.process?.status || 'not found'}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error getting process:", error);
+      throw error;
+    }
   }
-}
 
-// Convenience function for quick directory creation
-export async function quickMkdir(
-  path: string,
-  recursive: boolean = false,
-  options?: HttpClientOptions
-): Promise<MkdirResponse> {
-  const client = createClient(options);
-  await client.createSession();
+  async killProcess(processId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await this.doFetch(`/api/process/${processId}`, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "DELETE",
+      });
 
-  try {
-    return await client.mkdir(path, recursive);
-  } finally {
-    client.clearSession();
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data = await response.json() as { success: boolean; message: string };
+      console.log(
+        `[HTTP Client] Killed process ${processId}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error killing process:", error);
+      throw error;
+    }
   }
-}
 
-// Convenience function for quick streaming git checkout
-export async function quickGitCheckoutStream(
-  repoUrl: string,
-  branch: string = "main",
-  targetDir?: string,
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
+  async killAllProcesses(): Promise<{ success: boolean; killedCount: number; message: string }> {
+    try {
+      const response = await this.doFetch("/api/process/kill-all", {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "DELETE",
+      });
 
-  try {
-    await client.gitCheckoutStream(repoUrl, branch, targetDir);
-  } finally {
-    client.clearSession();
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data = await response.json() as { success: boolean; killedCount: number; message: string };
+      console.log(
+        `[HTTP Client] Killed ${data.killedCount} processes`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error killing all processes:", error);
+      throw error;
+    }
   }
-}
 
-// Convenience function for quick streaming directory creation
-export async function quickMkdirStream(
-  path: string,
-  recursive: boolean = false,
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
+  async getProcessLogs(processId: string): Promise<GetProcessLogsResponse> {
+    try {
+      const response = await this.doFetch(`/api/process/${processId}/logs`, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      });
 
-  try {
-    await client.mkdirStream(path, recursive);
-  } finally {
-    client.clearSession();
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      const data: GetProcessLogsResponse = await response.json();
+      console.log(
+        `[HTTP Client] Got logs for process ${processId}`
+      );
+
+      return data;
+    } catch (error) {
+      console.error("[HTTP Client] Error getting process logs:", error);
+      throw error;
+    }
   }
-}
 
-// Convenience function for quick file writing
-export async function quickWriteFile(
-  path: string,
-  content: string,
-  encoding: string = "utf-8",
-  options?: HttpClientOptions
-): Promise<WriteFileResponse> {
-  const client = createClient(options);
-  await client.createSession();
+  async streamProcessLogs(processId: string): Promise<ReadableStream<Uint8Array>> {
+    try {
+      const response = await this.doFetch(`/api/process/${processId}/stream`, {
+        headers: {
+          "Accept": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+        method: "GET",
+      });
 
-  try {
-    return await client.writeFile(path, content, encoding);
-  } finally {
-    client.clearSession();
-  }
-}
+      if (!response.ok) {
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(
+          errorData.error || `HTTP error! status: ${response.status}`
+        );
+      }
 
-// Convenience function for quick streaming file writing
-export async function quickWriteFileStream(
-  path: string,
-  content: string,
-  encoding: string = "utf-8",
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
+      if (!response.body) {
+        throw new Error("No response body for streaming request");
+      }
 
-  try {
-    await client.writeFileStream(path, content, encoding);
-  } finally {
-    client.clearSession();
-  }
-}
+      console.log(
+        `[HTTP Client] Started streaming logs for process ${processId}`
+      );
 
-// Convenience function for quick file reading
-export async function quickReadFile(
-  path: string,
-  encoding: string = "utf-8",
-  options?: HttpClientOptions
-): Promise<ReadFileResponse> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    return await client.readFile(path, encoding);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick streaming file reading
-export async function quickReadFileStream(
-  path: string,
-  encoding: string = "utf-8",
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    await client.readFileStream(path, encoding);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick file deletion
-export async function quickDeleteFile(
-  path: string,
-  options?: HttpClientOptions
-): Promise<DeleteFileResponse> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    return await client.deleteFile(path);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick streaming file deletion
-export async function quickDeleteFileStream(
-  path: string,
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    await client.deleteFileStream(path);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick file renaming
-export async function quickRenameFile(
-  oldPath: string,
-  newPath: string,
-  options?: HttpClientOptions
-): Promise<RenameFileResponse> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    return await client.renameFile(oldPath, newPath);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick streaming file renaming
-export async function quickRenameFileStream(
-  oldPath: string,
-  newPath: string,
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    await client.renameFileStream(oldPath, newPath);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick file moving
-export async function quickMoveFile(
-  sourcePath: string,
-  destinationPath: string,
-  options?: HttpClientOptions
-): Promise<MoveFileResponse> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    return await client.moveFile(sourcePath, destinationPath);
-  } finally {
-    client.clearSession();
-  }
-}
-
-// Convenience function for quick streaming file moving
-export async function quickMoveFileStream(
-  sourcePath: string,
-  destinationPath: string,
-  options?: HttpClientOptions
-): Promise<void> {
-  const client = createClient(options);
-  await client.createSession();
-
-  try {
-    await client.moveFileStream(sourcePath, destinationPath);
-  } finally {
-    client.clearSession();
+      return response.body;
+    } catch (error) {
+      console.error("[HTTP Client] Error streaming process logs:", error);
+      throw error;
+    }
   }
 }
