@@ -7,29 +7,40 @@
   </p>
 </div>
 
-<!-- toc -->
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-- [✨ Overview](#%E2%9C%A8-overview)
-- [🎯 Features](#%F0%9F%8E%AF-features)
-- [🚀 Quick Start](#%F0%9F%9A%80-quick-start)
-- [📚 API Reference](#%F0%9F%93%9A-api-reference)
-- [🌐 Port Forwarding](#%F0%9F%8C%90-port-forwarding)
-- [💡 Examples](#%F0%9F%92%A1-examples)
-- [🏗️ Architecture](#%F0%9F%8F%97%EF%B8%8F-architecture)
-- [🛠️ Advanced Usage](#%F0%9F%9B%A0%EF%B8%8F-advanced-usage)
-- [🔍 Debugging](#%F0%9F%94%8D-debugging)
-- [🚧 Known Limitations](#%F0%9F%9A%A7-known-limitations)
-- [🤝 Contributing](#%F0%9F%A4%9D-contributing)
-- [📄 License](#%F0%9F%93%84-license)
-- [🙌 Acknowledgments](#%F0%9F%99%8C-acknowledgments)
+- [✨ Overview](#overview)
+- [🎯 Features](#features)
+- [🚀 Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Basic Setup](#basic-setup)
+- [📚 API Reference](#api-reference)
+  - [Core Methods](#core-methods)
+- [🌐 Port Forwarding](#port-forwarding)
+  - [Utility Methods](#utility-methods)
+- [💡 Examples](#examples)
+  - [Run a Node.js App](#run-a-nodejs-app)
+  - [Build and Test Code](#build-and-test-code)
+  - [Interactive Development Environment](#interactive-development-environment)
+  - [Expose Services with Preview URLs](#expose-services-with-preview-urls)
+- [🏗️ Architecture](#architecture)
+- [🛠️ Advanced Usage](#advanced-usage)
+  - [AsyncIterable Streaming Support](#asynciterable-streaming-support)
+  - [Session Management](#session-management)
+- [🔍 Debugging](#debugging)
+- [🚧 Known Limitations](#known-limitations)
+- [🤝 Contributing](#contributing)
+- [📄 License](#license)
+- [🙌 Acknowledgments](#acknowledgments)
 
-<!-- tocstop -->
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## ✨ Overview
+<h2 id="overview">✨ Overview</h2>
 
 The Cloudflare Sandbox SDK enables you to run isolated code environments directly on Cloudflare's edge network using Durable Objects and the Cloudflare Containers. Execute commands, manage files, run services, and expose them via public URLs - all within secure, sandboxed containers.
 
-## 🎯 Features
+<h2 id="features">🎯 Features</h2>
 
 - **🔒 Secure Isolation**: Each sandbox runs in its own container with full process isolation
 - **⚡ Edge-Native**: Runs on Cloudflare's global network for low latency worldwide
@@ -40,7 +51,7 @@ The Cloudflare Sandbox SDK enables you to run isolated code environments directl
 - **🚀 Streaming Support**: Real-time output streaming for long-running commands
 - **🎮 Session Management**: Maintain state across multiple operations
 
-## 🚀 Quick Start
+<h2 id="quick-start">🚀 Quick Start</h2>
 
 ### Installation
 
@@ -113,7 +124,7 @@ export default {
 };
 ```
 
-## 📚 API Reference
+<h2 id="api-reference">📚 API Reference</h2>
 
 ### Core Methods
 
@@ -217,7 +228,7 @@ await sandbox.gitCheckout("https://github.com/user/repo", {
 - `unexposePort(port)` - Remove port exposure
 - `getExposedPorts()` - List all exposed ports with their URLs
 
-## 🌐 Port Forwarding
+<h2 id="port-forwarding">🌐 Port Forwarding</h2>
 
 The SDK automatically handles preview URL routing for exposed ports. Just add one line to your worker:
 
@@ -276,7 +287,7 @@ For more details, see the [Cloudflare Containers local development guide](https:
 - `ping()` - Health check for the sandbox
 - `containerFetch(request)` - Direct container communication
 
-## 💡 Examples
+<h2 id="examples">💡 Examples</h2>
 
 ### Run a Node.js App
 
@@ -375,7 +386,7 @@ console.log(`Service available at: ${preview.url}`);
 // See the example in examples/basic/src/index.ts for the routing implementation.
 ```
 
-## 🏗️ Architecture
+<h2 id="architecture">🏗️ Architecture</h2>
 
 The SDK leverages Cloudflare's infrastructure:
 
@@ -384,7 +395,7 @@ The SDK leverages Cloudflare's infrastructure:
 - **Workers**: Handles HTTP routing and API interface
 - **Edge Network**: Enables global distribution and low latency
 
-## 🛠️ Advanced Usage
+<h2 id="advanced-usage">🛠️ Advanced Usage</h2>
 
 ### AsyncIterable Streaming Support
 
@@ -474,7 +485,7 @@ await sandbox.exec("npm install", { sessionId });
 const app = await sandbox.startProcess("npm start", { sessionId });
 ```
 
-## 🔍 Debugging
+<h2 id="debugging">🔍 Debugging</h2>
 
 Enable verbose logging:
 
@@ -487,13 +498,13 @@ sandbox.client.onCommandComplete = (success, code) =>
   console.log(`Completed: ${success} (${code})`);
 ```
 
-## 🚧 Known Limitations
+<h2 id="known-limitations">🚧 Known Limitations</h2>
 
 - Maximum container runtime is limited by Durable Object constraints
 - WebSocket support for preview URLs coming soon
 - Some system calls may be restricted in the container environment
 
-## 🤝 Contributing
+<h2 id="contributing">🤝 Contributing</h2>
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
@@ -512,11 +523,11 @@ npm test
 npm run build
 ```
 
-## 📄 License
+<h2 id="license">📄 License</h2>
 
 [MIT License](LICENSE)
 
-## 🙌 Acknowledgments
+<h2 id="acknowledgments">🙌 Acknowledgments</h2>
 
 Built with ❤️ by the Cloudflare team. Special thanks to all early adopters and contributors.
 
