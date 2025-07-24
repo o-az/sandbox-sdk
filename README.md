@@ -7,14 +7,23 @@
   </p>
 </div>
 
-<div align="center">
-  <a href="#overview">Overview</a> •
-  <a href="#features">Features</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#api-reference">API</a> •
-  <a href="#examples">Examples</a> •
-  <a href="#contributing">Contributing</a>
-</div>
+<!-- toc -->
+
+- [✨ Overview](#%E2%9C%A8-overview)
+- [🎯 Features](#%F0%9F%8E%AF-features)
+- [🚀 Quick Start](#%F0%9F%9A%80-quick-start)
+- [📚 API Reference](#%F0%9F%93%9A-api-reference)
+- [🌐 Port Forwarding](#%F0%9F%8C%90-port-forwarding)
+- [💡 Examples](#%F0%9F%92%A1-examples)
+- [🏗️ Architecture](#%F0%9F%8F%97%EF%B8%8F-architecture)
+- [🛠️ Advanced Usage](#%F0%9F%9B%A0%EF%B8%8F-advanced-usage)
+- [🔍 Debugging](#%F0%9F%94%8D-debugging)
+- [🚧 Known Limitations](#%F0%9F%9A%A7-known-limitations)
+- [🤝 Contributing](#%F0%9F%A4%9D-contributing)
+- [📄 License](#%F0%9F%93%84-license)
+- [🙌 Acknowledgments](#%F0%9F%99%8C-acknowledgments)
+
+<!-- tocstop -->
 
 ## ✨ Overview
 
