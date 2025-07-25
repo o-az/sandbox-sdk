@@ -31,6 +31,7 @@ export function getSandbox(ns: DurableObjectNamespace<Sandbox>, id: string) {
 }
 
 export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
+  defaultPort = 3000; // Default port for the container's Bun server
   sleepAfter = "3m"; // Sleep the sandbox if no requests are made in this timeframe
   client: HttpClient;
   private sandboxName: string | null = null;

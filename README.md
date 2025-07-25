@@ -64,9 +64,7 @@ npm install @cloudflare/sandbox
 1. **Create a Dockerfile** (temporary requirement, will be removed in future releases):
 
 ```dockerfile
-FROM docker.io/ghostwriternr/cloudflare-sandbox:0.0.9
-# If building your project on arm64, use:
-# FROM docker.io/ghostwriternr/cloudflare-sandbox-arm:0.0.9
+FROM docker.io/cloudflare/sandbox:0.0.9
 
 EXPOSE 3000
 
@@ -201,6 +199,28 @@ await sandbox.gitCheckout("https://github.com/user/repo", {
   branch: "main",
   targetDir: "my-project",
 });
+```
+
+#### `setEnvVars(envVars)`
+
+Set environment variables dynamically in the sandbox.
+
+> **Important**: This method must be called immediately after `getSandbox()` and before any other operations. Once a sandbox instance starts up, environment variables cannot be changed
+for that instance.
+
+```typescript
+const sandbox = getSandbox(env.Sandbox, "my-sandbox");
+
+// Set environment variables FIRST, before any other operations
+await sandbox.setEnvVars({
+  NODE_ENV: "production",
+  API_KEY: "your-api-key",
+  DATABASE_URL: "postgresql://localhost:5432/mydb"
+});
+
+// Now you can run commands - environment variables are available
+const result = await sandbox.exec("echo $NODE_ENV");
+console.log(result.stdout); // "production"
 ```
 
 #### Process Management
