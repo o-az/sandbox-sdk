@@ -4,6 +4,10 @@
 # FROM docker.io/cloudflare/sandbox:0.1.3
 FROM cloudflare/sandbox-test:0.1.3
 
+# On a mac, you might need to actively pick up the
+# arm64 build of the image.
+# FROM --platform=linux/arm64 cloudflare/sandbox-test:0.1.3
+
 EXPOSE 8080
 EXPOSE 3001
 
