@@ -5,5 +5,14 @@
   "main": "index.ts",
   "scripts": {
     "start": "bun run index.ts"
+  },
+  "dependencies": {
+    "@jupyterlab/services": "^7.0.0",
+    "ws": "^8.16.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "@types/uuid": "^9.0.7"
   }
 }
