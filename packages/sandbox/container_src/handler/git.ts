@@ -1,94 +1,42 @@
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import type { GitCheckoutRequest, SessionData } from "../types";
+import type { Session, SessionManager } from "../isolation";
+import type { GitCheckoutRequest } from "../types";
 
-function executeGitCheckout(
-  sessions: Map<string, SessionData>,
+async function executeGitCheckout(
+  sessionManager: SessionManager,
+  sessionId: string | undefined,
   repoUrl: string,
   branch: string,
-  targetDir: string,
-  sessionId?: string
+  targetDir: string
 ): Promise<{
   success: boolean;
   stdout: string;
   stderr: string;
   exitCode: number;
 }> {
-  return new Promise((resolve, reject) => {
-    // First, clone the repository
-    const cloneChild = spawn(
-      "git",
-      ["clone", "-b", branch, repoUrl, targetDir],
-      {
-        shell: true,
-        stdio: ["pipe", "pipe", "pipe"],
-      }
-    );
-
-    // Store the process reference for cleanup if sessionId is provided
-    if (sessionId && sessions.has(sessionId)) {
-      const session = sessions.get(sessionId)!;
-      session.activeProcess = cloneChild;
+  // Execute git clone through the session to respect working directory
+  const command = `git clone -b ${branch} ${repoUrl} ${targetDir}`;
+  
+  // Use specific session if provided, otherwise use default session
+  let session: Session | undefined;
+  
+  if (sessionId) {
+    session = sessionManager.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session '${sessionId}' not found`);
     }
-
-    let stdout = "";
-    let stderr = "";
-
-    cloneChild.stdout?.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    cloneChild.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    cloneChild.on("close", (code) => {
-      // Clear the active process reference
-      if (sessionId && sessions.has(sessionId)) {
-        const session = sessions.get(sessionId)!;
-        session.activeProcess = null;
-      }
-
-      if (code === 0) {
-        console.log(
-          `[Server] Repository cloned successfully: ${repoUrl} to ${targetDir}`
-        );
-        resolve({
-          exitCode: code || 0,
-          stderr,
-          stdout,
-          success: true,
-        });
-      } else {
-        console.error(
-          `[Server] Failed to clone repository: ${repoUrl}, Exit code: ${code}`
-        );
-        resolve({
-          exitCode: code || 1,
-          stderr,
-          stdout,
-          success: false,
-        });
-      }
-    });
-
-    cloneChild.on("error", (error) => {
-      // Clear the active process reference
-      if (sessionId && sessions.has(sessionId)) {
-        const session = sessions.get(sessionId)!;
-        session.activeProcess = null;
-      }
-
-      console.error(`[Server] Error cloning repository: ${repoUrl}`, error);
-      reject(error);
-    });
-  });
+  } else {
+    // Use the centralized method to get or create default session
+    session = await sessionManager.getOrCreateDefaultSession();
+  }
+  
+  return session.exec(command);
 }
 
 export async function handleGitCheckoutRequest(
-  sessions: Map<string, SessionData>,
   req: Request,
-  corsHeaders: Record<string, string>
+  corsHeaders: Record<string, string>,
+  sessionManager: SessionManager
 ): Promise<Response> {
   try {
     const body = (await req.json()) as GitCheckoutRequest;
@@ -133,15 +81,15 @@ export async function handleGitCheckoutRequest(
       `repo_${Date.now()}_${randomBytes(6).toString('hex')}`;
 
     console.log(
-      `[Server] Checking out repository: ${repoUrl} to ${checkoutDir}`
+      `[Server] Checking out repository: ${repoUrl} to ${checkoutDir}${sessionId ? ` in session: ${sessionId}` : ''}`
     );
 
     const result = await executeGitCheckout(
-      sessions,
+      sessionManager,
+      sessionId,
       repoUrl,
       branch,
-      checkoutDir,
-      sessionId
+      checkoutDir
     );
 
     return new Response(

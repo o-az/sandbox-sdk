@@ -2,11 +2,6 @@
 
 export interface BaseExecOptions {
   /**
-   * Session ID for grouping related commands
-   */
-  sessionId?: string;
-
-  /**
    * Maximum execution time in milliseconds
    */
   timeout?: number;
@@ -90,11 +85,6 @@ export interface ExecResult {
    * ISO timestamp when command started
    */
   timestamp: string;
-
-  /**
-   * Session ID if provided
-   */
-  sessionId?: string;
 }
 
 // Background Process Types
@@ -178,11 +168,6 @@ export interface Process {
   readonly exitCode?: number;
 
   /**
-   * Session ID if provided
-   */
-  readonly sessionId?: string;
-
-  /**
    * Kill the process
    */
   kill(signal?: string): Promise<void>;
@@ -208,7 +193,6 @@ export interface ExecEvent {
   exitCode?: number;
   result?: ExecResult;
   error?: string; // Changed to string for serialization
-  sessionId?: string;
 }
 
 export interface LogEvent {
@@ -216,7 +200,6 @@ export interface LogEvent {
   timestamp: string;
   data: string;
   processId: string;
-  sessionId?: string;
   exitCode?: number; // For 'exit' events
 }
 
@@ -272,10 +255,8 @@ export interface ProcessRecord {
   startTime: Date;
   endTime?: Date;
   exitCode?: number;
-  sessionId?: string;
 
   // Internal fields
-  childProcess?: any;  // Node.js ChildProcess
   stdout: string;      // Accumulated output (ephemeral)
   stderr: string;      // Accumulated output (ephemeral)
 
@@ -290,7 +271,6 @@ export interface StartProcessRequest {
   command: string;
   options?: {
     processId?: string;
-    sessionId?: string;
     timeout?: number;
     env?: Record<string, string>;
     cwd?: string;
@@ -304,9 +284,11 @@ export interface StartProcessResponse {
     id: string;
     pid?: number;
     command: string;
-      status: ProcessStatus;
+    status: ProcessStatus;
     startTime: string;
-    sessionId?: string;
+    endTime?: string | null;
+    exitCode?: number | null;
+    sessionId: string;
   };
 }
 
@@ -319,7 +301,6 @@ export interface ListProcessesResponse {
     startTime: string;
     endTime?: string;
     exitCode?: number;
-    sessionId?: string;
   }>;
 }
 
@@ -332,7 +313,6 @@ export interface GetProcessResponse {
     startTime: string;
     endTime?: string;
     exitCode?: number;
-    sessionId?: string;
   } | null;
 }
 
@@ -396,6 +376,17 @@ export interface ISandbox {
   runCodeStream(code: string, options?: RunCodeOptions): Promise<ReadableStream>;
   listCodeContexts(): Promise<CodeContext[]>;
   deleteCodeContext(contextId: string): Promise<void>;
+}
+
+// Execution session returned by createSession()
+// Sessions are full-featured sandbox objects with scoped execution context
+// Inherits all ISandbox methods except createSession (sessions can't create sub-sessions),
+// and setSandboxName (sessions inherit sandbox name).
+export interface ExecutionSession extends Omit<ISandbox, 'createSession' | 'setSandboxName'> {
+  /**
+   * Session ID
+   */
+  id: string;
 }
 
 // API Response Types

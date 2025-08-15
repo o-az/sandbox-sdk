@@ -1,9 +1,5 @@
-import { randomBytes } from "node:crypto";
 import { serve } from "bun";
-import {
-  handleExecuteRequest,
-  handleStreamingExecuteRequest,
-} from "./handler/exec";
+import { handleExecuteRequest, handleStreamingExecuteRequest } from "./handler/exec";
 import {
   handleDeleteFileRequest,
   handleListFilesRequest,
@@ -29,37 +25,52 @@ import {
   handleStartProcessRequest,
   handleStreamProcessLogsRequest,
 } from "./handler/process";
+import { handleCreateSession, handleListSessions } from "./handler/session";
+import { hasNamespaceSupport, SessionManager } from "./isolation";
 import type { CreateContextRequest } from "./jupyter-server";
 import { JupyterNotReadyError, JupyterService } from "./jupyter-service";
-import type { ProcessRecord, SessionData } from "./types";
-
-// In-memory session storage (in production, you'd want to use a proper database)
-const sessions = new Map<string, SessionData>();
 
 // In-memory storage for exposed ports
 const exposedPorts = new Map<number, { name?: string; exposedAt: Date }>();
 
-// In-memory process storage - cleared on container restart
-const processes = new Map<string, ProcessRecord>();
+// Check isolation capabilities on startup
+const isolationAvailable = hasNamespaceSupport();
+console.log(
+  `[Container] Process isolation: ${
+    isolationAvailable
+      ? "ENABLED (production mode)"
+      : "DISABLED (development mode)"
+  }`
+);
 
-// Generate a unique session ID using cryptographically secure randomness
-function generateSessionId(): string {
-  return `session_${Date.now()}_${randomBytes(6).toString("hex")}`;
-}
+// Session manager for secure execution with isolation
+const sessionManager = new SessionManager();
 
-// Clean up old sessions (older than 1 hour)
-function cleanupOldSessions() {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  for (const [sessionId, session] of sessions.entries()) {
-    if (session.createdAt < oneHourAgo && !session.activeProcess) {
-      sessions.delete(sessionId);
-      console.log(`[Server] Cleaned up old session: ${sessionId}`);
-    }
-  }
-}
+// Graceful shutdown handler
+const SHUTDOWN_GRACE_PERIOD_MS = 5000; // Grace period for cleanup (5 seconds for proper async cleanup)
 
-// Run cleanup every 10 minutes
-setInterval(cleanupOldSessions, 10 * 60 * 1000);
+process.on("SIGTERM", async () => {
+  console.log("[Container] SIGTERM received, cleaning up sessions...");
+  await sessionManager.destroyAll();
+  setTimeout(() => {
+    process.exit(0);
+  }, SHUTDOWN_GRACE_PERIOD_MS);
+});
+
+process.on("SIGINT", async () => {
+  console.log("[Container] SIGINT received, cleaning up sessions...");
+  await sessionManager.destroyAll();
+  setTimeout(() => {
+    process.exit(0);
+  }, SHUTDOWN_GRACE_PERIOD_MS);
+});
+
+// Cleanup on uncaught exceptions (log but still exit)
+process.on("uncaughtException", async (error) => {
+  console.error("[Container] Uncaught exception:", error);
+  await sessionManager.destroyAll();
+  process.exit(1);
+});
 
 // Initialize Jupyter service with graceful degradation
 const jupyterService = new JupyterService();
@@ -118,67 +129,25 @@ const server = serve({
 
         case "/api/session/create":
           if (req.method === "POST") {
-            const sessionId = generateSessionId();
-            const sessionData: SessionData = {
-              activeProcess: null,
-              createdAt: new Date(),
-              sessionId,
-            };
-            sessions.set(sessionId, sessionData);
-
-            console.log(`[Server] Created new session: ${sessionId}`);
-
-            return new Response(
-              JSON.stringify({
-                message: "Session created successfully",
-                sessionId,
-                timestamp: new Date().toISOString(),
-              }),
-              {
-                headers: {
-                  "Content-Type": "application/json",
-                  ...corsHeaders,
-                },
-              }
-            );
+            return handleCreateSession(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/session/list":
           if (req.method === "GET") {
-            const sessionList = Array.from(sessions.values()).map(
-              (session) => ({
-                createdAt: session.createdAt.toISOString(),
-                hasActiveProcess: !!session.activeProcess,
-                sessionId: session.sessionId,
-              })
-            );
-
-            return new Response(
-              JSON.stringify({
-                count: sessionList.length,
-                sessions: sessionList,
-                timestamp: new Date().toISOString(),
-              }),
-              {
-                headers: {
-                  "Content-Type": "application/json",
-                  ...corsHeaders,
-                },
-              }
-            );
+            return handleListSessions(corsHeaders, sessionManager);
           }
           break;
 
         case "/api/execute":
           if (req.method === "POST") {
-            return handleExecuteRequest(sessions, req, corsHeaders);
+            return handleExecuteRequest(req, corsHeaders, sessionManager);
           }
           break;
-
+  
         case "/api/execute/stream":
           if (req.method === "POST") {
-            return handleStreamingExecuteRequest(sessions, req, corsHeaders);
+            return handleStreamingExecuteRequest(req, sessionManager, corsHeaders);
           }
           break;
 
@@ -206,83 +175,51 @@ const server = serve({
           }
           break;
 
-        case "/api/commands":
-          if (req.method === "GET") {
-            return new Response(
-              JSON.stringify({
-                availableCommands: [
-                  "ls",
-                  "pwd",
-                  "echo",
-                  "cat",
-                  "grep",
-                  "find",
-                  "whoami",
-                  "date",
-                  "uptime",
-                  "ps",
-                  "top",
-                  "df",
-                  "du",
-                  "free",
-                ],
-                timestamp: new Date().toISOString(),
-              }),
-              {
-                headers: {
-                  "Content-Type": "application/json",
-                  ...corsHeaders,
-                },
-              }
-            );
-          }
-          break;
-
         case "/api/git/checkout":
           if (req.method === "POST") {
-            return handleGitCheckoutRequest(sessions, req, corsHeaders);
+            return handleGitCheckoutRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/mkdir":
           if (req.method === "POST") {
-            return handleMkdirRequest(sessions, req, corsHeaders);
+            return handleMkdirRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/write":
           if (req.method === "POST") {
-            return handleWriteFileRequest(req, corsHeaders);
+            return handleWriteFileRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/read":
           if (req.method === "POST") {
-            return handleReadFileRequest(req, corsHeaders);
+            return handleReadFileRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/delete":
           if (req.method === "POST") {
-            return handleDeleteFileRequest(req, corsHeaders);
+            return handleDeleteFileRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/rename":
           if (req.method === "POST") {
-            return handleRenameFileRequest(req, corsHeaders);
+            return handleRenameFileRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/move":
           if (req.method === "POST") {
-            return handleMoveFileRequest(req, corsHeaders);
+            return handleMoveFileRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/list-files":
           if (req.method === "POST") {
-            return handleListFilesRequest(req, corsHeaders);
+            return handleListFilesRequest(req, corsHeaders, sessionManager);
           }
           break;
 
@@ -306,23 +243,26 @@ const server = serve({
 
         case "/api/process/start":
           if (req.method === "POST") {
-            return handleStartProcessRequest(processes, req, corsHeaders);
+            return handleStartProcessRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/process/list":
           if (req.method === "GET") {
-            return handleListProcessesRequest(processes, req, corsHeaders);
+            return handleListProcessesRequest(req, corsHeaders, sessionManager);
           }
           break;
 
         case "/api/process/kill-all":
           if (req.method === "DELETE") {
-            return handleKillAllProcessesRequest(processes, req, corsHeaders);
+            return handleKillAllProcessesRequest(
+              req,
+              corsHeaders,
+              sessionManager
+            );
           }
           break;
 
-        // Code interpreter endpoints
         case "/api/contexts":
           if (req.method === "POST") {
             try {
@@ -345,7 +285,6 @@ const server = serve({
               );
             } catch (error) {
               if (error instanceof JupyterNotReadyError) {
-                // This happens when request times out waiting for Jupyter
                 console.log(
                   `[Container] Request timed out waiting for Jupyter (${error.progress}% complete)`
                 );
@@ -563,31 +502,31 @@ const server = serve({
 
               if (!action && req.method === "GET") {
                 return handleGetProcessRequest(
-                  processes,
                   req,
                   corsHeaders,
-                  processId
+                  processId,
+                  sessionManager
                 );
               } else if (!action && req.method === "DELETE") {
                 return handleKillProcessRequest(
-                  processes,
                   req,
                   corsHeaders,
-                  processId
+                  processId,
+                  sessionManager
                 );
               } else if (action === "logs" && req.method === "GET") {
                 return handleGetProcessLogsRequest(
-                  processes,
                   req,
                   corsHeaders,
-                  processId
+                  processId,
+                  sessionManager
                 );
               } else if (action === "stream" && req.method === "GET") {
                 return handleStreamProcessLogsRequest(
-                  processes,
                   req,
                   corsHeaders,
-                  processId
+                  processId,
+                  sessionManager
                 );
               }
             }
@@ -660,4 +599,3 @@ console.log(
   `   POST /api/execute/code - Execute code in a context (streaming)`
 );
 console.log(`   GET  /api/ping - Health check`);
-console.log(`   GET  /api/commands - List available commands`);

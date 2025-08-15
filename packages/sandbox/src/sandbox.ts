@@ -20,6 +20,7 @@ import type {
   ExecOptions,
   ExecResult,
   ExecuteResponse,
+  ExecutionSession,
   ISandbox,
   Process,
   ProcessOptions,
@@ -43,6 +44,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   client: JupyterClient;
   private sandboxName: string | null = null;
   private codeInterpreter: CodeInterpreter;
+  private defaultSession: ExecutionSession | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -88,6 +90,11 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   async setEnvVars(envVars: Record<string, string>): Promise<void> {
     this.envVars = { ...this.envVars, ...envVars };
     console.log(`[Sandbox] Updated environment variables`);
+    
+    // If we have a default session, update its environment too
+    if (this.defaultSession) {
+      await this.defaultSession.setEnvVars(envVars);
+    }
   }
 
   override onStart() {
@@ -96,9 +103,6 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
 
   override onStop() {
     console.log("Sandbox successfully shut down");
-    if (this.client) {
-      this.client.clearSession();
-    }
   }
 
   override onError(error: unknown) {
@@ -136,378 +140,95 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     return 3000;
   }
 
-  // Enhanced exec method - always returns ExecResult with optional streaming
-  // This replaces the old exec method to match ISandbox interface
+  // Helper to ensure default session is initialized
+  private async ensureDefaultSession(): Promise<ExecutionSession> {
+    if (!this.defaultSession) {
+      const sessionId = `sandbox-${this.sandboxName || 'default'}`;
+      this.defaultSession = await this.createSession({
+        id: sessionId,
+        env: this.envVars || {},
+        cwd: '/workspace',
+        isolation: true
+      });
+      console.log(`[Sandbox] Default session initialized: ${sessionId}`);
+    }
+    return this.defaultSession;
+  }
+
+
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
-    const startTime = Date.now();
-    const timestamp = new Date().toISOString();
-
-    // Handle timeout
-    let timeoutId: NodeJS.Timeout | undefined;
-
-    try {
-      // Handle cancellation
-      if (options?.signal?.aborted) {
-        throw new Error("Operation was aborted");
-      }
-
-      let result: ExecResult;
-
-      if (options?.stream && options?.onOutput) {
-        // Streaming with callbacks - we need to collect the final result
-        result = await this.executeWithStreaming(
-          command,
-          options,
-          startTime,
-          timestamp
-        );
-      } else {
-        // Regular execution
-        const response = await this.client.execute(command, {
-          sessionId: options?.sessionId,
-          cwd: options?.cwd,
-          env: options?.env,
-        });
-
-        const duration = Date.now() - startTime;
-        result = this.mapExecuteResponseToExecResult(
-          response,
-          duration,
-          options?.sessionId
-        );
-      }
-
-      // Call completion callback if provided
-      if (options?.onComplete) {
-        options.onComplete(result);
-      }
-
-      return result;
-    } catch (error) {
-      if (options?.onError && error instanceof Error) {
-        options.onError(error);
-      }
-      throw error;
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    }
+    const session = await this.ensureDefaultSession();
+    return session.exec(command, options);
   }
 
-  private async executeWithStreaming(
-    command: string,
-    options: ExecOptions,
-    startTime: number,
-    timestamp: string
-  ): Promise<ExecResult> {
-    let stdout = "";
-    let stderr = "";
-
-    try {
-      const stream = await this.client.executeCommandStream(
-        command,
-        options.sessionId
-      );
-
-      for await (const event of parseSSEStream<ExecEvent>(stream)) {
-        // Check for cancellation
-        if (options.signal?.aborted) {
-          throw new Error("Operation was aborted");
-        }
-
-        switch (event.type) {
-          case "stdout":
-          case "stderr":
-            if (event.data) {
-              // Update accumulated output
-              if (event.type === "stdout") stdout += event.data;
-              if (event.type === "stderr") stderr += event.data;
-
-              // Call user's callback
-              if (options.onOutput) {
-                options.onOutput(event.type, event.data);
-              }
-            }
-            break;
-
-          case "complete": {
-            // Use result from complete event if available
-            const duration = Date.now() - startTime;
-            return (
-              event.result || {
-                success: event.exitCode === 0,
-                exitCode: event.exitCode || 0,
-                stdout,
-                stderr,
-                command,
-                duration,
-                timestamp,
-                sessionId: options.sessionId,
-              }
-            );
-          }
-
-          case "error":
-            throw new Error(event.error || "Command execution failed");
-        }
-      }
-
-      // If we get here without a complete event, something went wrong
-      throw new Error("Stream ended without completion event");
-    } catch (error) {
-      if (options.signal?.aborted) {
-        throw new Error("Operation was aborted");
-      }
-      throw error;
-    }
-  }
-
-  private mapExecuteResponseToExecResult(
-    response: ExecuteResponse,
-    duration: number,
-    sessionId?: string
-  ): ExecResult {
-    return {
-      success: response.success,
-      exitCode: response.exitCode,
-      stdout: response.stdout,
-      stderr: response.stderr,
-      command: response.command,
-      duration,
-      timestamp: response.timestamp,
-      sessionId,
-    };
-  }
-
-  // Background process management
   async startProcess(
     command: string,
     options?: ProcessOptions
   ): Promise<Process> {
-    // Use the new HttpClient method to start the process
-    try {
-      const response = await this.client.startProcess(command, {
-        processId: options?.processId,
-        sessionId: options?.sessionId,
-        timeout: options?.timeout,
-        env: options?.env,
-        cwd: options?.cwd,
-        encoding: options?.encoding,
-        autoCleanup: options?.autoCleanup,
-      });
-
-      const process = response.process;
-      const processObj: Process = {
-        id: process.id,
-        pid: process.pid,
-        command: process.command,
-        status: process.status as ProcessStatus,
-        startTime: new Date(process.startTime),
-        endTime: undefined,
-        exitCode: undefined,
-        sessionId: process.sessionId,
-
-        async kill(): Promise<void> {
-          throw new Error("Method will be replaced");
-        },
-        async getStatus(): Promise<ProcessStatus> {
-          throw new Error("Method will be replaced");
-        },
-        async getLogs(): Promise<{ stdout: string; stderr: string }> {
-          throw new Error("Method will be replaced");
-        },
-      };
-
-      // Bind context properly
-      processObj.kill = async (signal?: string) => {
-        await this.killProcess(process.id, signal);
-      };
-
-      processObj.getStatus = async () => {
-        const current = await this.getProcess(process.id);
-        return current?.status || "error";
-      };
-
-      processObj.getLogs = async () => {
-        const logs = await this.getProcessLogs(process.id);
-        return { stdout: logs.stdout, stderr: logs.stderr };
-      };
-
-      // Call onStart callback if provided
-      if (options?.onStart) {
-        options.onStart(processObj);
-      }
-
-      return processObj;
-    } catch (error) {
-      if (options?.onError && error instanceof Error) {
-        options.onError(error);
-      }
-
-      throw error;
-    }
+    const session = await this.ensureDefaultSession();
+    return session.startProcess(command, options);
   }
 
   async listProcesses(): Promise<Process[]> {
-    const response = await this.client.listProcesses();
-
-    return response.processes.map((processData) => ({
-      id: processData.id,
-      pid: processData.pid,
-      command: processData.command,
-      status: processData.status,
-      startTime: new Date(processData.startTime),
-      endTime: processData.endTime ? new Date(processData.endTime) : undefined,
-      exitCode: processData.exitCode,
-      sessionId: processData.sessionId,
-
-      kill: async (signal?: string) => {
-        await this.killProcess(processData.id, signal);
-      },
-
-      getStatus: async () => {
-        const current = await this.getProcess(processData.id);
-        return current?.status || "error";
-      },
-
-      getLogs: async () => {
-        const logs = await this.getProcessLogs(processData.id);
-        return { stdout: logs.stdout, stderr: logs.stderr };
-      },
-    }));
+    const session = await this.ensureDefaultSession();
+    return session.listProcesses();
   }
 
   async getProcess(id: string): Promise<Process | null> {
-    const response = await this.client.getProcess(id);
-    if (!response.process) {
-      return null;
-    }
-
-    const processData = response.process;
-    return {
-      id: processData.id,
-      pid: processData.pid,
-      command: processData.command,
-      status: processData.status,
-      startTime: new Date(processData.startTime),
-      endTime: processData.endTime ? new Date(processData.endTime) : undefined,
-      exitCode: processData.exitCode,
-      sessionId: processData.sessionId,
-
-      kill: async (signal?: string) => {
-        await this.killProcess(processData.id, signal);
-      },
-
-      getStatus: async () => {
-        const current = await this.getProcess(processData.id);
-        return current?.status || "error";
-      },
-
-      getLogs: async () => {
-        const logs = await this.getProcessLogs(processData.id);
-        return { stdout: logs.stdout, stderr: logs.stderr };
-      },
-    };
+    const session = await this.ensureDefaultSession();
+    return session.getProcess(id);
   }
 
-  async killProcess(id: string, _signal?: string): Promise<void> {
-    try {
-      // Note: signal parameter is not currently supported by the HttpClient implementation
-      await this.client.killProcess(id);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("Process not found")
-      ) {
-        throw new ProcessNotFoundError(id);
-      }
-      throw new SandboxError(
-        `Failed to kill process ${id}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-        "KILL_PROCESS_FAILED"
-      );
-    }
+  async killProcess(id: string, signal?: string): Promise<void> {
+    const session = await this.ensureDefaultSession();
+    return session.killProcess(id, signal);
   }
 
   async killAllProcesses(): Promise<number> {
-    const response = await this.client.killAllProcesses();
-    return response.killedCount;
+    const session = await this.ensureDefaultSession();
+    return session.killAllProcesses();
   }
 
   async cleanupCompletedProcesses(): Promise<number> {
-    // For now, this would need to be implemented as a container endpoint
-    // as we no longer maintain local process storage
-    // We'll return 0 as a placeholder until the container endpoint is added
-    return 0;
+    const session = await this.ensureDefaultSession();
+    return session.cleanupCompletedProcesses();
   }
 
   async getProcessLogs(
     id: string
   ): Promise<{ stdout: string; stderr: string }> {
-    try {
-      const response = await this.client.getProcessLogs(id);
-      return {
-        stdout: response.stdout,
-        stderr: response.stderr,
-      };
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("Process not found")
-      ) {
-        throw new ProcessNotFoundError(id);
-      }
-      throw error;
-    }
+    const session = await this.ensureDefaultSession();
+    return session.getProcessLogs(id);
   }
 
-  // Streaming methods - return ReadableStream for RPC compatibility
+  // Streaming methods - delegates to default session
   async execStream(
     command: string,
     options?: StreamOptions
   ): Promise<ReadableStream<Uint8Array>> {
-    // Check for cancellation
-    if (options?.signal?.aborted) {
-      throw new Error("Operation was aborted");
-    }
-
-    // Get the stream from HttpClient (need to add this method)
-    const stream = await this.client.executeCommandStream(
-      command,
-      options?.sessionId
-    );
-
-    // Return the ReadableStream directly - can be converted to AsyncIterable by consumers
-    return stream;
+    const session = await this.ensureDefaultSession();
+    return session.execStream(command, options);
   }
 
   async streamProcessLogs(
     processId: string,
     options?: { signal?: AbortSignal }
   ): Promise<ReadableStream<Uint8Array>> {
-    // Check for cancellation
-    if (options?.signal?.aborted) {
-      throw new Error("Operation was aborted");
-    }
-
-    // Get the stream from HttpClient
-    const stream = await this.client.streamProcessLogs(processId);
-
-    // Return the ReadableStream directly - can be converted to AsyncIterable by consumers
-    return stream;
+    const session = await this.ensureDefaultSession();
+    return session.streamProcessLogs(processId, options);
   }
 
   async gitCheckout(
     repoUrl: string,
     options: { branch?: string; targetDir?: string }
   ) {
-    return this.client.gitCheckout(repoUrl, options.branch, options.targetDir);
+    const session = await this.ensureDefaultSession();
+    return session.gitCheckout(repoUrl, options);
   }
 
   async mkdir(path: string, options: { recursive?: boolean } = {}) {
-    return this.client.mkdir(path, options.recursive);
+    const session = await this.ensureDefaultSession();
+    return session.mkdir(path, options);
   }
 
   async writeFile(
@@ -515,23 +236,28 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     content: string,
     options: { encoding?: string } = {}
   ) {
-    return this.client.writeFile(path, content, options.encoding);
+    const session = await this.ensureDefaultSession();
+    return session.writeFile(path, content, options);
   }
 
   async deleteFile(path: string) {
-    return this.client.deleteFile(path);
+    const session = await this.ensureDefaultSession();
+    return session.deleteFile(path);
   }
 
   async renameFile(oldPath: string, newPath: string) {
-    return this.client.renameFile(oldPath, newPath);
+    const session = await this.ensureDefaultSession();
+    return session.renameFile(oldPath, newPath);
   }
 
   async moveFile(sourcePath: string, destinationPath: string) {
-    return this.client.moveFile(sourcePath, destinationPath);
+    const session = await this.ensureDefaultSession();
+    return session.moveFile(sourcePath, destinationPath);
   }
 
   async readFile(path: string, options: { encoding?: string } = {}) {
-    return this.client.readFile(path, options.encoding);
+    const session = await this.ensureDefaultSession();
+    return session.readFile(path, options);
   }
 
   async listFiles(
@@ -541,7 +267,8 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       includeHidden?: boolean;
     } = {}
   ) {
-    return this.client.listFiles(path, options);
+    const session = await this.ensureDefaultSession();
+    return session.listFiles(path, options);
   }
 
   async exposePort(port: number, options: { name?: string; hostname: string }) {
@@ -784,5 +511,233 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
    */
   async deleteCodeContext(contextId: string): Promise<void> {
     return this.codeInterpreter.deleteCodeContext(contextId);
+  }
+
+  // ============================================================================
+  // Session Management (Simple Isolation)
+  // ============================================================================
+
+  /**
+   * Create a new execution session with isolation
+   * Returns a session object with exec() method
+   */
+
+  async createSession(options: {
+    id?: string;
+    env?: Record<string, string>;
+    cwd?: string;
+    isolation?: boolean;
+  }): Promise<ExecutionSession> {
+    const sessionId = options.id || `session-${Date.now()}`;
+    
+    await this.client.createSession({
+      id: sessionId,
+      env: options.env,
+      cwd: options.cwd,
+      isolation: options.isolation
+    });
+    // Return comprehensive ExecutionSession object that implements all ISandbox methods
+    return {
+      id: sessionId,
+      
+      // Command execution - clean method names
+      exec: async (command: string, options?: ExecOptions) => {
+        const result = await this.client.exec(sessionId, command);
+        return {
+          ...result,
+          command,
+          duration: 0,
+          timestamp: new Date().toISOString()
+        };
+      },
+      
+      execStream: async (command: string, options?: StreamOptions) => {
+        return await this.client.execStream(sessionId, command);
+      },
+      
+      // Process management - route to session-aware methods
+      startProcess: async (command: string, options?: ProcessOptions) => {
+        // Use session-specific process management
+        const response = await this.client.startProcess(command, sessionId, {
+          processId: options?.processId,
+          timeout: options?.timeout,
+          env: options?.env,
+          cwd: options?.cwd,
+          encoding: options?.encoding,
+          autoCleanup: options?.autoCleanup,
+        });
+        
+        // Convert response to Process object with bound methods
+        const process = response.process;
+        return {
+          id: process.id,
+          pid: process.pid,
+          command: process.command,
+          status: process.status as ProcessStatus,
+          startTime: new Date(process.startTime),
+          endTime: process.endTime ? new Date(process.endTime) : undefined,
+          exitCode: process.exitCode ?? undefined,
+          kill: async (signal?: string) => {
+            await this.client.killProcess(process.id);
+          },
+          getStatus: async () => {
+            const resp = await this.client.getProcess(process.id);
+            return resp.process?.status as ProcessStatus || "error";
+          },
+          getLogs: async () => {
+            return await this.client.getProcessLogs(process.id);
+          },
+        };
+      },
+      
+      listProcesses: async () => {
+        // Get processes for this specific session
+        const response = await this.client.listProcesses(sessionId);
+        
+        // Convert to Process objects with bound methods
+        return response.processes.map(p => ({
+          id: p.id,
+          pid: p.pid,
+          command: p.command,
+          status: p.status as ProcessStatus,
+          startTime: new Date(p.startTime),
+          endTime: p.endTime ? new Date(p.endTime) : undefined,
+          exitCode: p.exitCode ?? undefined,
+          kill: async (signal?: string) => {
+            await this.client.killProcess(p.id);
+          },
+          getStatus: async () => {
+            const processResp = await this.client.getProcess(p.id);
+            return processResp.process?.status as ProcessStatus || "error";
+          },
+          getLogs: async () => {
+            return this.client.getProcessLogs(p.id);
+          },
+        }));
+      },
+      
+      getProcess: async (id: string) => {
+        const response = await this.client.getProcess(id);
+        if (!response.process) return null;
+        
+        const p = response.process;
+        return {
+          id: p.id,
+          pid: p.pid,
+          command: p.command,
+          status: p.status as ProcessStatus,
+          startTime: new Date(p.startTime),
+          endTime: p.endTime ? new Date(p.endTime) : undefined,
+          exitCode: p.exitCode ?? undefined,
+          kill: async (signal?: string) => {
+            await this.client.killProcess(p.id);
+          },
+          getStatus: async () => {
+            const processResp = await this.client.getProcess(p.id);
+            return processResp.process?.status as ProcessStatus || "error";
+          },
+          getLogs: async () => {
+            return this.client.getProcessLogs(p.id);
+          },
+        };
+      },
+      
+      killProcess: async (id: string, signal?: string) => {
+        await this.client.killProcess(id);
+      },
+      
+      killAllProcesses: async () => {
+        // Kill all processes for this specific session
+        const response = await this.client.killAllProcesses(sessionId);
+        return response.killedCount;
+      },
+      
+      streamProcessLogs: async (processId: string, options?: { signal?: AbortSignal }) => {
+        return await this.client.streamProcessLogs(processId, options);
+      },
+      
+      getProcessLogs: async (id: string) => {
+        return await this.client.getProcessLogs(id);
+      },
+      
+      cleanupCompletedProcesses: async () => {
+        // This would need a new endpoint to cleanup processes for a specific session
+        // For now, return 0 as no cleanup is performed
+        return 0;
+      },
+      
+      // File operations - clean method names (no "InSession" suffix)
+      writeFile: async (path: string, content: string, options?: { encoding?: string }) => {
+        return await this.client.writeFile(path, content, options?.encoding, sessionId);
+      },
+      
+      readFile: async (path: string, options?: { encoding?: string }) => {
+        return await this.client.readFile(path, options?.encoding, sessionId);
+      },
+      
+      mkdir: async (path: string, options?: { recursive?: boolean }) => {
+        return await this.client.mkdir(path, options?.recursive, sessionId);
+      },
+      
+      deleteFile: async (path: string) => {
+        return await this.client.deleteFile(path, sessionId);
+      },
+      
+      renameFile: async (oldPath: string, newPath: string) => {
+        return await this.client.renameFile(oldPath, newPath, sessionId);
+      },
+      
+      moveFile: async (sourcePath: string, destinationPath: string) => {
+        return await this.client.moveFile(sourcePath, destinationPath, sessionId);
+      },
+      
+      listFiles: async (path: string, options?: { recursive?: boolean; includeHidden?: boolean }) => {
+        return await this.client.listFiles(path, sessionId, options);
+      },
+      
+      gitCheckout: async (repoUrl: string, options?: { branch?: string; targetDir?: string }) => {
+        return await this.client.gitCheckout(repoUrl, sessionId, options?.branch, options?.targetDir);
+      },
+      
+      // Port management
+      exposePort: async (port: number, options: { name?: string; hostname: string }) => {
+        return await this.exposePort(port, options);
+      },
+      
+      unexposePort: async (port: number) => {
+        return await this.unexposePort(port);
+      },
+      
+      getExposedPorts: async (hostname: string) => {
+        return await this.getExposedPorts(hostname);
+      },
+      
+      // Environment management
+      setEnvVars: async (envVars: Record<string, string>) => {
+        // TODO: Implement session-specific environment updates
+        console.log(`[Session ${sessionId}] Environment variables update not yet implemented`);
+      },
+      
+      // Code Interpreter API
+      createCodeContext: async (options?: any) => {
+        return await this.createCodeContext(options);
+      },
+      
+      runCode: async (code: string, options?: any) => {
+        return await this.runCode(code, options);
+      },
+      
+      runCodeStream: async (code: string, options?: any) => {
+        return await this.runCodeStream(code, options);
+      },
+      
+      listCodeContexts: async () => {
+        return await this.listCodeContexts();
+      },
+      
+      deleteCodeContext: async (contextId: string) => {
+        return await this.deleteCodeContext(contextId);
+      }
+    };
   }
 }
