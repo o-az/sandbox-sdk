@@ -1,20 +1,31 @@
-// Export API response types
+// biome-ignore-start assist/source/organizeImports: Need separate exports for deprecation warnings to work properly
+/**
+ * @deprecated Use `InterpreterNotReadyError` instead. Will be removed in a future version.
+ */
+export { InterpreterNotReadyError as JupyterNotReadyError } from "./errors";
 
-// Export errors
+/**
+ * @deprecated Use `isInterpreterNotReadyError` instead. Will be removed in a future version.
+ */
+export { isInterpreterNotReadyError as isJupyterNotReadyError } from "./errors";
+// biome-ignore-end assist/source/organizeImports: Need separate exports for deprecation warnings to work properly
+
+// Export API response types
 export {
   CodeExecutionError,
   ContainerNotReadyError,
   ContextNotFoundError,
-  isJupyterNotReadyError,
+  InterpreterNotReadyError,
+  isInterpreterNotReadyError,
   isRetryableError,
   isSandboxError,
-  JupyterNotReadyError,
   parseErrorResponse,
   SandboxError,
   type SandboxErrorResponse,
   SandboxNetworkError,
   ServiceUnavailableError,
 } from "./errors";
+
 // Export code interpreter types
 export type {
   ChartData,
@@ -60,5 +71,5 @@ export type {
   ReadFileResponse,
   RenameFileResponse,
   StreamOptions,
-  WriteFileResponse
+  WriteFileResponse,
 } from "./types";
