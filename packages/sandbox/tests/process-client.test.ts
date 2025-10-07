@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   GetProcessLogsResponse,
   GetProcessResponse,
@@ -5,14 +6,14 @@ import type {
   KillProcessResponse,
   ListProcessesResponse,
   StartProcessResponse
-} from '../clients';
-import { ProcessClient } from '../clients/process-client';
+} from '../src/clients';
+import { ProcessClient } from '../src/clients/process-client';
 import {
   CommandNotFoundError,
   ProcessError,
   ProcessNotFoundError,
   SandboxError
-} from '../errors';
+} from '../src/errors';
 
 describe('ProcessClient', () => {
   let client: ProcessClient;

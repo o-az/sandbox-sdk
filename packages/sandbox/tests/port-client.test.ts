@@ -1,11 +1,11 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { 
-  ExposedPortInfo,
   ExposePortResponse, 
   GetExposedPortsResponse,
   UnexposePortResponse 
-} from '../clients';
-import { PortClient } from '../clients/port-client';
-import { 
+} from '../src/clients';
+import { PortClient } from '../src/clients/port-client';
+import {
   InvalidPortError,
   PortAlreadyExposedError,
   PortError,
@@ -13,7 +13,7 @@ import {
   PortNotExposedError,
   SandboxError, 
   ServiceNotRespondingError
-} from '../errors';
+} from '../src/errors';
 
 describe('PortClient', () => {
   let client: PortClient;

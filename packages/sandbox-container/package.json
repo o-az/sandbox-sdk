@@ -11,8 +11,8 @@
     "build": "tsc --project tsconfig.json && npm run build:control-process",
     "build:control-process": "tsc src/control-process.ts src/shell-escape.ts --outDir dist --module commonjs --target es2020 --esModuleInterop --skipLibCheck --moduleResolution node",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "test:watch": "bun test --watch",
+    "test": "bun test tests",
+    "test:watch": "bun test --watch tests",
     "clean": "rm -rf dist *.js *.js.map src/**/*.js src/**/*.js.map"
   },
   "dependencies": {

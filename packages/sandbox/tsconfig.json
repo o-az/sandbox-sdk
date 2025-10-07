@@ -4,10 +4,7 @@
     "baseUrl": ".",
     "types": ["node", "@cloudflare/workers-types"],
     "lib": ["ES2022"],
-    "resolveJsonModule": true,
-    "paths": {
-      "@sandbox-container/*": ["../sandbox-container/src/*"]
-    }
+    "resolveJsonModule": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["tests/**", "node_modules", "dist"]

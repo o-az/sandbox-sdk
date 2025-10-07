@@ -1,4 +1,5 @@
-import { asyncIterableToSSEStream, parseSSEStream, responseToAsyncIterable } from '../sse-parser';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { asyncIterableToSSEStream, parseSSEStream, responseToAsyncIterable } from '../src/sse-parser';
 
 function createMockSSEStream(events: string[]): ReadableStream<Uint8Array> {
   return new ReadableStream({

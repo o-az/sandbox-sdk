@@ -1,6 +1,7 @@
-import type { ExecuteResponse, HttpClientOptions } from '../clients';
-import { CommandClient } from '../clients/command-client';
-import { CommandError, CommandNotFoundError, SandboxError } from '../errors';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ExecuteResponse } from '../src/clients';
+import { CommandClient } from '../src/clients/command-client';
+import { CommandError, CommandNotFoundError, SandboxError } from '../src/errors';
 
 describe('CommandClient', () => {
   let client: CommandClient;

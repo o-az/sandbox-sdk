@@ -6,14 +6,15 @@ import type {
   RenameFileResult,
   WriteFileResult 
 } from '@repo/shared-types';
-import { FileClient } from '../clients/file-client';
-import { 
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FileClient } from '../src/clients/file-client';
+import {
   FileExistsError, 
   FileNotFoundError, 
   FileSystemError,
   PermissionDeniedError, 
   SandboxError 
-} from '../errors';
+} from '../src/errors';
 
 describe('FileClient', () => {
   let client: FileClient;

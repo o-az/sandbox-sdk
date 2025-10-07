@@ -1,12 +1,12 @@
-import type { BaseApiResponse, ErrorResponse, HttpClientOptions } from '../clients';
-import { BaseHttpClient } from '../clients/base-client';
+import type { BaseApiResponse, ErrorResponse, HttpClientOptions } from '../src/clients';
+import { BaseHttpClient } from '../src/clients/base-client';
 import {
   CommandError,
   FileNotFoundError,
   FileSystemError,
   PermissionDeniedError,
   SandboxError
-} from '../errors';
+} from '../src/errors';
 
 interface TestDataResponse extends BaseApiResponse {
   data: string;

@@ -1,15 +1,12 @@
-/**
- * UtilityClient Tests
- */
-
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   CommandsResponse,
   PingResponse
-} from '../clients';
-import { UtilityClient } from '../clients/utility-client';
+} from '../src/clients';
+import { UtilityClient } from '../src/clients/utility-client';
 import {
   SandboxError
-} from '../errors';
+} from '../src/errors';
 
 // Mock data factory for creating test responses
 const mockPingResponse = (overrides: Partial<PingResponse> = {}): PingResponse => ({

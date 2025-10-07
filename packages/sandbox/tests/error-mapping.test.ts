@@ -1,4 +1,5 @@
-import type { ErrorResponse } from '../clients';
+import { describe, expect, it } from 'vitest';
+import type { ErrorResponse } from '../src/clients';
 import {
   CommandError,
   CommandNotFoundError,
@@ -24,7 +25,7 @@ import {
   SandboxError,
   SandboxOperation,
   ServiceNotRespondingError
-} from '../errors';
+} from '../src/errors';
 import {
   isCommandError,
   isFileNotFoundError,
@@ -34,7 +35,7 @@ import {
   isPortError,
   isProcessError,
   mapContainerError,
-} from '../utils/error-mapping';
+} from '../src/utils/error-mapping';
 
 describe('Error Mapping', () => {
   describe('mapContainerError', () => {

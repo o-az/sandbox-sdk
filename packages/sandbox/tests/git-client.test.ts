@@ -1,5 +1,6 @@
-import type { GitCheckoutResponse } from '../clients';
-import { GitClient } from '../clients/git-client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { GitCheckoutResponse } from '../src/clients';
+import { GitClient } from '../src/clients/git-client';
 import {
   GitAuthenticationError,
   GitBranchNotFoundError,
@@ -10,7 +11,7 @@ import {
   GitRepositoryNotFoundError,
   InvalidGitUrlError,
   SandboxError
-} from '../errors';
+} from '../src/errors';
 
 describe('GitClient', () => {
   let client: GitClient;

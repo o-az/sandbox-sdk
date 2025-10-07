@@ -148,7 +148,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
         id: sessionId,
         env: this.envVars || {},
         cwd: '/workspace',
-        isolation: false
+        isolation: true
       });
       
       this.defaultSession = sessionId;

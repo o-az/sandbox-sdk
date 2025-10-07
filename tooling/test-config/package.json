@@ -1,0 +1,24 @@
+{
+  "name": "@repo/test-config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared test configuration for Cloudflare Sandbox SDK",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./base.ts",
+      "types": "./base.ts"
+    },
+    "./workers": {
+      "import": "./workers.ts",
+      "types": "./workers.ts"
+    }
+  },
+  "files": [
+    "base.ts",
+    "workers.ts"
+  ],
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

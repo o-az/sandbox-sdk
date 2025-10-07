@@ -1,6 +1,6 @@
 import type { DurableObjectState } from '@cloudflare/workers-types';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Sandbox } from '../sandbox';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Sandbox } from '../src/sandbox';
 
 // Mock dependencies before imports
 vi.mock('./interpreter', () => ({
