@@ -34,7 +34,6 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      '~': path.resolve(__dirname, 'packages/sandbox/src'),
       '@container': path.resolve(__dirname, 'packages/sandbox-container/src'),
     },
   },

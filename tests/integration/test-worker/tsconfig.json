@@ -1,8 +1,0 @@
-{
-  "extends": "@repo/typescript-config/base.json",
-  "compilerOptions": {
-    "moduleResolution": "bundler",
-    "types": ["@cloudflare/workers-types"]
-  },
-  "include": ["index.ts"]
-}

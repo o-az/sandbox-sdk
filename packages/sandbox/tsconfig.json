@@ -1,11 +1,14 @@
 {
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
+    "baseUrl": ".",
+    "types": ["node", "@cloudflare/workers-types"],
+    "lib": ["ES2022"],
+    "resolveJsonModule": true,
     "paths": {
-      "src/*": ["src/*"],
-      "~/*": ["src/*"],
       "@sandbox-container/*": ["../sandbox-container/src/*"]
     }
   },
-  "exclude": ["node_modules", "dist", "**/*.js", "**/*.js.map", "../sandbox-container/**", "tests/integration/**"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["tests/**", "node_modules", "dist"]
 }

@@ -1,10 +1,10 @@
 {
-  "extends": "@repo/typescript-config/container.json",
+  "extends": "@repo/typescript-config/bun.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
     "paths": {
-      "@sandbox-container/*": ["src/*"],
+      "@sandbox-container/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts"],

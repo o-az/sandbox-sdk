@@ -99,7 +99,7 @@
     }
   },
   "globalDependencies": [
-    "tsconfig.base.json",
+    "tooling/typescript-config/*.json",
     "biome.json"
   ]
 }
