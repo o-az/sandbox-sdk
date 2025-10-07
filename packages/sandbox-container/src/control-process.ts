@@ -266,7 +266,7 @@ function buildExecScript(
 # Execute command with temporary cwd override
 PREV_DIR=$(pwd)
 cd ${safeMsgCwd} || { echo "Failed to change directory to ${safeMsgCwd}" > ${safeErrFile}; echo 1 > ${safeExitFile}; echo "${safeCompletionMarker}:${safeMsgId}"; return; }
-source ${safeCmdFile} > ${safeOutFile} 2> ${safeErrFile}
+(source ${safeCmdFile}) > ${safeOutFile} 2> ${safeErrFile}
 echo $? > ${safeExitFile}
 cd "$PREV_DIR"
 echo "${safeCompletionMarker}:${safeMsgId}"
@@ -275,7 +275,7 @@ echo "${safeCompletionMarker}:${safeMsgId}"
     // Default behavior - execute in current directory (preserves session state)
     return `
 # Execute command in current shell - maintains working directory changes
-source ${safeCmdFile} > ${safeOutFile} 2> ${safeErrFile}
+(source ${safeCmdFile}) > ${safeOutFile} 2> ${safeErrFile}
 echo $? > ${safeExitFile}
 echo "${safeCompletionMarker}:${safeMsgId}"
 `;
