@@ -195,7 +195,7 @@ describe('GitService', () => {
       expect(mockAdapter.execute).toHaveBeenCalledWith(
         'git',
         ['checkout', 'develop'],
-        '/tmp/repo'
+        { cwd: '/tmp/repo' }
       );
     });
 
@@ -246,7 +246,7 @@ describe('GitService', () => {
       expect(mockAdapter.execute).toHaveBeenCalledWith(
         'git',
         ['branch', '--show-current'],
-        '/tmp/repo'
+        { cwd: '/tmp/repo' }
       );
     });
   });
@@ -286,7 +286,7 @@ describe('GitService', () => {
       expect(mockAdapter.execute).toHaveBeenCalledWith(
         'git',
         ['branch', '-a'],
-        '/tmp/repo'
+        { cwd: '/tmp/repo' }
       );
     });
 

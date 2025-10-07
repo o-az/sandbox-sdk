@@ -6,20 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
  * Demonstrates testing handlers with session management functionality.
  */
 
-import type { CreateSessionResponse, HandlerErrorResponse, ListSessionsResponse, Logger, RequestContext, SessionData, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
+import type { CreateSessionResponse, HandlerErrorResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
 import type { SessionHandler } from '@sandbox-container/handlers/session-handler.ts';
-import type { SessionService } from '@sandbox-container/services/session-service.ts';
+import type { SessionManager } from '@sandbox-container/services/session-manager.ts';
+import type { Session } from '@sandbox-container/isolation.ts';
 
 // Mock the dependencies - use partial mock to avoid private property issues
-const mockSessionService = {
+const mockSessionManager = {
   createSession: vi.fn(),
   getSession: vi.fn(),
-  updateSession: vi.fn(),
   deleteSession: vi.fn(),
   listSessions: vi.fn(),
-  cleanupExpiredSessions: vi.fn(),
   destroy: vi.fn(),
-} as SessionService;
+} as SessionManager;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -55,22 +54,16 @@ describe('SessionHandler', () => {
     
     // Import the SessionHandler (dynamic import)
     const { SessionHandler: SessionHandlerClass } = await import('@sandbox-container/handlers/session-handler.ts');
-    sessionHandler = new SessionHandlerClass(mockSessionService, mockLogger);
+    sessionHandler = new SessionHandlerClass(mockSessionManager, mockLogger);
   });
 
   describe('handleCreate - POST /api/session/create', () => {
     it('should create session successfully', async () => {
-      const mockSessionData: SessionData = {
-        id: 'session_1672531200_abc123',
-        sessionId: 'session_1672531200_abc123',
-        activeProcess: null,
-        createdAt: new Date('2023-01-01T00:00:00Z'),
-        expiresAt: new Date('2023-01-01T01:00:00Z'),
-      };
+      const mockSession = {} as Session; // Session object (not SessionData)
 
-      (mockSessionService.createSession as any).mockResolvedValue({
+      (mockSessionManager.createSession as any).mockResolvedValue({
         success: true,
-        data: mockSessionData
+        data: mockSession
       });
 
       const request = new Request('http://localhost:3000/api/session/create', {
@@ -83,15 +76,17 @@ describe('SessionHandler', () => {
       expect(response.status).toBe(200);
       const responseData = await response.json() as CreateSessionResponse;
       expect(responseData.message).toBe('Session created successfully');
-      expect(responseData.sessionId).toBe('session_1672531200_abc123');
+      // Handler generates session ID, so just verify it exists and has correct format
+      expect(responseData.sessionId).toBeDefined();
+      expect(responseData.sessionId).toMatch(/^session_\d+_[a-f0-9]+$/);
       expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called correctly
-      expect(mockSessionService.createSession).toHaveBeenCalled();
+      expect(mockSessionManager.createSession).toHaveBeenCalled();
     });
 
     it('should handle session creation failures', async () => {
-      (mockSessionService.createSession as any).mockResolvedValue({
+      (mockSessionManager.createSession as any).mockResolvedValue({
         success: false,
         error: {
           message: 'Failed to create session',
@@ -115,25 +110,12 @@ describe('SessionHandler', () => {
     });
 
     it('should generate unique session IDs', async () => {
-      const mockSessionData1: SessionData = {
-        id: 'session_1672531200_abc123',
-        sessionId: 'session_1672531200_abc123',
-        activeProcess: null,
-        createdAt: new Date('2023-01-01T00:00:00Z'),
-        expiresAt: new Date('2023-01-01T01:00:00Z'),
-      };
+      const mockSession1 = {} as Session;
+      const mockSession2 = {} as Session;
 
-      const mockSessionData2: SessionData = {
-        id: 'session_1672531260_def456',
-        sessionId: 'session_1672531260_def456',
-        activeProcess: null,
-        createdAt: new Date('2023-01-01T00:01:00Z'),
-        expiresAt: new Date('2023-01-01T01:01:00Z'),
-      };
-
-      (mockSessionService.createSession as any)
-        .mockResolvedValueOnce({ success: true, data: mockSessionData1 })
-        .mockResolvedValueOnce({ success: true, data: mockSessionData2 });
+      (mockSessionManager.createSession as any)
+        .mockResolvedValueOnce({ success: true, data: mockSession1 })
+        .mockResolvedValueOnce({ success: true, data: mockSession2 });
 
       const request1 = new Request('http://localhost:3000/api/session/create', {
         method: 'POST'
@@ -148,43 +130,25 @@ describe('SessionHandler', () => {
       const responseData1 = await response1.json() as CreateSessionResponse;
       const responseData2 = await response2.json() as CreateSessionResponse;
 
+      // Verify both session IDs are generated and unique
+      expect(responseData1.sessionId).toBeDefined();
+      expect(responseData2.sessionId).toBeDefined();
       expect(responseData1.sessionId).not.toBe(responseData2.sessionId);
-      expect(responseData1.sessionId).toBe('session_1672531200_abc123');
-      expect(responseData2.sessionId).toBe('session_1672531260_def456');
+      expect(responseData1.sessionId).toMatch(/^session_\d+_[a-f0-9]+$/);
+      expect(responseData2.sessionId).toMatch(/^session_\d+_[a-f0-9]+$/);
 
-      expect(mockSessionService.createSession).toHaveBeenCalledTimes(2);
+      expect(mockSessionManager.createSession).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('handleList - GET /api/session/list', () => {
     it('should list sessions successfully with active processes', async () => {
-      const mockSessions: SessionData[] = [
-        {
-          id: 'session-1',
-          sessionId: 'session-1',
-          activeProcess: 'proc-123',
-          createdAt: new Date('2023-01-01T00:00:00Z'),
-          expiresAt: new Date('2023-01-01T01:00:00Z'),
-        },
-        {
-          id: 'session-2',
-          sessionId: 'session-2',
-          activeProcess: null,
-          createdAt: new Date('2023-01-01T00:01:00Z'),
-          expiresAt: new Date('2023-01-01T01:01:00Z'),
-        },
-        {
-          id: 'session-3',
-          sessionId: 'session-3',
-          activeProcess: 'proc-456',
-          createdAt: new Date('2023-01-01T00:02:00Z'),
-          expiresAt: new Date('2023-01-01T01:02:00Z'),
-        }
-      ];
+      // SessionManager.listSessions() returns string[] (just session IDs)
+      const mockSessionIds = ['session-1', 'session-2', 'session-3'];
 
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
-        data: mockSessions
+        data: mockSessionIds
       });
 
       const request = new Request('http://localhost:3000/api/session/list', {
@@ -198,31 +162,25 @@ describe('SessionHandler', () => {
       expect(responseData.count).toBe(3);
       expect(responseData.sessions).toHaveLength(3);
 
-      // Verify session data transformation
+      // Verify session data - handler only returns sessionId
       expect(responseData.sessions[0]).toEqual({
-        sessionId: 'session-1',
-        createdAt: '2023-01-01T00:00:00.000Z',
-        hasActiveProcess: true // activeProcess is 'proc-123'
+        sessionId: 'session-1'
       });
       expect(responseData.sessions[1]).toEqual({
-        sessionId: 'session-2',
-        createdAt: '2023-01-01T00:01:00.000Z',
-        hasActiveProcess: false // activeProcess is null
+        sessionId: 'session-2'
       });
       expect(responseData.sessions[2]).toEqual({
-        sessionId: 'session-3',
-        createdAt: '2023-01-01T00:02:00.000Z',
-        hasActiveProcess: true // activeProcess is 'proc-456'
+        sessionId: 'session-3'
       });
 
       expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called correctly
-      expect(mockSessionService.listSessions).toHaveBeenCalled();
+      expect(mockSessionManager.listSessions).toHaveBeenCalled();
     });
 
     it('should return empty list when no sessions exist', async () => {
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
         data: []
       });
@@ -242,33 +200,12 @@ describe('SessionHandler', () => {
     });
 
     it('should handle sessions with various activeProcess values', async () => {
-      const mockSessions: SessionData[] = [
-        {
-          id: 'session-1',
-          sessionId: 'session-1',
-          activeProcess: 'proc-123',
-          createdAt: new Date('2023-01-01T00:00:00Z'),
-          expiresAt: new Date('2023-01-01T01:00:00Z'),
-        },
-        {
-          id: 'session-2',
-          sessionId: 'session-2',
-          activeProcess: null,
-          createdAt: new Date('2023-01-01T00:01:00Z'),
-          expiresAt: new Date('2023-01-01T01:01:00Z'),
-        },
-        {
-          id: 'session-3',
-          sessionId: 'session-3',
-          activeProcess: '',
-          createdAt: new Date('2023-01-01T00:02:00Z'),
-          expiresAt: new Date('2023-01-01T01:02:00Z'),
-        }
-      ];
+      // SessionManager returns string[] - no activeProcess info available
+      const mockSessionIds = ['session-1', 'session-2', 'session-3'];
 
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
-        data: mockSessions
+        data: mockSessionIds
       });
 
       const request = new Request('http://localhost:3000/api/session/list', {
@@ -279,14 +216,14 @@ describe('SessionHandler', () => {
 
       const responseData = await response.json() as ListSessionsResponse;
 
-      // Test truthiness evaluation for hasActiveProcess
-      expect(responseData.sessions[0].hasActiveProcess).toBe(true);  // 'proc-123' is truthy
-      expect(responseData.sessions[1].hasActiveProcess).toBe(false); // null is falsy
-      expect(responseData.sessions[2].hasActiveProcess).toBe(false); // '' is falsy
+      // Handler only returns sessionId, no hasActiveProcess field
+      expect(responseData.sessions[0]).toEqual({ sessionId: 'session-1' });
+      expect(responseData.sessions[1]).toEqual({ sessionId: 'session-2' });
+      expect(responseData.sessions[2]).toEqual({ sessionId: 'session-3' });
     });
 
     it('should handle session listing failures', async () => {
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: false,
         error: {
           message: 'Failed to list sessions',
@@ -308,19 +245,12 @@ describe('SessionHandler', () => {
     });
 
     it('should handle sessions with undefined activeProcess', async () => {
-      const mockSessions: SessionData[] = [
-        {
-          id: 'session-1',
-          sessionId: 'session-1',
-          activeProcess: null,
-          createdAt: new Date('2023-01-01T00:00:00Z'),
-          expiresAt: new Date('2023-01-01T01:00:00Z'),
-        }
-      ];
+      // SessionManager returns string[] - no activeProcess info
+      const mockSessionIds = ['session-1'];
 
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
-        data: mockSessions
+        data: mockSessionIds
       });
 
       const request = new Request('http://localhost:3000/api/session/list', {
@@ -330,7 +260,8 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
 
       const responseData = await response.json() as ListSessionsResponse;
-      expect(responseData.sessions[0].hasActiveProcess).toBe(false); // undefined is falsy
+      // Handler only returns sessionId field
+      expect(responseData.sessions[0]).toEqual({ sessionId: 'session-1' });
     });
   });
 
@@ -347,8 +278,8 @@ describe('SessionHandler', () => {
       expect(responseData.error).toBe('Invalid session endpoint');
 
       // Should not call any service methods
-      expect(mockSessionService.createSession).not.toHaveBeenCalled();
-      expect(mockSessionService.listSessions).not.toHaveBeenCalled();
+      expect(mockSessionManager.createSession).not.toHaveBeenCalled();
+      expect(mockSessionManager.listSessions).not.toHaveBeenCalled();
     });
 
     it('should return 404 for root session path', async () => {
@@ -378,17 +309,11 @@ describe('SessionHandler', () => {
 
   describe('CORS headers', () => {
     it('should include CORS headers in successful create responses', async () => {
-      const mockSessionData: SessionData = {
-        id: 'session-test',
-        sessionId: 'session-test',
-        activeProcess: null,
-        createdAt: new Date(),
-        expiresAt: new Date(),
-      };
+      const mockSession = {} as Session;
 
-      (mockSessionService.createSession as any).mockResolvedValue({
+      (mockSessionManager.createSession as any).mockResolvedValue({
         success: true,
-        data: mockSessionData
+        data: mockSession
       });
 
       const request = new Request('http://localhost:3000/api/session/create', {
@@ -404,7 +329,7 @@ describe('SessionHandler', () => {
     });
 
     it('should include CORS headers in successful list responses', async () => {
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
         data: []
       });
@@ -434,17 +359,11 @@ describe('SessionHandler', () => {
   describe('response format consistency', () => {
     it('should have proper Content-Type header for all responses', async () => {
       // Test create endpoint
-      const mockSessionData: SessionData = {
-        id: 'session-test',
-        sessionId: 'session-test',
-        activeProcess: null,
-        createdAt: new Date(),
-        expiresAt: new Date(),
-      };
+      const mockSession = {} as Session;
 
-      (mockSessionService.createSession as any).mockResolvedValue({
+      (mockSessionManager.createSession as any).mockResolvedValue({
         success: true,
-        data: mockSessionData
+        data: mockSession
       });
 
       const createRequest = new Request('http://localhost:3000/api/session/create', {
@@ -455,7 +374,7 @@ describe('SessionHandler', () => {
       expect(createResponse.headers.get('Content-Type')).toBe('application/json');
 
       // Test list endpoint
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
         data: []
       });
@@ -469,17 +388,11 @@ describe('SessionHandler', () => {
     });
 
     it('should return consistent timestamp format', async () => {
-      const mockSessionData: SessionData = {
-        id: 'session-test',
-        sessionId: 'session-test',
-        activeProcess: null,
-        createdAt: new Date('2023-01-01T00:00:00Z'),
-        expiresAt: new Date(),
-      };
+      const mockSession = {} as Session;
 
-      (mockSessionService.createSession as any).mockResolvedValue({
+      (mockSessionManager.createSession as any).mockResolvedValue({
         success: true,
-        data: mockSessionData
+        data: mockSession
       });
 
       const request = new Request('http://localhost:3000/api/session/create', {
@@ -496,19 +409,12 @@ describe('SessionHandler', () => {
     });
 
     it('should transform session createdAt to ISO string format', async () => {
-      const mockSessions: SessionData[] = [
-        {
-          id: 'session-1',
-          sessionId: 'session-1',
-          activeProcess: null,
-          createdAt: new Date('2023-01-01T12:30:45.123Z'),
-          expiresAt: new Date(),
-        }
-      ];
+      // SessionManager returns string[] - no createdAt available
+      const mockSessionIds = ['session-1'];
 
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
-        data: mockSessions
+        data: mockSessionIds
       });
 
       const request = new Request('http://localhost:3000/api/session/list', {
@@ -518,28 +424,20 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
       const responseData = await response.json() as ListSessionsResponse;
 
-      expect(responseData.sessions[0].createdAt).toBe('2023-01-01T12:30:45.123Z');
-      expect(responseData.sessions[0].createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      // Handler doesn't return createdAt field
+      expect(responseData.sessions[0]).toEqual({ sessionId: 'session-1' });
+      expect((responseData.sessions[0] as any).createdAt).toBeUndefined();
     });
   });
 
   describe('data transformation', () => {
     it('should properly map session data fields', async () => {
-      const mockSessions: SessionData[] = [
-        {
-          id: 'session-internal-id',
-          sessionId: 'session-external-id',
-          activeProcess: 'process-123',
-          createdAt: new Date('2023-01-01T00:00:00Z'),
-          expiresAt: new Date('2023-01-01T01:00:00Z'),
-          // These fields should not appear in response
-          extraField: 'should-not-appear'
-        } as any
-      ];
+      // SessionManager returns string[] - only session IDs
+      const mockSessionIds = ['session-external-id'];
 
-      (mockSessionService.listSessions as any).mockResolvedValue({
+      (mockSessionManager.listSessions as any).mockResolvedValue({
         success: true,
-        data: mockSessions
+        data: mockSessionIds
       });
 
       const request = new Request('http://localhost:3000/api/session/list', {
@@ -551,19 +449,18 @@ describe('SessionHandler', () => {
 
       const sessionResponse = responseData.sessions[0];
 
-      // Should include mapped fields
+      // Should only include sessionId field
       expect(sessionResponse.sessionId).toBe('session-external-id');
-      expect(sessionResponse.createdAt).toBe('2023-01-01T00:00:00.000Z');
-      expect(sessionResponse.hasActiveProcess).toBe(true);
 
-      // Should not include internal fields
+      // Should not include other fields (not available from SessionManager)
       expect((sessionResponse as any).id).toBeUndefined();
+      expect((sessionResponse as any).createdAt).toBeUndefined();
       expect((sessionResponse as any).expiresAt).toBeUndefined();
       expect((sessionResponse as any).activeProcess).toBeUndefined();
-      expect((sessionResponse as any).extraField).toBeUndefined();
+      expect((sessionResponse as any).hasActiveProcess).toBeUndefined();
 
-      // Should only have expected fields
-      const expectedFields = ['sessionId', 'createdAt', 'hasActiveProcess'];
+      // Should only have sessionId field
+      const expectedFields = ['sessionId'];
       expect(Object.keys(sessionResponse)).toEqual(expectedFields);
     });
   });
