@@ -22,7 +22,7 @@ describe('Build and Test Workflow', () => {
     beforeAll(async () => {
       // Start wrangler dev once for all tests in this suite
       runner = new WranglerDevRunner({
-        cwd: 'tests/integration/test-worker',
+        cwd: 'tests/e2e/test-worker',
       });
       workerUrl = await runner.getUrl();
     });

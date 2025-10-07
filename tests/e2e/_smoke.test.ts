@@ -20,7 +20,7 @@ describe('Integration Infrastructure Smoke Test', () => {
       // Step 1: Start wrangler dev pointing to minimal test worker
       // Uses published Docker image so no build context issues
       const runner = new WranglerDevRunner({
-        cwd: 'tests/integration/test-worker',
+        cwd: 'tests/e2e/test-worker',
       });
 
       // Step 2: Wait for wrangler to be ready and get URL
