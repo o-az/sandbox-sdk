@@ -5,7 +5,7 @@
     "rootDir": ".",
     "outDir": "dist",
     "paths": {
-      "@container/*": ["src/*"]
+      "@sandbox-container/*": ["src/*"]
     }
   },
   "include": ["src/**/*.ts"],

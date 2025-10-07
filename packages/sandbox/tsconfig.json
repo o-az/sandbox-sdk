@@ -4,8 +4,8 @@
     "paths": {
       "src/*": ["src/*"],
       "~/*": ["src/*"],
-      "@container/*": ["../sandbox-container/src/*"]
+      "@sandbox-container/*": ["../sandbox-container/src/*"]
     }
   },
-  "exclude": ["node_modules", "dist", "**/*.js", "**/*.js.map", "../sandbox-container/**", "__tests__/integration/**"]
+  "exclude": ["node_modules", "dist", "**/*.js", "**/*.js.map", "../sandbox-container/**", "tests/integration/**"]
 }

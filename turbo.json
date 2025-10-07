@@ -24,7 +24,7 @@
       "outputs": ["coverage/**"],
       "inputs": [
         "src/**/*.ts",
-        "src/__tests__/**/*.ts",
+        "tests/**/*.ts",
         "vitest.unit.config.ts",
         "vitest.*.config.ts"
       ],
@@ -34,7 +34,7 @@
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
       "inputs": [
-        "__tests__/**/*.ts",
+        "tests/**/*.ts",
         "vitest.config.ts",
         "vitest.*.config.ts"
       ],

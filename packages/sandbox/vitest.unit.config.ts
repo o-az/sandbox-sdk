@@ -10,7 +10,7 @@ export default defineWorkersConfig({
     isolate: true,
 
     // Test patterns
-    include: ['src/__tests__/unit/**/*.test.ts'],
+    include: ['tests/**/*.test.ts'],
 
     // Coverage configuration - using Istanbul (V8 not supported in workerd)
     coverage: {
@@ -25,10 +25,9 @@ export default defineWorkersConfig({
         'node_modules/**',
         'dist/**',
         '**/*.test.ts',
-        '**/__tests__/**',
+        '**/tests/**',
         '**/__mocks__/**',
         '**/*.d.ts',
-        'container_src/**', // Container tested separately
         '**/types.ts',
       ],
 

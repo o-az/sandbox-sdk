@@ -4,9 +4,9 @@
     "rootDir": "src",
     "outDir": "dist",
     "paths": {
-      "@container/*": ["src/*"]
+      "@sandbox-container/*": ["src/*"],
     }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "src/__tests__/**"]
+  "exclude": ["**/*.test.ts", "tests/**"]
 }

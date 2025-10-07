@@ -176,17 +176,17 @@ interface ServiceResult<T> {
 
 ### 3-Tier Testing Strategy
 
-1. **Unit Tests** (`src/__tests__/unit/`)
+1. **Unit Tests** (`src/tests/`)
    - Client SDK testing with mocked HTTP
    - Security validation and utilities
    - Fast feedback during development
 
-2. **Container Tests** (`container_src/__tests__/`)
+2. **Container Tests** (`container_src/tests/`)
    - Service layer testing with ServiceResult validation (Node.js with mocks)
    - Handler testing with proper mocking (no Docker needed)
    - Service layer business logic with comprehensive mocking
 
-3. **Integration Tests** (`__tests__/integration/`)
+3. **Integration Tests** (`tests/integration/`)
    - End-to-end workflow validation across multiple services
    - Complete request flows: validation → middleware → handler → response
    - Cross-service integration testing (Git + File + Process workflows)
@@ -231,7 +231,7 @@ describe('ProcessService', () => {
       }))
     } as any;
 
-    const { ProcessService: ServiceClass } = await import('@container/services/process-service');
+    const { ProcessService: ServiceClass } = await import('@sandbox-container/services/process-service');
     service = new ServiceClass(mockStore, mockLogger);
   });
 

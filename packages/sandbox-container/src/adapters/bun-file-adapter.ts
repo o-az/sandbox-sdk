@@ -9,10 +9,6 @@
  * - Writing files using Bun.write()
  * - Checking file existence
  * - Executing file system commands (rm, mv, mkdir, stat)
- *
- * Testing Strategy:
- * - Unit tests: Mock this adapter in service tests
- * - Integration tests: Use real Bun APIs to verify actual I/O
  */
 
 import type { BunFile } from 'bun';

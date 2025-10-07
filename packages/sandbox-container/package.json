@@ -5,7 +5,7 @@
   "description": "Container runtime for Cloudflare Sandbox SDK",
   "type": "module",
   "imports": {
-    "#container/*": "./src/*"
+    "@sandbox-container/*": "./src/*"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json && npm run build:control-process",

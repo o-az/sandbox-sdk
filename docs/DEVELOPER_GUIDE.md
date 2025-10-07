@@ -40,7 +40,7 @@ sandbox-sdk/
 │   │   │   ├── clients/     # Domain clients (command, file, process, etc.)
 │   │   │   ├── types.ts    # Public API types
 │   │   │   ├── sandbox.ts  # Durable Object implementation
-│   │   │   └── __tests__/  # Unit tests
+│   │   │   └── tests/  # Unit tests
 │   │   └── container_src/   # Container runtime source (separate build)
 │   │       ├── services/    # Business logic services
 │   │       ├── handlers/    # HTTP endpoint handlers
@@ -77,7 +77,7 @@ sandbox-sdk/
 npm run test:unit -w @cloudflare/sandbox -- --watch
 
 # Test specific SDK client
-npm run test:unit -w @cloudflare/sandbox -- --run src/__tests__/unit/clients/command-client.test.ts
+npm run test:unit -w @cloudflare/sandbox -- --run src/tests/clients/command-client.test.ts
 
 # Build only SDK package
 npm run build -w @cloudflare/sandbox
@@ -89,7 +89,7 @@ npm run build -w @cloudflare/sandbox
 npm run test:container -w @cloudflare/sandbox
 
 # Test specific SDK service
-npm run test:container -w @cloudflare/sandbox -- --run src/__tests__/container/services/process-service.test.ts
+npm run test:container -w @cloudflare/sandbox -- --run src/tests/container/services/process-service.test.ts
 
 # Build SDK (includes container build)
 npm run build -w @cloudflare/sandbox
@@ -182,7 +182,7 @@ async copyFile(source: string, target: string): Promise<ServiceResult<void>> {
   }
 }
 
-// 5. Write tests (src/__tests__/unit/clients/file-client.test.ts)
+// 5. Write tests (src/tests/clients/file-client.test.ts)
 it('should copy file successfully', async () => {
   mockFetch.mockResolvedValueOnce({
     ok: true,
@@ -310,9 +310,9 @@ export class NetworkClient extends BaseHttpClient implements INetworkClient {
 }
 
 // 6. Write comprehensive tests
-// Unit tests: src/__tests__/unit/clients/network-client.test.ts
-// Service tests: src/__tests__/container/services/network-service.test.ts
-// Integration tests: src/__tests__/integration/network-integration.test.ts
+// Unit tests: src/tests/clients/network-client.test.ts
+// Service tests: src/tests/container/services/network-service.test.ts
+// Integration tests: src/tests/integration/network-integration.test.ts
 ```
 
 ## Code Patterns & Conventions
@@ -423,7 +423,7 @@ describe('ServiceName', () => {
     };
 
     // Dynamic import to avoid module issues
-    const { ServiceName: ServiceClass } = await import('@container/services/service-name');
+    const { ServiceName: ServiceClass } = await import('@sandbox-container/services/service-name');
     service = new ServiceClass(mockDependency, mockLogger);
   });
 

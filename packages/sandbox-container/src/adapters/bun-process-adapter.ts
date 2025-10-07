@@ -9,10 +9,6 @@
  * - Reading process streams
  * - Managing process lifecycle
  * - Handling process exit events
- *
- * Testing Strategy:
- * - Unit tests: Mock this adapter in service tests
- * - Integration tests: Use real Bun APIs to verify actual I/O
  */
 
 import type { Subprocess } from 'bun';

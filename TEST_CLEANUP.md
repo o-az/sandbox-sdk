@@ -56,9 +56,9 @@
 
 | Category | Location | Files | Lines | Issues |
 |----------|----------|-------|-------|--------|
-| **Unit Tests** | `packages/sandbox/src/__tests__/unit/` | 15 | ~9,938 | 54% redundant, 67 failing tests |
-| **Container Tests** | `packages/sandbox-container/src/__tests__/` | 15 | ~8,391 | 70% redundant, wrong runtime (Node not Bun) |
-| **Fake Integration** | `packages/sandbox/__tests__/integration/` | 4 | ~1,266 | All mocked, not real integration |
+| **Unit Tests** | `packages/sandbox/src/tests/` | 15 | ~9,938 | 54% redundant, 67 failing tests |
+| **Container Tests** | `packages/sandbox-container/src/tests/` | 15 | ~8,391 | 70% redundant, wrong runtime (Node not Bun) |
+| **Fake Integration** | `packages/sandbox/tests/integration/` | 4 | ~1,266 | All mocked, not real integration |
 | **TOTAL** | | **34** | **~19,595** | **54% needs deletion** |
 
 ### Current Test Failures
@@ -154,7 +154,7 @@ Files with failing tests fall into two categories:
 
 ### Problem 2: No Real Integration Tests
 
-**What we have**: Heavily mocked "integration" tests in `packages/sandbox/__tests__/integration/`
+**What we have**: Heavily mocked "integration" tests in `packages/sandbox/tests/integration/`
 ```typescript
 // Everything mocked!
 mockBunSpawn.mockImplementation(() => ({ /* fake */ }));
@@ -202,7 +202,7 @@ const response = await fetch(`${url}/api/execute`, { /* real request */ });
 ```
 cloudflare/sandbox-sdk/
 │
-├── __tests__/integration/              # ~1,000 lines (NEW - Real integration)
+├── tests/integration/              # ~1,000 lines (NEW - Real integration)
 │   ├── sandbox-execution.test.ts       # Real commands in actual container
 │   ├── file-operations.test.ts         # Real file I/O
 │   ├── process-management.test.ts      # Real process spawning
@@ -212,7 +212,7 @@ cloudflare/sandbox-sdk/
 │
 ├── packages/
 │   ├── sandbox/                        # Client SDK + Durable Object
-│   │   └── src/__tests__/unit/         # ~3,500 lines (reduced from 9,938)
+│   │   └── src/tests/         # ~3,500 lines (reduced from 9,938)
 │   │       ├── sandbox.test.ts         # NEW - Automatic session management
 │   │       ├── base-client.test.ts     # HTTP client, errors
 │   │       ├── command-client.test.ts  # Command operations
@@ -225,7 +225,7 @@ cloudflare/sandbox-sdk/
 │   │       └── sse-parser.test.ts      # REDUCED (462 → 150)
 │   │
 │   └── sandbox-container/              # Container Runtime (Bun)
-│       └── src/__tests__/              # ~2,500 lines (reduced from 8,391)
+│       └── src/tests/              # ~2,500 lines (reduced from 8,391)
 │           ├── services/               # Business logic
 │           ├── handlers/               # HTTP endpoints (minimal)
 │           ├── security/               # Security validation
@@ -257,43 +257,43 @@ TOTAL: ~8,000 lines (60% reduction from 19,595)
 
 **Files to delete with rationale**:
 
-1. **`packages/sandbox/src/__tests__/unit/sandbox-client.test.ts`** (930 lines)
+1. **`packages/sandbox/src/tests/sandbox-client.test.ts`** (930 lines)
    - **Why**: Tests `setSessionId()` / `getSessionId()` which no longer exist
    - **Failures resolved**: 25 out of 67 (37%)
    - **What it tested**: Session coordination across domain clients
    - **Replacement**: New `sandbox.test.ts` will test automatic sessions
    
-2. **`packages/sandbox/src/__tests__/unit/client-methods-integration.test.ts`** (629 lines)
+2. **`packages/sandbox/src/tests/client-methods-integration.test.ts`** (629 lines)
    - **Why**: Tests that client methods exist - pure redundancy
    - **Failures resolved**: 4 out of 67 (6%)
    - **What it tested**: Method signatures, already covered by individual client tests
    - **No replacement needed**: Individual client tests provide coverage
 
-3. **`packages/sandbox/src/__tests__/unit/http-request-flow.test.ts`** (635 lines)
+3. **`packages/sandbox/src/tests/http-request-flow.test.ts`** (635 lines)
    - **Why**: Tests HTTP implementation details (headers, body structure)
    - **Failures resolved**: 0 (wasn't failing, but should delete)
    - **What it tested**: Request structure details users don't care about
    - **No replacement needed**: Behavior tests in client tests cover this
 
-4. **`packages/sandbox/src/__tests__/unit/cross-client-contracts.test.ts`** (705 lines)
+4. **`packages/sandbox/src/tests/cross-client-contracts.test.ts`** (705 lines)
    - **Why**: 80% redundant session propagation tests
    - **Failures resolved**: 7 out of 67 (10%)
    - **What it tested**: Session consistency across clients (obsolete pattern)
    - **No replacement needed**: Sessions now automatic, no cross-client coordination
 
-5. **`packages/sandbox/src/__tests__/unit/request-handler.test.ts`** (564 lines)
+5. **`packages/sandbox/src/tests/request-handler.test.ts`** (564 lines)
    - **Why**: Tests internal request handler not exposed to users
    - **Failures resolved**: 0 (wasn't failing, but should delete)
    - **What it tested**: Request retry logic, error recovery
    - **No replacement needed**: Tested indirectly through client tests
 
-6. **`packages/sandbox/src/__tests__/unit/security.test.ts`** (332 lines)
+6. **`packages/sandbox/src/tests/security.test.ts`** (332 lines)
    - **Why**: Security validation happens in container, not client SDK
    - **Failures resolved**: 0 (wasn't failing, but should delete)
    - **What it tested**: Path traversal, command sanitization, port validation
-   - **Already covered**: `sandbox-container/src/__tests__/security/security-service.test.ts`
+   - **Already covered**: `sandbox-container/src/tests/security/security-service.test.ts`
 
-7. **`packages/sandbox/__tests__/integration/`** (entire directory, 1,266 lines)
+7. **`packages/sandbox/tests/integration/`** (entire directory, 1,266 lines)
    - **Why**: Fake integration tests with everything mocked
    - **Failures resolved**: 0 (wasn't failing, but should delete)
    - **Files**: 4 test files in integration directory
@@ -305,15 +305,15 @@ TOTAL: ~8,000 lines (60% reduction from 19,595)
 cd /home/ghost_000/github/cloudflare/sandbox-sdk
 
 # Delete SDK unit test files
-rm packages/sandbox/src/__tests__/unit/sandbox-client.test.ts
-rm packages/sandbox/src/__tests__/unit/client-methods-integration.test.ts
-rm packages/sandbox/src/__tests__/unit/http-request-flow.test.ts
-rm packages/sandbox/src/__tests__/unit/cross-client-contracts.test.ts
-rm packages/sandbox/src/__tests__/unit/request-handler.test.ts
-rm packages/sandbox/src/__tests__/unit/security.test.ts
+rm packages/sandbox/src/tests/sandbox-client.test.ts
+rm packages/sandbox/src/tests/client-methods-integration.test.ts
+rm packages/sandbox/src/tests/http-request-flow.test.ts
+rm packages/sandbox/src/tests/cross-client-contracts.test.ts
+rm packages/sandbox/src/tests/request-handler.test.ts
+rm packages/sandbox/src/tests/security.test.ts
 
 # Delete fake integration tests
-rm -rf packages/sandbox/__tests__/integration/
+rm -rf packages/sandbox/tests/integration/
 
 # Verify deletions
 npm run test:unit 2>&1 | grep -E "failed|passing"
@@ -503,7 +503,7 @@ it('should initialize with base URL', () => {
 
 **What we're doing**: Test the NEW automatic session management at the Sandbox wrapper level
 
-**Location**: `packages/sandbox/src/__tests__/unit/sandbox.test.ts` (new file)
+**Location**: `packages/sandbox/src/tests/sandbox.test.ts` (new file)
 
 **What to test**: Three main areas
 1. **Automatic default session** - Sessions created transparently
@@ -757,7 +757,7 @@ describe('Sandbox - Automatic Session Management', () => {
 **Execution**:
 ```bash
 # Create the file
-touch packages/sandbox/src/__tests__/unit/sandbox.test.ts
+touch packages/sandbox/src/tests/sandbox.test.ts
 
 # Write the tests (copy structure above)
 
@@ -817,7 +817,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',  // ❌ Wrong runtime
-    include: ['src/__tests__/unit/**/*.test.ts'],
+    include: ['src/tests/**/*.test.ts'],
   },
 });
 ```
@@ -830,7 +830,7 @@ export default defineWorkersConfig({
   test: {
     globals: true,
     testTimeout: 10000,
-    include: ['src/__tests__/unit/**/*.test.ts'],
+    include: ['src/tests/**/*.test.ts'],
     poolOptions: {
       workers: {
         wrangler: {
@@ -953,7 +953,7 @@ Container Package Structure:
 │   │   ├── file-service.ts           # Uses manager + adapter
 │   │   └── ...
 │   │
-│   └── __tests__/
+│   └── tests/
 │       ├── unit/          # NEW - Fast unit tests (pure logic)
 │       │   ├── managers/  # Test business logic only
 │       │   └── services/  # Test orchestration with mocked adapters
@@ -975,12 +975,12 @@ cd packages/sandbox-container
 # 1. Update package.json with imports field
 {
   "imports": {
-    "#container/*": "./src/*.ts"  # Note: .ts extension required for Bun
+    "@sandbox-container/*": "./src/*.ts"  # Note: .ts extension required for Bun
   }
 }
 
-# 2. Replace @container/* with #container/* in all test files
-find src/__tests__ -name "*.test.ts" -exec sed -i '' "s/@container/#container/g" {} \;
+# 2. Replace @container/* with @sandbox-container/* in all test files
+find src/tests -name "*.test.ts" -exec sed -i '' "s/@container/@sandbox-container/g" {} \;
 
 # 3. Add bun:test imports
 # Already done - all test files have: import { describe, it, expect, beforeEach, vi } from "bun:test";
@@ -1099,10 +1099,10 @@ export class ProcessManager {
 
 **Unit tests for ProcessManager** (fast, no I/O):
 
-`src/__tests__/unit/managers/process-manager.test.ts`:
+`src/tests/managers/process-manager.test.ts`:
 ```typescript
 import { describe, it, expect } from 'bun:test';
-import { ProcessManager } from '#container/core/managers/process-manager.ts';
+import { ProcessManager } from '@sandbox-container/core/managers/process-manager.ts';
 
 describe('ProcessManager', () => {
   const manager = new ProcessManager();
@@ -1280,10 +1280,10 @@ export class BunProcessAdapter {
 
 **Integration tests for BunProcessAdapter**:
 
-`src/__tests__/integration/adapters/bun-process-adapter.test.ts`:
+`src/tests/integration/adapters/bun-process-adapter.test.ts`:
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { BunProcessAdapter } from '#container/adapters/bun-process-adapter.ts';
+import { BunProcessAdapter } from '@sandbox-container/adapters/bun-process-adapter.ts';
 
 describe('BunProcessAdapter (integration)', () => {
   let adapter: BunProcessAdapter;
@@ -1514,11 +1514,11 @@ export class ProcessService {
 
 **Service layer tests** (with mocked adapter):
 
-`src/__tests__/unit/services/process-service.test.ts`:
+`src/tests/services/process-service.test.ts`:
 ```typescript
 import { describe, it, expect, beforeEach, vi } from 'bun:test';
-import { ProcessService } from '#container/services/process-service.ts';
-import { ProcessManager } from '#container/core/managers/process-manager.ts';
+import { ProcessService } from '@sandbox-container/services/process-service.ts';
+import { ProcessManager } from '@sandbox-container/core/managers/process-manager.ts';
 
 describe('ProcessService (unit)', () => {
   let service: ProcessService;
@@ -1639,7 +1639,7 @@ describe('ProcessService (unit)', () => {
 Reorganize tests to match new architecture:
 
 ```
-src/__tests__/
+src/tests/
 ├── unit/                           # Fast tests - NO I/O
 │   ├── managers/                   # Test business logic
 │   │   ├── process-manager.test.ts
@@ -1676,10 +1676,10 @@ src/__tests__/
 **Test execution commands**:
 ```bash
 # Fast unit tests (no I/O, all mocked)
-bun test src/__tests__/unit
+bun test src/tests
 
 # Integration tests (real Bun APIs)
-bun test src/__tests__/integration
+bun test src/tests/integration
 
 # All tests
 bun test
@@ -2131,10 +2131,10 @@ Client tests have verbose mock structures and exhaustive field verification.
 
 ```bash
 # Find all logger verification lines
-grep -n "expect(mockLogger\." src/__tests__/handlers/*.test.ts
+grep -n "expect(mockLogger\." src/tests/handlers/*.test.ts
 
 # Create backup
-cp -r src/__tests__/handlers src/__tests__/handlers.backup
+cp -r src/tests/handlers src/tests/handlers.backup
 
 # Strategy: For each handler file:
 # 1. Keep 1-2 dedicated logging tests
@@ -2545,7 +2545,7 @@ Establish these principles during cleanup:
 
 #### Preliminary: Existing Integration Tests Analysis
 
-**Question**: What about `packages/sandbox-container/src/__tests__/integration/adapters/`?
+**Question**: What about `packages/sandbox-container/src/tests/integration/adapters/`?
 
 **Answer**: **KEEP THEM** - They serve a different testing level.
 
@@ -2611,7 +2611,7 @@ Establish these principles during cleanup:
 
 **Directory structure (root)**:
 ```
-__tests__/integration/
+tests/integration/
 ├── helpers/
 │   ├── wrangler-runner.ts        # Start/stop wrangler dev, capture URL (137 lines)
 │   └── test-fixtures.ts          # Utilities: createSandboxId(), fetchOrTimeout() (84 lines)
@@ -2696,7 +2696,7 @@ export class WranglerDevRunner {
 
 **Vitest integration config**:
 - `testTimeout: 60000`, `hookTimeout: 120000`
-- Include `__tests__/integration/**/*.test.ts`
+- Include `tests/integration/**/*.test.ts`
 
 **CI considerations**:
 - Ensure `wrangler`, `bun`, and `git` available in CI image
@@ -2988,7 +2988,7 @@ npm run test:integration # Real integration tests ✅
 - ✅ cross-client-contracts.test.ts (705 lines)
 - ✅ request-handler.test.ts (564 lines)
 - ✅ security.test.ts (332 lines)
-- ✅ packages/sandbox/__tests__/integration/ (1,266 lines)
+- ✅ packages/sandbox/tests/integration/ (1,266 lines)
 
 **Impact:**
 - Lines deleted: ~5,061
@@ -3029,7 +3029,7 @@ npm run test:integration # Real integration tests ✅
 #### ✅ Step 3: Create sandbox.test.ts (COMPLETED - Oct 6, 2024)
 **Status**: Complete
 **Time**: ~2 hours
-**File**: `packages/sandbox/src/__tests__/unit/sandbox.test.ts` (506 lines)
+**File**: `packages/sandbox/src/tests/sandbox.test.ts` (506 lines)
 
 **Created:**
 - ✅ Comprehensive test file with 23 tests covering session management
@@ -3154,13 +3154,13 @@ Runtime:         <50ms (all unit/service tests)
 After refactoring core services, 247 additional tests remained failing due to Bun compatibility issues. These were pure logic tests (SecurityService, Validators, Handlers, SessionService) that didn't require architectural refactoring, just migration fixes.
 
 #### ✅ 5. SecurityService (54 tests) - Import Fixes
-- **Issue**: Missing `.ts` extensions in `#container/*` imports
+- **Issue**: Missing `.ts` extensions in `@sandbox-container/*` imports
 - **Fix**: Added `.ts` extensions to static and dynamic imports
 - **Tests**: 54 passing in 14ms
 - **Result**: Pure validation logic working perfectly in Bun
 
 #### ✅ 6. RequestValidator (43 tests) - Import Fixes
-- **Issue**: Missing `.ts` extensions in `#container/*` imports
+- **Issue**: Missing `.ts` extensions in `@sandbox-container/*` imports
 - **Fix**: Added `.ts` extensions to static and dynamic imports
 - **Tests**: 43 passing in 19ms
 - **Result**: Zod schema validation with SecurityService integration working
@@ -3233,7 +3233,7 @@ Test Files:           20 files
 
 **Key Learnings from Phase 2B:**
 
-1. **Import Resolution in Bun**: Always add `.ts` extension to `#container/*` imports
+1. **Import Resolution in Bun**: Always add `.ts` extension to `@sandbox-container/*` imports
 2. **Mock Typing**: Use `(mock as Mock)` instead of `vi.mocked()` (doesn't exist in Bun)
 3. **Timer Testing**: Avoid fake timers in Bun; use real time or simplified lifecycle tests
 4. **Test Correctness**: Fixed tests with wrong expectations (not source bugs)

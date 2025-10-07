@@ -32,13 +32,13 @@ npm run test:unit -- --watch               # Watch mode for development
 ```
 sandbox-sdk/
 ├── packages/sandbox/
-│   ├── src/__tests__/          # Unit tests (client SDK, utilities)
+│   ├── src/tests/          # Unit tests (client SDK, utilities)
 │   │   └── unit/              # Fast feedback tests
-│   └── container_src/__tests__/ # Container tests (services, handlers)
+│   └── container_src/tests/ # Container tests (services, handlers)
 │       ├── services/          # Service layer business logic tests
 │       ├── handlers/          # Handler tests with mocked services
 │       └── integration/       # Cross-service integration tests
-└── __tests__/
+└── tests/
     └── integration/            # End-to-end integration tests
 ```
 
@@ -50,7 +50,7 @@ sandbox-sdk/
 
 ### 1. Unit Tests
 **Environment**: Node.js  
-**Location**: `src/__tests__/unit/`  
+**Location**: `src/tests/`  
 **Purpose**: Fast feedback on isolated SDK functionality
 
 Tests individual SDK components without external dependencies:
@@ -62,7 +62,7 @@ Tests individual SDK components without external dependencies:
 
 ### 2. Container Tests
 **Environment**: Node.js (mocked container services)
-**Location**: `container_src/__tests__/`  
+**Location**: `container_src/tests/`  
 **Requirements**: None (no Docker needed)
 **Purpose**: Test service layer business logic with intelligent mocking
 
@@ -74,7 +74,7 @@ Tests individual services in isolation:
 
 ### 3. Integration Tests
 **Environment**: Node.js (mocked container services)
-**Location**: `__tests__/integration/`  
+**Location**: `tests/integration/`  
 **Requirements**: None (no Docker needed)
 **Purpose**: Test complete workflows across multiple services
 
@@ -222,7 +222,7 @@ describe('GitService', () => {
     } as any;
     
     // Dynamic import to avoid module loading issues
-    const { GitService: GitServiceClass } = await import('@container/services/git-service');
+    const { GitService: GitServiceClass } = await import('@sandbox-container/services/git-service');
     gitService = new GitServiceClass(mockSecurityService, mockLogger);
   });
 });

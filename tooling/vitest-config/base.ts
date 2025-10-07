@@ -27,7 +27,7 @@ export function createUnitTestConfig(options?: {
 }): UserConfig['test'] {
   return {
     ...baseTestConfig,
-    include: options?.include || ['src/__tests__/unit/**/*.test.ts'],
+    include: options?.include || ['tests/**/*.test.ts'],
     coverage: options?.coverage,
   };
 }
@@ -42,7 +42,7 @@ export function createIntegrationTestConfig(options?: {
   return {
     ...baseTestConfig,
     name: options?.name || 'integration-tests',
-    include: options?.include || ['__tests__/integration/**/*.test.ts'],
+    include: options?.include || ['tests/integration/**/*.test.ts'],
   };
 }
 
@@ -56,7 +56,7 @@ export function createContainerTestConfig(options?: {
   return {
     ...baseTestConfig,
     name: 'container-tests',
-    include: options?.include || ['src/__tests__/**/*.test.ts'],
+    include: options?.include || ['tests/**/*.test.ts'],
     setupFiles: options?.setupFiles,
   };
 }

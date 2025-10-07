@@ -1,6 +1,0 @@
-# Bun configuration for sandbox-container tests
-preload = []
-
-# Use test-specific tsconfig that includes test files
-[test]
-tsconfig = "tsconfig.test.json"

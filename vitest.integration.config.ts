@@ -13,7 +13,7 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     ...createIntegrationTestConfig({
-      include: ['__tests__/integration/**/*.test.ts'],
+      include: ['tests/integration/**/*.test.ts'],
       name: 'e2e-integration',
     }),
 
