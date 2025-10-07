@@ -1,13 +1,15 @@
 {
   "name": "@cloudflare/sandbox",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/cloudflare/sandbox-sdk"
   },
   "description": "A sandboxed environment for running commands",
   "dependencies": {
-    "@cloudflare/containers": "^0.0.27"
+    "@cloudflare/containers": "^0.0.28",
+    "@repo/shared-types": "*",
+    "zod": "^3.22.3"
   },
   "tags": [
     "sandbox",
@@ -18,9 +20,16 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsup src/*.ts --outDir dist --dts --sourcemap --format esm",
-    "docker:local": "docker build . -t cloudflare/sandbox-test:$npm_package_version",
-    "docker:publish": "docker buildx build --platform linux/amd64,linux/arm64 -t cloudflare/sandbox:$npm_package_version --push .",
-    "docker:publish:beta": "docker buildx build --platform linux/amd64,linux/arm64 -t cloudflare/sandbox:$npm_package_version-beta --push ."
+    "check": "biome check && npm run typecheck",
+    "fix": "biome check --fix && npm run typecheck",
+    "typecheck": "tsc --noEmit",
+    "docker:local": "npm run build -w @repo/sandbox-container && cd ../.. && docker build -f packages/sandbox/Dockerfile -t cloudflare/sandbox-test:$npm_package_version .",
+    "docker:publish": "cd ../.. && docker buildx build --platform linux/amd64,linux/arm64 -f packages/sandbox/Dockerfile -t cloudflare/sandbox:$npm_package_version --push .",
+    "docker:publish:beta": "cd ../.. && docker buildx build --platform linux/amd64,linux/arm64 -f packages/sandbox/Dockerfile -t cloudflare/sandbox:$npm_package_version-beta --push .",
+    "test": "vitest run --config vitest.unit.config.ts && vitest run --config vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config vitest.unit.config.ts",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.config.ts"
   },
   "exports": {
     ".": {
@@ -32,5 +41,11 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.9.10",
+    "@cloudflare/workers-types": "^4.20251004.0",
+    "@types/react-katex": "^3.0.4",
+    "@vitest/coverage-istanbul": "^3.2.4"
+  }
 }
