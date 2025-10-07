@@ -15,5 +15,8 @@
     "react-markdown": "^9.0.1",
     "react-katex": "^3.0.1",
     "katex": "^0.16.9"
+  },
+  "devDependencies": {
+    "@types/react-katex": "^3.0.1"
   }
 }
