@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BaseApiResponse, ErrorResponse, HttpClientOptions } from '../src/clients';
 import { BaseHttpClient } from '../src/clients/base-client';
 import {
@@ -63,7 +64,7 @@ describe('BaseHttpClient', () => {
     vi.clearAllMocks();
     
     mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     onError = vi.fn();
     
     client = new TestHttpClient({

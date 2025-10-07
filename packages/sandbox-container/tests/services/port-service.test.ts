@@ -36,7 +36,7 @@ describe('PortService', () => {
 
     // Set up fetch mock for this test file
     originalFetch = global.fetch;
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
 
     // Set up default successful security validation
     (mockSecurityService.validatePort as Mock).mockReturnValue({

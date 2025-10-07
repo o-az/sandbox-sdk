@@ -1,4 +1,6 @@
 // Bun-optimized File System Service
+
+import { BunFileAdapter } from '../adapters/bun-file-adapter';
 import type {
   FileStats,
   Logger,
@@ -8,7 +10,6 @@ import type {
   WriteOptions
 } from '../core/types';
 import { FileManager } from '../managers/file-manager';
-import { BunFileAdapter } from '../adapters/bun-file-adapter';
 
 export interface SecurityService {
   validatePath(path: string): { isValid: boolean; errors: string[] };

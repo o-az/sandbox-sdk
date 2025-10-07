@@ -39,7 +39,7 @@ export class GitManager {
     } catch {
       // Fallback for SSH-style URLs (git@github.com:user/repo.git)
       const match = repoUrl.match(/\/([^/]+?)(\.git)?$/);
-      if (match && match[1]) {
+      if (match?.[1]) {
         return match[1];
       }
       // Ultimate fallback

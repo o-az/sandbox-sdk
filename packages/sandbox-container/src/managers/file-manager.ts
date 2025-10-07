@@ -267,7 +267,7 @@ export class FileManager {
     const k = 1024;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${units[i]}`;
+    return `${parseFloat((bytes / k ** i).toFixed(2))} ${units[i]}`;
   }
 
   /**

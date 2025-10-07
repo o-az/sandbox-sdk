@@ -103,8 +103,8 @@ export class ProcessPoolManager {
         ...defaultConfig, 
         ...userConfig,
         // Environment variables override user config override defaults
-        minSize: envMinSize ? parseInt(envMinSize) : (userConfig.minSize || defaultConfig.minSize),
-        maxProcesses: envMaxSize ? parseInt(envMaxSize) : (userConfig.maxProcesses || defaultConfig.maxProcesses)
+        minSize: envMinSize ? parseInt(envMinSize, 10) : (userConfig.minSize || defaultConfig.minSize),
+        maxProcesses: envMaxSize ? parseInt(envMaxSize, 10) : (userConfig.maxProcesses || defaultConfig.maxProcesses)
       };
       
       this.poolConfigs.set(executor, config);

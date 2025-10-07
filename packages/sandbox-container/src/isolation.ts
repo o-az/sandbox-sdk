@@ -37,9 +37,9 @@ const CONFIG = {
   // Timeouts (in milliseconds)
   READY_TIMEOUT_MS: 5000,           // 5 seconds for control process to initialize
   SHUTDOWN_GRACE_PERIOD_MS: 500,    // Grace period for cleanup on shutdown
-  COMMAND_TIMEOUT_MS: parseInt(process.env.COMMAND_TIMEOUT_MS || '30000'),        // 30 seconds for command execution
-  CLEANUP_INTERVAL_MS: parseInt(process.env.CLEANUP_INTERVAL_MS || '30000'),       // Run cleanup every 30 seconds
-  TEMP_FILE_MAX_AGE_MS: parseInt(process.env.TEMP_FILE_MAX_AGE_MS || '60000'),      // Delete temp files older than 60 seconds
+  COMMAND_TIMEOUT_MS: parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10),        // 30 seconds for command execution
+  CLEANUP_INTERVAL_MS: parseInt(process.env.CLEANUP_INTERVAL_MS || '30000', 10),       // Run cleanup every 30 seconds
+  TEMP_FILE_MAX_AGE_MS: parseInt(process.env.TEMP_FILE_MAX_AGE_MS || '60000', 10),      // Delete temp files older than 60 seconds
   
   // Default paths
   DEFAULT_CWD: '/workspace',
@@ -143,7 +143,7 @@ export class Session {
 
     // Check if file exists before spawning
     try {
-      const fs = await import('fs/promises');
+      const fs = await import('node:fs/promises');
       await fs.access(controlProcessPath);
       console.log(`[Session] Control process file exists: ${controlProcessPath}`);
     } catch (err) {
@@ -596,7 +596,7 @@ SANDBOX_EOF`;
         absolutePath: `${basePath}/${name}`,
         relativePath: name,
         type,
-        size: parseInt(size),
+        size: parseInt(size, 10),
         modifiedAt: dateStr, // Simplified date parsing
         mode: permissions,
         permissions: {

@@ -13,7 +13,7 @@ describe('CommandClient', () => {
     vi.clearAllMocks();
     
     mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     
     onCommandComplete = vi.fn();
     onError = vi.fn();

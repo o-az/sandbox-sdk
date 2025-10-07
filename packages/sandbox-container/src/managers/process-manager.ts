@@ -12,7 +12,7 @@
  * - ID generation
  */
 
-import type { ProcessRecord, ProcessStatus, ProcessOptions } from '../core/types';
+import type { ProcessOptions, ProcessRecord, ProcessStatus } from '../core/types';
 
 export interface CommandValidation {
   valid: boolean;

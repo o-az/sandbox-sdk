@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { BunFileAdapter } from '@sandbox-container/adapters/bun-file-adapter.ts';
 import { BunProcessAdapter } from '@sandbox-container/adapters/bun-process-adapter.ts';
-import * as os from 'os';
-import * as path from 'path';
 
 describe('BunFileAdapter (Integration)', () => {
   let adapter: BunFileAdapter;

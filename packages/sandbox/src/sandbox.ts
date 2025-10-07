@@ -125,7 +125,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     // Extract port from proxy requests (e.g., /proxy/8080/*)
     const proxyMatch = url.pathname.match(/^\/proxy\/(\d+)/);
     if (proxyMatch) {
-      return parseInt(proxyMatch[1]);
+      return parseInt(proxyMatch[1], 10);
     }
 
     // All other requests go to control plane on port 3000

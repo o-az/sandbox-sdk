@@ -21,7 +21,7 @@ describe('GitClient', () => {
     vi.clearAllMocks();
     
     mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     
     client = new GitClient({
       baseUrl: 'http://test.com',
@@ -168,7 +168,9 @@ describe('GitClient', () => {
       ]);
 
       expect(operations).toHaveLength(3);
-      operations.forEach(result => expect(result.success).toBe(true));
+      operations.forEach(result => {
+        expect(result.success).toBe(true);
+      });
       expect(mockFetch).toHaveBeenCalledTimes(3);
     });
   });

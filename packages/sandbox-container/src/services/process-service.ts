@@ -1,4 +1,7 @@
 // Bun-optimized Process Management Service
+
+import type { Subprocess } from 'bun';
+import { BunProcessAdapter } from '../adapters/bun-process-adapter';
 import type {
   CommandResult,
   Logger,
@@ -7,10 +10,8 @@ import type {
   ProcessStatus,
   ServiceResult
 } from '../core/types';
-import type { SessionManager } from './session-manager';
 import { ProcessManager } from '../managers/process-manager';
-import { BunProcessAdapter } from '../adapters/bun-process-adapter';
-import type { Subprocess } from 'bun';
+import type { SessionManager } from './session-manager';
 
 export interface ProcessStore {
   create(process: ProcessRecord): Promise<void>;
@@ -172,11 +173,15 @@ export class ProcessService {
       this.adapter.handleStreams(spawnResult.subprocess, {
         onStdout: (data) => {
           processRecord.stdout += data;
-          processRecord.outputListeners.forEach(listener => listener('stdout', data));
+          processRecord.outputListeners.forEach(listener => {
+            listener('stdout', data);
+          });
         },
         onStderr: (data) => {
           processRecord.stderr += data;
-          processRecord.outputListeners.forEach(listener => listener('stderr', data));
+          processRecord.outputListeners.forEach(listener => {
+            listener('stderr', data);
+          });
         },
         onExit: (exitCode) => {
           const status = this.manager.interpretExitCode(exitCode);
@@ -186,7 +191,9 @@ export class ProcessService {
           processRecord.endTime = endTime;
           processRecord.exitCode = exitCode;
 
-          processRecord.statusListeners.forEach(listener => listener(status));
+          processRecord.statusListeners.forEach(listener => {
+            listener(status);
+          });
 
           this.store.update(processRecord.id, {
             status,
@@ -206,7 +213,9 @@ export class ProcessService {
         onError: (error) => {
           processRecord.status = 'error';
           processRecord.endTime = new Date();
-          processRecord.statusListeners.forEach(listener => listener('error'));
+          processRecord.statusListeners.forEach(listener => {
+            listener('error');
+          });
 
           this.logger.error('Process error', error, { processId: processRecord.id });
         },

@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 
 import type { CreateSessionResponse, HandlerErrorResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
 import type { SessionHandler } from '@sandbox-container/handlers/session-handler.ts';
-import type { SessionManager } from '@sandbox-container/services/session-manager.ts';
 import type { Session } from '@sandbox-container/isolation.ts';
+import type { SessionManager } from '@sandbox-container/services/session-manager.ts';
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockSessionManager = {

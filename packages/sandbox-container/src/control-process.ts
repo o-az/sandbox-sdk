@@ -35,9 +35,9 @@ const sessionCwd = process.env.SESSION_CWD || '/workspace';
 let isIsolated = process.env.SESSION_ISOLATED === '1';
 
 // Configuration constants (can be overridden via env vars)
-const COMMAND_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || '30000');
-const CLEANUP_INTERVAL_MS = parseInt(process.env.CLEANUP_INTERVAL_MS || '30000');
-const TEMP_FILE_MAX_AGE_MS = parseInt(process.env.TEMP_FILE_MAX_AGE_MS || '60000');
+const COMMAND_TIMEOUT_MS = parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10);
+const CLEANUP_INTERVAL_MS = parseInt(process.env.CLEANUP_INTERVAL_MS || '30000', 10);
+const TEMP_FILE_MAX_AGE_MS = parseInt(process.env.TEMP_FILE_MAX_AGE_MS || '60000', 10);
 
 // Secure temp directory setup
 const BASE_TEMP_DIR = process.env.TEMP_DIR || '/tmp';
@@ -343,7 +343,7 @@ async function handleExecCommand(msg: ControlMessage): Promise<void> {
         // Read results
         const stdout = fs.readFileSync(outFile, 'utf8');
         const stderr = fs.readFileSync(errFile, 'utf8');
-        const exitCode = parseInt(fs.readFileSync(exitFile, 'utf8').trim());
+        const exitCode = parseInt(fs.readFileSync(exitFile, 'utf8').trim(), 10);
         
         // Send response
         sendResponse({
@@ -525,7 +525,7 @@ async function handleExecStreamCommand(msg: ControlMessage): Promise<void> {
         // Read final results
         const stdout = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8') : '';
         const stderr = fs.existsSync(errFile) ? fs.readFileSync(errFile, 'utf8') : '';
-        const exitCode = fs.existsSync(exitFile) ? parseInt(fs.readFileSync(exitFile, 'utf8').trim()) : 1;
+        const exitCode = fs.existsSync(exitFile) ? parseInt(fs.readFileSync(exitFile, 'utf8').trim(), 10) : 1;
         
         // Send any remaining output
         if (stdout.length > stdoutSize) {

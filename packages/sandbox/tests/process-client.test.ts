@@ -23,7 +23,7 @@ describe('ProcessClient', () => {
     vi.clearAllMocks();
     
     mockFetch = vi.fn();
-    global.fetch = mockFetch;
+    global.fetch = mockFetch as unknown as typeof fetch;
     
     client = new ProcessClient({
       baseUrl: 'http://test.com',

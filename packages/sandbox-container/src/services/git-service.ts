@@ -1,7 +1,8 @@
 // Git Operations Service
+
+import { BunProcessAdapter } from '../adapters/bun-process-adapter';
 import type { CloneOptions, Logger, ServiceResult } from '../core/types';
 import { GitManager } from '../managers/git-manager';
-import { BunProcessAdapter } from '../adapters/bun-process-adapter';
 
 export interface SecurityService {
   validateGitUrl(url: string): { isValid: boolean; errors: string[] };
