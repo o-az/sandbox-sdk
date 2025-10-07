@@ -128,6 +128,13 @@ export class Session {
       console.log(`[Session] Isolation requested for '${options.id}' but not available`);
     }
   }
+
+  /**
+   * Check if the session is ready for command execution
+   */
+  isReady(): boolean {
+    return this.ready && this.control !== null && !this.control.killed;
+  }
   
   async initialize(): Promise<void> {
     console.log(`[Session] Initializing session '${this.options.id}'`, {
@@ -984,16 +991,24 @@ export class SessionManager {
       }
     }
     
-    // Clean up existing session with same name
+    // Check if session already exists
     const existing = this.sessions.get(options.id);
     if (existing) {
-      existing.destroy();
+      // If the existing session is healthy and ready, reuse it
+      if (existing.isReady()) {
+        console.log(`[SessionManager] Reusing existing session '${options.id}'`);
+        return existing;
+      }
+
+      // If the session exists but is not ready, clean it up and create a new one
+      console.log(`[SessionManager] Destroying unhealthy session '${options.id}' before recreating`);
+      await existing.destroy();
     }
-    
+
     // Create new session
     const session = new Session(options);
     await session.initialize();
-    
+
     this.sessions.set(options.id, session);
     console.log(`[SessionManager] Created session '${options.id}'`);
     return session;
@@ -1009,15 +1024,11 @@ export class SessionManager {
 
   // Helper to get or create default session - reduces duplication
   async getOrCreateDefaultSession(): Promise<Session> {
-    let defaultSession = this.sessions.get('default');
-    if (!defaultSession) {
-      defaultSession = await this.createSession({ 
-        id: 'default',
-        cwd: '/workspace', // Consistent default working directory
-        isolation: true 
-      });
-    }
-    return defaultSession;
+    return await this.createSession({
+      id: 'default',
+      cwd: '/workspace', // Consistent default working directory
+      isolation: true
+    });
   }
   
   async exec(command: string, options?: { cwd?: string }): Promise<ExecResult> {

@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId } from './helpers/test-fixtures';
-import { getSandbox } from '@cloudflare/sandbox';
 
 /**
  * Build and Test Workflow Integration Tests
@@ -105,7 +104,7 @@ describe('Build and Test Workflow', () => {
 
       expect(pwdResponse.status).toBe(200);
       const pwdData = await pwdResponse.json();
-      expect(pwdData.stdout).toMatch(/\/app/);
+      expect(pwdData.stdout).toMatch(/\/workspace/);
     });
 
     test('should handle command failures correctly', async () => {

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json && npm run build:control-process",
-    "build:control-process": "tsc src/control-process.ts src/shell-escape.ts --outDir dist --module commonjs --target es2020 --esModuleInterop --skipLibCheck --moduleResolution node",
+    "build:control-process": "tsc src/control-process.ts src/shell-escape.ts --outDir dist --module es2020 --target es2020 --esModuleInterop --skipLibCheck --moduleResolution node",
     "typecheck": "tsc --noEmit",
     "test": "bun test tests",
     "test:watch": "bun test --watch tests",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@repo/shared-types": "*",
+    "esbuild": "^0.24.0",
     "zod": "^3.22.3"
   },
   "devDependencies": {

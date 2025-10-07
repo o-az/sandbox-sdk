@@ -1,8 +1,6 @@
 # Sandbox base image with development tools, Python, Node.js, and Bun
-# Support multi-architecture builds (amd64, arm64)
-ARG TARGETPLATFORM
-FROM --platform=$TARGETPLATFORM oven/bun:latest AS bun-source
-FROM --platform=$TARGETPLATFORM ubuntu:22.04
+FROM oven/bun:latest AS bun-source
+FROM ubuntu:22.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -33,23 +31,19 @@ RUN apt-get update && apt-get install -y \
     python3.11 \
     python3.11-dev \
     python3-pip \
+    python3.11-venv \
     # Other useful tools
-    sudo \
     ca-certificates \
     gnupg \
     lsb-release \
+    strace \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.11 as default python3
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
-# Install Node.js 22 LTS
-# Using the official NodeSource repository setup script
-RUN apt-get update && apt-get install -y ca-certificates curl gnupg \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update \
+# Install Node.js 20 LTS using official NodeSource setup script
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
@@ -57,26 +51,69 @@ RUN apt-get update && apt-get install -y ca-certificates curl gnupg \
 COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=bun-source /usr/local/bin/bunx /usr/local/bin/bunx
 
-# Install global npm packages as root
-RUN npm install -g yarn pnpm
-
-# Set up working directory
-WORKDIR /app
+# Install essential Python packages for code execution
+RUN pip3 install --no-cache-dir \
+    matplotlib \
+    numpy \
+    pandas \
+    ipython
 
 # Verify installations
 RUN python3 --version && \
     node --version && \
     npm --version && \
-    bun --version && \
-    yarn --version && \
-    pnpm --version
+    bun --version
 
-# Copy container runtime files from sandbox-container package
-# Note: Docker build must be run from repo root with: docker build -f packages/sandbox/Dockerfile .
-COPY packages/sandbox-container/dist/ ./
+# Set up build workspace for monorepo packages
+WORKDIR /build
 
-# Expose the application port
+# Copy workspace packages and tooling
+COPY tooling/typescript-config ./tooling/typescript-config
+COPY packages/shared-types ./packages/shared-types
+COPY packages/sandbox-container ./packages/sandbox-container
+
+# Create minimal workspace package.json
+RUN echo '{"private":true,"workspaces":["tooling/typescript-config","packages/shared-types","packages/sandbox-container"]}' > package.json
+
+# Install all workspace dependencies
+RUN npm install
+
+# Build shared-types first (dependency)
+RUN cd packages/shared-types && npm run build
+
+# Build sandbox-container
+RUN cd packages/sandbox-container && npm run build
+
+# Set up runtime container server directory
+WORKDIR /container-server
+
+# Copy built sandbox-container to runtime location
+RUN cp -r /build/packages/sandbox-container/dist ./dist && \
+    cp /build/packages/sandbox-container/package.json ./
+
+# Copy node_modules for runtime (includes workspace-linked shared-types)
+RUN cp -r /build/node_modules ./node_modules
+
+# Configure process pool sizes (can be overridden at runtime)
+ENV PYTHON_POOL_MIN_SIZE=3
+ENV PYTHON_POOL_MAX_SIZE=15
+ENV JAVASCRIPT_POOL_MIN_SIZE=3
+ENV JAVASCRIPT_POOL_MAX_SIZE=10
+ENV TYPESCRIPT_POOL_MIN_SIZE=3
+ENV TYPESCRIPT_POOL_MAX_SIZE=10
+
+# Create clean workspace directory for user code
+# Architecture:
+#   /container-server/ - SDK infrastructure (server, executors, dependencies)
+#   /workspace/ - User's clean workspace for their code
+RUN mkdir -p /workspace
+
+# Expose the application port (3000 for control)
 EXPOSE 3000
 
-# Run the application
-CMD ["bun", "index.js"]
+# Copy and make startup script executable
+COPY packages/sandbox/startup.sh ./
+RUN chmod +x startup.sh
+
+# Use startup script
+CMD ["./startup.sh"]

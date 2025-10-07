@@ -27,7 +27,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { escapeShellArg, escapeShellPath } from './shell-escape';
+import { escapeShellArg, escapeShellPath } from './shell-escape.js';
 
 // Parse environment configuration
 const sessionId = process.env.SESSION_ID || 'default';
