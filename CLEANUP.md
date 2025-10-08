@@ -210,10 +210,10 @@ Complexity:
 └──────────────────┘
 
 Files:
-- session.ts: ~200 lines (Session class with FIFO script injection)
+- session.ts: ~220 lines (Session class with FIFO + Bun optimizations)
 - session-manager.ts: ~80 lines (SessionManager)
 - shell-escape.ts: ~40 lines (input validation)
-Total: ~320 lines
+Total: ~340 lines
 
 Complexity:
 - 2 processes (Bun → Bash)
@@ -226,11 +226,20 @@ Complexity:
 **Key Changes:**
 1. Remove control process entirely
 2. Spawn bash directly from Bun
-3. Use stdin/stdout pipes (no temp files)
-4. Use markers for output parsing
+3. Use FIFOs + binary prefixes (Daytona-inspired)
+4. Exit code file for completion detection
 5. Keep shell escaping and input validation
 6. Keep all session state management
 7. Keep exact same API surface
+
+**Bun-Specific Optimizations:**
+1. ✅ **Bun.file() API** - Lazy file loading, cleaner than Node.js fs
+2. ✅ **fs.watch() for completion** - Event-driven, not polling (instant response!)
+3. ✅ **CONFIG pattern** - Environment-based configuration (like old isolation.ts)
+4. ✅ **maxOutputSize safety** - Prevent OOM (configurable via env vars)
+5. ✅ **Async session directory** - Uses fs/promises for proper cleanup
+6. ✅ **execStream() with persistent shell** - State persists across streaming!
+7. ✅ **Shell health checks** - Defensive fail-fast if shell dies
 
 ---
 
@@ -285,14 +294,23 @@ Complexity:
 ### Core Session Class
 
 ```typescript
-// session.ts (~200 lines - MUCH simpler with FIFO approach!)
+// session.ts (~220 lines - MUCH simpler with FIFO approach!)
 
 import type { Subprocess } from 'bun';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { watch } from 'node:fs';
+import { rm, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import type { ExecResult, ExecEvent, ProcessRecord } from '@repo/shared-types';
+
+// Configuration
+const CONFIG = {
+  COMMAND_TIMEOUT_MS: parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10),
+  MAX_OUTPUT_SIZE_BYTES: parseInt(process.env.MAX_OUTPUT_SIZE_BYTES || String(10 * 1024 * 1024), 10), // 10MB
+  STREAM_CHUNK_DELAY_MS: 100, // Debounce for fs.watch() in streaming
+  DEFAULT_CWD: '/workspace',
+} as const;
 
 export interface SessionOptions {
   id: string;
@@ -307,13 +325,10 @@ const STDERR_PREFIX = '\x02\x02\x02';
 export class Session {
   private shell: Subprocess | null = null;
   private ready = false;
-  private sessionDir: string;
+  private sessionDir: string | null = null;
   private processes = new Map<string, ProcessRecord>();
 
-  constructor(private options: SessionOptions) {
-    // Create temp directory for this session
-    this.sessionDir = mkdtempSync(join(tmpdir(), `session-${options.id}-`));
-  }
+  constructor(private options: SessionOptions) {}
 
   /**
    * Initialize the bash shell for this session
@@ -321,10 +336,13 @@ export class Session {
   async initialize(): Promise<void> {
     console.log(`[Session] Initializing '${this.options.id}'`);
 
+    // Create temp directory for this session
+    this.sessionDir = await mkdtemp(join(tmpdir(), `session-${this.options.id}-`));
+
     // Spawn bash with stdin pipe - no IPC needed!
     this.shell = Bun.spawn({
       cmd: ['bash', '--norc'],
-      cwd: this.options.cwd || '/workspace',
+      cwd: this.options.cwd || CONFIG.DEFAULT_CWD,
       env: {
         ...process.env,
         ...this.options.env,
@@ -349,8 +367,12 @@ export class Session {
    * Execute a command and return result
    */
   async exec(command: string, options?: { cwd?: string }): Promise<ExecResult> {
-    if (!this.isReady()) {
-      throw new Error(`Session '${this.options.id}' not ready`);
+    if (!this.isReady() || this.shell!.killed) {
+      throw new Error(`Session '${this.options.id}' shell has died`);
+    }
+
+    if (!this.sessionDir) {
+      throw new Error(`Session '${this.options.id}' not initialized`);
     }
 
     const commandId = randomUUID();
@@ -364,11 +386,11 @@ export class Session {
     // Write script to shell's stdin
     this.shell!.stdin.write(bashScript + '\n');
 
-    // Poll for exit code file (indicates completion)
-    const exitCode = await this.pollForExitCode(exitCodeFile);
+    // Wait for exit code file (event-driven, not polling!)
+    const exitCode = await this.waitForExitCode(exitCodeFile);
 
     // Read log file and parse prefixes
-    const { stdout, stderr } = this.parseLogFile(logFile);
+    const { stdout, stderr } = await this.parseLogFile(logFile);
 
     return {
       command,
@@ -423,35 +445,61 @@ export class Session {
   }
 
   /**
-   * Poll for exit code file (indicates command completion)
+   * Wait for exit code file (event-driven via fs.watch)
    */
-  private async pollForExitCode(exitCodeFile: string, timeoutMs = 30000): Promise<number> {
-    const startTime = Date.now();
+  private async waitForExitCode(exitCodeFile: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const dir = dirname(exitCodeFile);
+      const filename = basename(exitCodeFile);
 
-    while (true) {
-      if (existsSync(exitCodeFile)) {
-        const exitCodeStr = readFileSync(exitCodeFile, 'utf-8').trim();
-        return parseInt(exitCodeStr, 10);
-      }
+      // Check if file already exists (race condition)
+      Bun.file(exitCodeFile).exists().then(async (exists) => {
+        if (exists) {
+          const exitCode = await Bun.file(exitCodeFile).text();
+          resolve(parseInt(exitCode.trim(), 10));
+          return;
+        }
 
-      if (Date.now() - startTime > timeoutMs) {
-        throw new Error('Command timeout');
-      }
+        // Set up file watcher
+        const watcher = watch(dir, async (eventType, changedFile) => {
+          if (changedFile === filename) {
+            watcher.close();
+            try {
+              const exitCode = await Bun.file(exitCodeFile).text();
+              resolve(parseInt(exitCode.trim(), 10));
+            } catch (error) {
+              reject(error);
+            }
+          }
+        });
 
-      // Poll every 50ms
-      await Bun.sleep(50);
-    }
+        // Timeout safety
+        setTimeout(() => {
+          watcher.close();
+          reject(new Error(`Command timeout after ${CONFIG.COMMAND_TIMEOUT_MS}ms`));
+        }, CONFIG.COMMAND_TIMEOUT_MS);
+      });
+    });
   }
 
   /**
    * Parse log file and separate stdout/stderr by binary prefixes
    */
-  private parseLogFile(logFile: string): { stdout: string; stderr: string } {
-    if (!existsSync(logFile)) {
+  private async parseLogFile(logFile: string): Promise<{ stdout: string; stderr: string }> {
+    const file = Bun.file(logFile);
+
+    if (!(await file.exists())) {
       return { stdout: '', stderr: '' };
     }
 
-    const content = readFileSync(logFile, 'utf-8');
+    // Safety check: prevent OOM from huge outputs
+    if (file.size > CONFIG.MAX_OUTPUT_SIZE_BYTES) {
+      throw new Error(
+        `Command output too large: ${file.size} bytes (max ${CONFIG.MAX_OUTPUT_SIZE_BYTES})`
+      );
+    }
+
+    const content = await file.text();
     const lines = content.split('\n');
 
     let stdout = '';
@@ -472,22 +520,25 @@ export class Session {
   }
 
   /**
-   * Execute a command with streaming output
+   * Execute a command with streaming output (uses persistent shell!)
+   * Hybrid approach: fs.watch() for completion, polling for content
    */
   async *execStream(command: string, options?: { cwd?: string }): AsyncGenerator<ExecEvent> {
-    if (!this.isReady()) {
-      throw new Error(`Session '${this.options.id}' not ready`);
+    if (!this.isReady() || this.shell!.killed) {
+      throw new Error(`Session '${this.options.id}' shell has died`);
     }
 
-    // For streaming, spawn a separate bash process
-    const proc = Bun.spawn({
-      cmd: ['bash', '-c', command],
-      cwd: options?.cwd || this.options.cwd || '/workspace',
-      env: { ...process.env, ...this.options.env },
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe'
-    });
+    if (!this.sessionDir) {
+      throw new Error(`Session '${this.options.id}' not initialized`);
+    }
+
+    const commandId = randomUUID();
+    const logFile = join(this.sessionDir, `${commandId}.log`);
+    const exitCodeFile = join(this.sessionDir, `${commandId}.exit`);
+
+    // Build FIFO script and write to persistent shell
+    const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
+    this.shell!.stdin.write(bashScript + '\n');
 
     yield {
       type: 'start',
@@ -496,25 +547,66 @@ export class Session {
     };
 
     try {
-      // Stream stdout chunks
-      const reader = proc.stdout.getReader();
-      const decoder = new TextDecoder();
+      let position = 0;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Poll log file until exit code file appears
+      while (!(await Bun.file(exitCodeFile).exists())) {
+        const file = Bun.file(logFile);
+        if (await file.exists()) {
+          const content = await file.text();
+          const newContent = content.slice(position);
+          position = content.length;
 
-        const chunk = decoder.decode(value, { stream: true });
-        yield {
-          type: 'stdout',
-          timestamp: new Date().toISOString(),
-          data: chunk,
-          command
-        };
+          // Yield new chunks
+          for (const line of newContent.split('\n').filter(l => l)) {
+            if (line.startsWith(STDOUT_PREFIX)) {
+              yield {
+                type: 'stdout',
+                timestamp: new Date().toISOString(),
+                data: line.slice(STDOUT_PREFIX.length),
+                command
+              };
+            } else if (line.startsWith(STDERR_PREFIX)) {
+              yield {
+                type: 'stderr',
+                timestamp: new Date().toISOString(),
+                data: line.slice(STDERR_PREFIX.length),
+                command
+              };
+            }
+          }
+        }
+
+        // Small delay for batching
+        await Bun.sleep(CONFIG.STREAM_CHUNK_DELAY_MS);
       }
 
-      const exitCode = await proc.exited;
-      const stderr = await proc.stderr.text();
+      // Command finished - read final chunks and exit code
+      const file = Bun.file(logFile);
+      if (await file.exists()) {
+        const content = await file.text();
+        const finalContent = content.slice(position);
+
+        for (const line of finalContent.split('\n').filter(l => l)) {
+          if (line.startsWith(STDOUT_PREFIX)) {
+            yield {
+              type: 'stdout',
+              timestamp: new Date().toISOString(),
+              data: line.slice(STDOUT_PREFIX.length),
+              command
+            };
+          } else if (line.startsWith(STDERR_PREFIX)) {
+            yield {
+              type: 'stderr',
+              timestamp: new Date().toISOString(),
+              data: line.slice(STDERR_PREFIX.length),
+              command
+            };
+          }
+        }
+      }
+
+      const exitCode = parseInt(await Bun.file(exitCodeFile).text(), 10);
 
       yield {
         type: 'complete',
@@ -522,8 +614,8 @@ export class Session {
         command,
         exitCode,
         result: {
-          stdout: '',
-          stderr,
+          stdout: '', // Already streamed
+          stderr: '', // Already streamed
           exitCode,
           success: exitCode === 0
         }
@@ -612,8 +704,18 @@ export class Session {
       this.shell.kill();
     }
 
+    // Clean up session directory
+    if (this.sessionDir) {
+      try {
+        await rm(this.sessionDir, { recursive: true, force: true });
+      } catch (error) {
+        console.warn(`[Session ${this.options.id}] Failed to clean up directory:`, error);
+      }
+    }
+
     this.ready = false;
     this.shell = null;
+    this.sessionDir = null;
   }
 }
 ```
@@ -672,7 +774,7 @@ export class SessionManager {
 ## 📁 File Changes
 
 ### Files to CREATE
-- ✅ `packages/sandbox-container/src/session.ts` (~200 lines) - FIFO-based Session class
+- ✅ `packages/sandbox-container/src/session.ts` (~220 lines) - FIFO-based Session with Bun optimizations
 - ✅ `packages/sandbox-container/src/session-manager.ts` (~80 lines) - Session lifecycle management
 
 ### Files to MODIFY
@@ -691,7 +793,7 @@ export class SessionManager {
 - ✅ All handler files - Just update to use new Session
 - ✅ All test files - Update to test new implementation
 
-**Net change:** ~1871 lines removed, ~280 lines added = **1591 lines deleted (85% reduction!)**
+**Net change:** ~1871 lines removed, ~300 lines added = **1571 lines deleted (84% reduction!)**
 
 ---
 
@@ -1250,6 +1352,119 @@ this.shell!.stdin.write(bashScript + '\n');
 
 ---
 
+## 🎁 Bun-Specific Improvements Summary
+
+After researching Bun's APIs at https://bun.sh/docs/runtime/bun-apis, we made these additional optimizations:
+
+### 1. **Bun.file() API** (Idiomatic File Access)
+```typescript
+// ❌ Before (Node.js)
+if (existsSync(exitCodeFile)) {
+  const exitCode = readFileSync(exitCodeFile, 'utf-8');
+}
+
+// ✅ After (Bun native)
+const file = Bun.file(exitCodeFile);
+if (await file.exists()) {
+  const exitCode = await file.text();
+}
+```
+- Lazy loading (doesn't read until needed)
+- Cleaner async API
+- `file.size` for safety checks
+
+### 2. **fs.watch() for Completion** (Event-Driven, Not Polling!)
+```typescript
+// ❌ Before (polling every 50ms)
+while (true) {
+  if (await Bun.file(exitCodeFile).exists()) {
+    return readExitCode();
+  }
+  await Bun.sleep(50);
+}
+
+// ✅ After (event-driven)
+const watcher = watch(dir, async (eventType, changedFile) => {
+  if (changedFile === filename) {
+    watcher.close();
+    const exitCode = await Bun.file(exitCodeFile).text();
+    resolve(parseInt(exitCode.trim(), 10));
+  }
+});
+```
+- **Instant response** (no 50ms delay)
+- Less CPU usage (no tight loop)
+- More responsive
+
+### 3. **CONFIG Pattern** (Environment-Based Configuration)
+```typescript
+const CONFIG = {
+  COMMAND_TIMEOUT_MS: parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10),
+  MAX_OUTPUT_SIZE_BYTES: parseInt(process.env.MAX_OUTPUT_SIZE_BYTES || '10485760', 10),
+  STREAM_CHUNK_DELAY_MS: 100,
+  DEFAULT_CWD: '/workspace',
+} as const;
+```
+- Matches old `isolation.ts` pattern
+- Configurable via environment variables
+- Type-safe with `as const`
+
+### 4. **maxOutputSize Safety** (Prevent OOM)
+```typescript
+if (file.size > CONFIG.MAX_OUTPUT_SIZE_BYTES) {
+  throw new Error(`Output too large: ${file.size} bytes (max ${CONFIG.MAX_OUTPUT_SIZE_BYTES})`);
+}
+```
+- 10MB default (configurable)
+- Prevents OOM from huge outputs
+- Uses Bun.file().size
+
+### 5. **execStream() with Persistent Shell** (Game Changer!)
+```typescript
+// ❌ Before: Spawned new bash, lost state
+for await (const event of session.execStream('pwd')) {
+  // Lost cd context!
+}
+
+// ✅ After: Uses persistent shell via FIFO
+await session.exec('cd /workspace');
+for await (const event of session.execStream('pwd')) {
+  // Outputs /workspace! State preserved!
+}
+```
+- Writes FIFO script to persistent shell
+- Polls log file for streaming
+- **State persists** (cd, env, functions)
+
+### 6. **Session Directory Cleanup** (Resource Management)
+```typescript
+async destroy(): Promise<void> {
+  // ... kill processes and shell
+
+  if (this.sessionDir) {
+    await rm(this.sessionDir, { recursive: true, force: true });
+  }
+}
+```
+- No temp file leaks
+- Uses fs/promises for async cleanup
+- Graceful error handling
+
+### 7. **Shell Health Checks** (Defensive Programming)
+```typescript
+async exec(command: string): Promise<ExecResult> {
+  if (!this.isReady() || this.shell!.killed) {
+    throw new Error(`Session '${this.options.id}' shell has died`);
+  }
+  // ...
+}
+```
+- Fail fast if shell died
+- Clear error messages
+- Better debugging
+
+---
+
 ## 📝 Summary
 
 **What we're removing:** Complex PID isolation that doesn't materially improve security
@@ -1257,11 +1472,12 @@ this.shell!.stdin.write(bashScript + '\n');
 **What we're keeping:** Brilliant session management API that users love
 
 **What we're gaining:**
-1. **Simplicity:** 85% less code (1591 lines deleted!), much easier to understand
+1. **Simplicity:** 84% less code (1571 lines deleted!), much easier to understand
 2. **Reliability:** FIFOs are battle-tested Unix primitives, proven in Daytona
-3. **Performance:** Direct bash stdin, no wrapper process, no IPC overhead
+3. **Performance:** Direct bash stdin, no wrapper process, event-driven completion
 4. **Maintainability:** Clear architecture, easier debugging, better for contributors
-5. **Unix primitives:** Uses stdin pipe + FIFOs + binary prefixes (battle-tested)
+5. **Bun-optimized:** Uses Bun.file(), fs.watch(), native primitives
+6. **Safety:** maxOutputSize, health checks, proper cleanup
 
 **What we're losing:** PID isolation that:
 - Doesn't stop real attacks (user has arbitrary execution)
@@ -1273,9 +1489,14 @@ this.shell!.stdin.write(bashScript + '\n');
 
 ---
 
-**Status:** Ready for review and discussion
-**Approach:** FIFO-based (inspired by Daytona's proven implementation)
-**Next:** Prototype core Session class with FIFO script injection to validate approach
-**Key Innovation:** Binary prefixes (\x01\x01\x01 for stdout, \x02\x02\x02 for stderr) + exit code file polling
+**Status:** Ready for implementation 🚀
+**Approach:** FIFO-based (inspired by Daytona) + Bun optimizations
+**Next:** Implement core Session class with all improvements
+**Key Innovations:**
+- Binary prefixes (\x01\x01\x01 for stdout, \x02\x02\x02 for stderr) + FIFO labeling
+- fs.watch() for event-driven completion (not polling!)
+- Bun.file() for lazy loading and size checks
+- execStream() with persistent shell state
+- CONFIG pattern for environment-based configuration
 **Owner:** TBD
 **Reviewers:** TBD
