@@ -400,8 +400,8 @@ export class Session {
       script += `  # Save and change directory\n`;
       script += `  PREV_DIR=$(pwd)\n`;
       script += `  if cd ${safeCwd}; then\n`;
-      script += `    # Execute command in new directory\n`;
-      script += `    { ${command}; } > ${safeStdoutPipe} 2> ${safeStderrPipe}\n`;
+      script += `    # Execute command in subshell (prevents 'exit' from killing session)\n`;
+      script += `    ( ${command}; ) > ${safeStdoutPipe} 2> ${safeStderrPipe}\n`;
       script += `    EXIT_CODE=$?\n`;
       script += `    # Restore directory\n`;
       script += `    cd "$PREV_DIR"\n`;
@@ -415,8 +415,9 @@ export class Session {
       script += `  \n`;
     } else {
       // Execute command in current directory
-      script += `  # Execute command\n`;
-      script += `  { ${command}; } > ${safeStdoutPipe} 2> ${safeStderrPipe}\n`;
+      // Use a true subshell () to prevent 'exit' from killing the persistent shell
+      script += `  # Execute command in subshell (prevents 'exit' from killing session)\n`;
+      script += `  ( ${command}; ) > ${safeStdoutPipe} 2> ${safeStderrPipe}\n`;
       script += `  EXIT_CODE=$?\n`;
       script += `  \n`;
     }

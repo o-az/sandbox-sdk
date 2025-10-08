@@ -4,9 +4,7 @@
  * Exposes SDK methods via HTTP endpoints for E2E testing.
  * Supports both default sessions (implicit) and explicit sessions via X-Session-Id header.
  */
-import { Sandbox, getSandbox, proxyToSandbox } from '@cloudflare/sandbox';
-import type { ExecutionSession } from '@repo/shared-types';
-
+import { Sandbox, getSandbox, proxyToSandbox, type ExecutionSession } from '@cloudflare/sandbox';
 export { Sandbox };
 
 interface Env {
@@ -37,7 +35,7 @@ export default {
     // Get sandbox ID from header
     // Sandbox ID determines which container instance (Durable Object)
     const sandboxId = request.headers.get('X-Sandbox-Id') || 'default-test-sandbox';
-    const sandbox = getSandbox(env.Sandbox, sandboxId);
+    const sandbox = getSandbox(env.Sandbox, sandboxId) as Sandbox<Env>;
 
     // Get session ID from header (optional)
     // If provided, use explicit session instead of default sandbox session

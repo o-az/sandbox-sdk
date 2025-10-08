@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
 
 /**
  * Git Clone Workflow Integration Tests
@@ -40,29 +40,21 @@ describe('Git Clone Workflow', () => {
 
     test('should clone a public repository successfully', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Clone a very small public repository for testing
       // Using octocat/Hello-World - a minimal test repository
       // Use vi.waitFor to handle container startup time
       const cloneResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/git/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoUrl: 'https://github.com/octocat/Hello-World',
-              branch: 'master',
-              targetDir: '/workspace/test-repo',
-              sessionId: sandboxId,
-            }),
-          });
-
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/octocat/Hello-World',
+            branch: 'master',
+            targetDir: '/workspace/test-repo',
+          }),
+        }),
         { timeout: 90000, interval: 3000 } // Git clone can take longer, wait up to 90s
       );
 
@@ -73,10 +65,9 @@ describe('Git Clone Workflow', () => {
       // Verify the repository was cloned by checking for README
       const fileCheckResponse = await fetch(`${workerUrl}/api/file/read`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           path: '/workspace/test-repo/README',
-          sessionId: sandboxId,
         }),
       });
 
@@ -88,27 +79,20 @@ describe('Git Clone Workflow', () => {
 
     test('should clone repository with specific branch', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Clone a repository with a specific branch (using master for Hello-World)
       const cloneResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/git/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoUrl: 'https://github.com/octocat/Hello-World',
-              branch: 'master', // Explicitly specify master branch
-              targetDir: '/workspace/branch-test',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/octocat/Hello-World',
+            branch: 'master', // Explicitly specify master branch
+            targetDir: '/workspace/branch-test',
 
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+          }),
+        }),
         { timeout: 90000, interval: 3000 }
       );
 
@@ -119,10 +103,10 @@ describe('Git Clone Workflow', () => {
       // Verify we're on the correct branch by checking git branch
       const branchCheckResponse = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           command: 'cd /workspace/branch-test && git branch --show-current',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -133,26 +117,19 @@ describe('Git Clone Workflow', () => {
 
     test('should execute complete workflow: clone → list files → verify structure', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Step 1: Clone the Hello-World repository
       const cloneResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/git/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoUrl: 'https://github.com/octocat/Hello-World',
-              targetDir: '/workspace/project',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/octocat/Hello-World',
+            targetDir: '/workspace/project',
 
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+          }),
+        }),
         { timeout: 90000, interval: 3000 }
       );
 
@@ -161,10 +138,10 @@ describe('Git Clone Workflow', () => {
       // Step 2: List directory contents to verify clone
       const listResponse = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           command: 'ls -la /workspace/project',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -177,10 +154,10 @@ describe('Git Clone Workflow', () => {
       // Step 3: Verify README content
       const readmeResponse = await fetch(`${workerUrl}/api/file/read`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           path: '/workspace/project/README',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -191,10 +168,10 @@ describe('Git Clone Workflow', () => {
       // Step 4: Run a git command to verify repo is functional
       const gitLogResponse = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           command: 'cd /workspace/project && git log --oneline -1',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -206,25 +183,18 @@ describe('Git Clone Workflow', () => {
 
     test('should handle cloning to default directory when targetDir not specified', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Clone without specifying targetDir (should use repo name "Hello-World")
       const cloneResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/git/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoUrl: 'https://github.com/octocat/Hello-World',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/octocat/Hello-World',
 
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+          }),
+        }),
         { timeout: 90000, interval: 3000 }
       );
 
@@ -236,10 +206,10 @@ describe('Git Clone Workflow', () => {
       // Verify by checking if Hello-World directory exists
       const dirCheckResponse = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           command: 'ls -la /workspace',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -250,22 +220,18 @@ describe('Git Clone Workflow', () => {
 
     test('should handle git clone errors gracefully', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Try to clone a non-existent repository
       const cloneResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/git/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoUrl: 'https://github.com/nonexistent/repository-that-does-not-exist-12345',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/nonexistent/repository-that-does-not-exist-12345',
 
-          // Should get a response (either 500 error or 200 with error in body)
-          return res;
-        },
+          }),
+        }, { expectSuccess: false }), // Don't throw on error - we expect this to fail
         { timeout: 30000, interval: 2000 }
       );
 
@@ -283,26 +249,19 @@ describe('Git Clone Workflow', () => {
 
     test('should maintain session state across git clone and subsequent commands', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Step 1: Clone a repository
       const cloneResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/git/clone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoUrl: 'https://github.com/octocat/Hello-World',
-              targetDir: '/workspace/state-test',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/octocat/Hello-World',
+            targetDir: '/workspace/state-test',
 
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+          }),
+        }),
         { timeout: 90000, interval: 3000 }
       );
 
@@ -311,11 +270,11 @@ describe('Git Clone Workflow', () => {
       // Step 2: Create a new file in the cloned directory
       const writeResponse = await fetch(`${workerUrl}/api/file/write`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           path: '/workspace/state-test/test-marker.txt',
           content: 'Session state test',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -324,10 +283,10 @@ describe('Git Clone Workflow', () => {
       // Step 3: List files to verify both cloned content and our new file exist
       const listResponse = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           command: 'ls /workspace/state-test',
-          sessionId: sandboxId,
+
         }),
       });
 

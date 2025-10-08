@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
 
 /**
  * Build and Test Workflow Integration Tests
@@ -35,26 +35,19 @@ describe('Build and Test Workflow', () => {
 
     test('should execute basic commands and verify file operations', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Step 1: Execute simple command
       // Use vi.waitFor to handle container startup time
       const echoResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/execute`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              command: 'echo "Hello from sandbox"',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'echo "Hello from sandbox"',
 
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+          }),
+        }),
         { timeout: 30000, interval: 1000 } // Wait up to 30s, retry every 1s
       );
 
@@ -66,11 +59,11 @@ describe('Build and Test Workflow', () => {
       // Step 2: Write a file (using absolute path per README pattern)
       const writeResponse = await fetch(`${workerUrl}/api/file/write`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           path: '/test-file.txt',
           content: 'Integration test content',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -81,10 +74,10 @@ describe('Build and Test Workflow', () => {
       // Step 3: Read the file back to verify persistence
       const readResponse = await fetch(`${workerUrl}/api/file/read`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           path: '/test-file.txt',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -95,10 +88,10 @@ describe('Build and Test Workflow', () => {
       // Step 4: Verify pwd to understand working directory
       const pwdResponse = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           command: 'pwd',
-          sessionId: sandboxId,
+
         }),
       });
 
@@ -109,26 +102,19 @@ describe('Build and Test Workflow', () => {
 
     test('should handle command failures correctly', async () => {
       const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
 
       // Execute a command that will fail
       // Use vi.waitFor to handle container startup
       const response = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/execute`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              command: 'exit 1',
-              sessionId: sandboxId,
-            }),
-          });
+        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'exit 1',
 
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+          }),
+        }),
         { timeout: 30000, interval: 1000 }
       );
 

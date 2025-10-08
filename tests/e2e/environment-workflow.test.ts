@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
 
 describe('Environment Variables Workflow', () => {
   describe('local', () => {
@@ -26,21 +26,13 @@ describe('Environment Variables Workflow', () => {
 
       // Step 1: Set environment variable
       const setEnvResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/env/set`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              envVars: { TEST_VAR: 'hello_world' },
-            }),
-          });
-
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+        async () => fetchWithStartup(`${workerUrl}/api/env/set`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            envVars: { TEST_VAR: 'hello_world' },
+          }),
+        }),
         { timeout: 30000, interval: 2000 }
       );
 
@@ -69,25 +61,17 @@ describe('Environment Variables Workflow', () => {
 
       // Step 1: Set multiple environment variables
       const setEnvResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/env/set`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              envVars: {
-                API_KEY: 'secret123',
-                DB_HOST: 'localhost',
-                PORT: '3000',
-              },
-            }),
-          });
-
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+        async () => fetchWithStartup(`${workerUrl}/api/env/set`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            envVars: {
+              API_KEY: 'secret123',
+              DB_HOST: 'localhost',
+              PORT: '3000',
+            },
+          }),
+        }),
         { timeout: 30000, interval: 2000 }
       );
 
@@ -116,21 +100,13 @@ describe('Environment Variables Workflow', () => {
 
       // Step 1: Set environment variable
       const setEnvResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/env/set`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              envVars: { PERSISTENT_VAR: 'still_here' },
-            }),
-          });
-
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+        async () => fetchWithStartup(`${workerUrl}/api/env/set`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            envVars: { PERSISTENT_VAR: 'still_here' },
+          }),
+        }),
         { timeout: 30000, interval: 2000 }
       );
 
@@ -185,21 +161,13 @@ describe('Environment Variables Workflow', () => {
 
       // Step 1: Set environment variable
       const setEnvResponse = await vi.waitFor(
-        async () => {
-          const res = await fetch(`${workerUrl}/api/env/set`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              envVars: { PROCESS_VAR: 'from_env' },
-            }),
-          });
-
-          if (res.status !== 200) {
-            throw new Error(`Expected 200, got ${res.status}`);
-          }
-
-          return res;
-        },
+        async () => fetchWithStartup(`${workerUrl}/api/env/set`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            envVars: { PROCESS_VAR: 'from_env' },
+          }),
+        }),
         { timeout: 30000, interval: 2000 }
       );
 
