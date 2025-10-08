@@ -13,26 +13,39 @@
 - PID namespace isolation via `unshare`
 
 **Proposed State:**
-- ~410 lines of clean, Bun-optimized session code
-- Two-process architecture: Bun → Shell Wrapper (IPC-enabled)
-- **Bun IPC for control messages** (type-safe, structured)
-- **stdout/stderr for command output** (no parsing!)
+- ~250 lines of clean, Bun-optimized session code
+- Two-process architecture: Bun → Bash (stdin pipe)
+- **FIFO + binary prefixes for output labeling** (battle-tested Unix primitives)
+- **Exit code file for completion detection** (simple polling)
 - Input validation instead of namespace isolation
 
-**Key Innovation: IPC-Based Architecture**
+**Key Innovation: FIFO-Based Architecture (Inspired by Daytona)**
 ```
-Control Channel (IPC):    { type: 'exec', id: '123', command: 'ls' }
-                         → { type: 'result', id: '123', exitCode: 0 }
-Data Channel (stdio):     "file1.txt\nfile2.txt\n"
+Bun spawns bash with stdin pipe:
+  ┌─────────────────────────────────────┐
+  │ Bun writes to shell.stdin:          │
+  │                                     │
+  │ {                                   │
+  │   mkfifo stdout.pipe stderr.pipe    │
+  │   (label stdout) >> log &           │
+  │   (label stderr) >> log &           │
+  │   { YOUR_COMMAND } > sp 2> ep       │
+  │   echo $? >> exit_code              │
+  │ }                                   │
+  └─────────────────────────────────────┘
+         ↓
+  Polls exit_code file → Done!
+  Reads log file → Output with binary prefixes
 ```
 
 **Benefits:**
-- **77% less code** (~1461 lines removed)
-- **No markers** - Clean separation of control vs data
-- **Type-safe** - Structured IPC messages instead of string parsing
-- **Bun-native** - Uses `Bun.spawn()`, ReadableStream, IPC primitives
-- **More reliable** - No marker collisions, no file I/O overhead
-- **Easier to maintain** - Clear architecture, simpler debugging
+- **87% less code** (~1650 lines removed)
+- **No IPC complexity** - Just stdin pipe + filesystem
+- **No wrapper process** - Direct bash spawn
+- **Battle-tested** - FIFOs are Unix primitives
+- **Binary prefixes** - \x01\x01\x01 (stdout), \x02\x02\x02 (stderr) - won't appear in normal output
+- **Simple completion** - Exit code file = done
+- **Natural state** - cd, env, functions persist automatically
 - **Same API** - Zero breaking changes for users
 
 **Trade-offs:**
@@ -187,22 +200,27 @@ Complexity:
 └──────┬───────────┘
        │
        ▼
-┌──────────────────┐     stdin/stdout       ┌────────────────────┐
-│    Session       │◄────────────────────►│   bash --norc      │
-│  (session.ts)    │      (pipes)         │   (direct spawn)   │
-└──────────────────┘                       └────────────────────┘
+┌──────────────────┐     shell.stdin.write()    ┌────────────────────┐
+│    Session       │──────────────────────────►│   bash --norc      │
+│  (session.ts)    │                            │                    │
+│                  │                            │  Creates FIFOs     │
+│  Polls files:    │                            │  Labels output     │
+│  - exit_code     │                            │  Writes to log     │
+│  - log file      │                            └────────────────────┘
+└──────────────────┘
 
 Files:
-- session.ts: ~300 lines (Session class)
-- session-manager.ts: ~100 lines (SessionManager)
+- session.ts: ~200 lines (Session class with FIFO script injection)
+- session-manager.ts: ~80 lines (SessionManager)
 - shell-escape.ts: ~40 lines (input validation)
-Total: ~440 lines
+Total: ~320 lines
 
 Complexity:
 - 2 processes (Bun → Bash)
-- Direct pipe communication (OS primitive)
-- Simple marker-based parsing
-- No IPC protocol needed
+- stdin pipe (OS primitive)
+- FIFO-based output labeling (bash script)
+- File polling for completion
+- No IPC protocol, no wrapper process
 ```
 
 **Key Changes:**
@@ -218,55 +236,62 @@ Complexity:
 
 ## 💻 Implementation Details
 
-### Architecture: Clean IPC-Based Communication
+### Architecture: FIFO-Based Communication (Daytona-Inspired)
 
-**Key Insight:** Use Bun's native IPC for control messages, keep stdout/stderr for actual command output!
+**Key Insight:** Use bash's stdin pipe + FIFOs + binary prefixes for output labeling!
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   Bun Process                       │
 │  ┌──────────────────────────────────────────────┐  │
 │  │              Session                          │  │
-│  │  - Spawns bash with IPC enabled              │  │
-│  │  - Sends commands via IPC                    │  │
-│  │  - Receives results via IPC                  │  │
+│  │  - Spawns bash with stdin pipe               │  │
+│  │  - Writes bash script to stdin               │  │
+│  │  - Polls exit_code file for completion       │  │
+│  │  - Reads log file for output                 │  │
 │  └────────┬─────────────────────────────────────┘  │
 └───────────┼────────────────────────────────────────┘
             │
-            │ IPC Channel (control messages)
-            │ ┌─ { type: 'exec', id: '123', command: 'ls' }
-            │ └─ { type: 'result', id: '123', exitCode: 0 }
-            │
-            │ stdout (command output)
-            │ ├─ "file1.txt\nfile2.txt\n"
-            │
-            │ stderr (command errors)
-            │ └─ "warning: deprecated\n"
+            │ stdin.write() - Bash script:
+            │ {
+            │   mkfifo stdout.pipe stderr.pipe
+            │   (label stdout with \x01\x01\x01) >> log &
+            │   (label stderr with \x02\x02\x02) >> log &
+            │   { YOUR_COMMAND } > stdout.pipe 2> stderr.pipe
+            │   echo $? >> exit_code
+            │   wait  # for labelers
+            │   rm -f *.pipe
+            │ }
             │
             ▼
 ┌─────────────────────────────────────────────────────┐
-│              Bash Process (IPC-enabled)             │
-│  - Listens for IPC messages                         │
-│  - Executes commands                                │
-│  - Sends results back via IPC                       │
-│  - Output goes to stdout/stderr (not IPC!)          │
+│              Bash Process (bash --norc)             │
+│  - Receives script via stdin                        │
+│  - Creates FIFOs for output                         │
+│  - Labels stdout/stderr with binary prefixes        │
+│  - Writes to log file                               │
+│  - Writes exit code to file (completion signal!)    │
 └─────────────────────────────────────────────────────┘
 ```
 
 **Why this is brilliant:**
-- ✅ No markers to parse
-- ✅ No collision with command output
-- ✅ Type-safe structured messages
-- ✅ Bun-native, fast, reliable
-- ✅ Clean separation: IPC = control, stdio = data
+- ✅ No IPC complexity - just stdin + filesystem
+- ✅ Binary prefixes won't collide with output (\x01, \x02 = control chars)
+- ✅ FIFOs are battle-tested Unix primitives
+- ✅ Exit code file = simple completion detection
+- ✅ Natural shell state persistence (cd, env, functions)
+- ✅ No wrapper process needed
 
 ### Core Session Class
 
 ```typescript
-// session.ts (~250 lines - even simpler than before!)
+// session.ts (~200 lines - MUCH simpler with FIFO approach!)
 
 import type { Subprocess } from 'bun';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ExecResult, ExecEvent, ProcessRecord } from '@repo/shared-types';
 
 export interface SessionOptions {
@@ -275,35 +300,20 @@ export interface SessionOptions {
   cwd?: string;
 }
 
-interface ControlMessage {
-  type: 'exec' | 'exec_stream' | 'health_check';
-  id: string;
-  command?: string;
-  cwd?: string;
-}
-
-interface ControlResponse {
-  type: 'result' | 'error' | 'ready' | 'stream_chunk';
-  id: string;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-  error?: string;
-}
-
-interface CommandCallback {
-  resolve: (result: ExecResult) => void;
-  reject: (error: Error) => void;
-  timeout: NodeJS.Timeout;
-}
+// Binary prefixes for output labeling (won't appear in normal text)
+const STDOUT_PREFIX = '\x01\x01\x01';
+const STDERR_PREFIX = '\x02\x02\x02';
 
 export class Session {
   private shell: Subprocess | null = null;
   private ready = false;
-  private commandQueue = new Map<string, CommandCallback>();
+  private sessionDir: string;
   private processes = new Map<string, ProcessRecord>();
 
-  constructor(private options: SessionOptions) {}
+  constructor(private options: SessionOptions) {
+    // Create temp directory for this session
+    this.sessionDir = mkdtempSync(join(tmpdir(), `session-${options.id}-`));
+  }
 
   /**
    * Initialize the bash shell for this session
@@ -311,97 +321,21 @@ export class Session {
   async initialize(): Promise<void> {
     console.log(`[Session] Initializing '${this.options.id}'`);
 
-    // Spawn bash with IPC enabled!
-    // The wrapper script handles IPC communication
+    // Spawn bash with stdin pipe - no IPC needed!
     this.shell = Bun.spawn({
-      cmd: ['bun', 'run', '/container/shell-wrapper.ts', this.options.id],
+      cmd: ['bash', '--norc'],
       cwd: this.options.cwd || '/workspace',
       env: {
         ...process.env,
         ...this.options.env,
       },
       stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-      ipc: (message) => {
-        // Handle IPC messages from shell wrapper
-        this.handleIPCMessage(message as ControlResponse);
-      }
+      stdout: 'ignore',  // We'll read from log files instead
+      stderr: 'ignore',
     });
-
-    // Handle shell death - restart it
-    this.shell.exited.then((exitCode) => {
-      console.error(`[Session ${this.options.id}] Shell exited with code ${exitCode}`);
-      this.ready = false;
-      this.rejectAllPending(new Error(`Shell exited: ${exitCode}`));
-
-      // Auto-restart after brief delay
-      setTimeout(() => {
-        console.log(`[Session ${this.options.id}] Restarting shell...`);
-        this.initialize().catch(err => {
-          console.error(`[Session ${this.options.id}] Failed to restart:`, err);
-        });
-      }, 1000);
-    });
-
-    // Wait for ready signal via IPC
-    await this.waitForReady();
 
     this.ready = true;
     console.log(`[Session] '${this.options.id}' ready`);
-  }
-
-  /**
-   * Wait for shell to send ready message via IPC
-   */
-  private waitForReady(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Shell initialization timeout'));
-      }, 5000);
-
-      const readyHandler = (msg: ControlResponse) => {
-        if (msg.type === 'ready') {
-          clearTimeout(timeout);
-          resolve();
-        }
-      };
-
-      // Temporarily intercept messages until ready
-      this.handleIPCMessage = readyHandler;
-    }).finally(() => {
-      // Restore normal message handler
-      this.handleIPCMessage = this.handleIPCMessageInternal.bind(this);
-    });
-  }
-
-  /**
-   * Handle IPC messages from shell wrapper
-   */
-  private handleIPCMessage: (msg: ControlResponse) => void =
-    this.handleIPCMessageInternal.bind(this);
-
-  private handleIPCMessageInternal(msg: ControlResponse): void {
-    const callback = this.commandQueue.get(msg.id);
-    if (!callback) {
-      console.warn(`[Session] No callback for message ID: ${msg.id}`);
-      return;
-    }
-
-    if (msg.type === 'error') {
-      clearTimeout(callback.timeout);
-      this.commandQueue.delete(msg.id);
-      callback.reject(new Error(msg.error || 'Unknown error'));
-    } else if (msg.type === 'result') {
-      clearTimeout(callback.timeout);
-      this.commandQueue.delete(msg.id);
-      callback.resolve({
-        stdout: msg.stdout || '',
-        stderr: msg.stderr || '',
-        exitCode: msg.exitCode || 0,
-        success: (msg.exitCode || 0) === 0
-      });
-    }
   }
 
   /**
@@ -419,39 +353,122 @@ export class Session {
       throw new Error(`Session '${this.options.id}' not ready`);
     }
 
-    // Validate cwd if provided
-    if (options?.cwd) {
-      this.validatePath(options.cwd);
-    }
-
     const commandId = randomUUID();
     const startTime = Date.now();
+    const logFile = join(this.sessionDir, `${commandId}.log`);
+    const exitCodeFile = join(this.sessionDir, `${commandId}.exit`);
 
-    return new Promise<ExecResult>((resolve, reject) => {
-      // Set up timeout
-      const timeout = setTimeout(() => {
-        this.commandQueue.delete(commandId);
-        reject(new Error(`Command timeout: ${command}`));
-      }, 30000);
+    // Build FIFO-based bash script (inspired by Daytona)
+    const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
 
-      // Register callback
-      this.commandQueue.set(commandId, { resolve, reject, timeout });
+    // Write script to shell's stdin
+    this.shell!.stdin.write(bashScript + '\n');
 
-      // Send command via IPC (no parsing needed!)
-      const message: ControlMessage = {
-        type: 'exec',
-        id: commandId,
-        command,
-        cwd: options?.cwd
-      };
+    // Poll for exit code file (indicates completion)
+    const exitCode = await this.pollForExitCode(exitCodeFile);
 
-      this.shell!.send(message);
-    }).then(result => ({
-      ...result,
+    // Read log file and parse prefixes
+    const { stdout, stderr } = this.parseLogFile(logFile);
+
+    return {
       command,
+      stdout,
+      stderr,
+      exitCode,
+      success: exitCode === 0,
       duration: Date.now() - startTime,
       timestamp: new Date().toISOString()
-    }));
+    };
+  }
+
+  /**
+   * Build FIFO-based bash script for command execution
+   */
+  private buildFIFOScript(
+    command: string,
+    cmdId: string,
+    logFile: string,
+    exitCodeFile: string,
+    cwd?: string
+  ): string {
+    // Escape paths for bash
+    const escapePath = (p: string) => `'${p.replace(/'/g, "'\\''")}'`;
+
+    return `{
+  log=${escapePath(logFile)}
+  dir=${escapePath(this.sessionDir)}
+
+  # Create per-command FIFOs
+  sp="$dir/stdout.pipe.${cmdId}.$$"
+  ep="$dir/stderr.pipe.${cmdId}.$$"
+  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1
+
+  cleanup() { rm -f "$sp" "$ep"; }
+  trap 'cleanup' EXIT HUP INT TERM
+
+  # Label stdout/stderr with binary prefixes and append to log
+  ( while IFS= read -r line || [ -n "$line" ]; do printf '${STDOUT_PREFIX}%s\\n' "$line"; done < "$sp" ) >> "$log" & r1=$!
+  ( while IFS= read -r line || [ -n "$line" ]; do printf '${STDERR_PREFIX}%s\\n' "$line"; done < "$ep" ) >> "$log" & r2=$!
+
+  # Run command (with optional cwd)
+  ${cwd ? `(cd ${escapePath(cwd)} && { ${command}; })` : `{ ${command}; }`} > "$sp" 2> "$ep"
+  echo "$?" >> ${escapePath(exitCodeFile)}
+
+  # Wait for labelers to finish
+  wait "$r1" "$r2"
+
+  # Cleanup FIFOs
+  cleanup
+}`;
+  }
+
+  /**
+   * Poll for exit code file (indicates command completion)
+   */
+  private async pollForExitCode(exitCodeFile: string, timeoutMs = 30000): Promise<number> {
+    const startTime = Date.now();
+
+    while (true) {
+      if (existsSync(exitCodeFile)) {
+        const exitCodeStr = readFileSync(exitCodeFile, 'utf-8').trim();
+        return parseInt(exitCodeStr, 10);
+      }
+
+      if (Date.now() - startTime > timeoutMs) {
+        throw new Error('Command timeout');
+      }
+
+      // Poll every 50ms
+      await Bun.sleep(50);
+    }
+  }
+
+  /**
+   * Parse log file and separate stdout/stderr by binary prefixes
+   */
+  private parseLogFile(logFile: string): { stdout: string; stderr: string } {
+    if (!existsSync(logFile)) {
+      return { stdout: '', stderr: '' };
+    }
+
+    const content = readFileSync(logFile, 'utf-8');
+    const lines = content.split('\n');
+
+    let stdout = '';
+    let stderr = '';
+
+    for (const line of lines) {
+      if (line.startsWith(STDOUT_PREFIX)) {
+        stdout += line.slice(STDOUT_PREFIX.length) + '\n';
+      } else if (line.startsWith(STDERR_PREFIX)) {
+        stderr += line.slice(STDERR_PREFIX.length) + '\n';
+      }
+    }
+
+    return {
+      stdout: stdout.trimEnd(),
+      stderr: stderr.trimEnd()
+    };
   }
 
   /**
@@ -462,8 +479,7 @@ export class Session {
       throw new Error(`Session '${this.options.id}' not ready`);
     }
 
-    // For streaming, we can use Bun's ReadableStream directly!
-    // Spawn a subprocess for this specific command
+    // For streaming, spawn a separate bash process
     const proc = Bun.spawn({
       cmd: ['bash', '-c', command],
       cwd: options?.cwd || this.options.cwd || '/workspace',
@@ -497,10 +513,7 @@ export class Session {
         };
       }
 
-      // Wait for process to complete
       const exitCode = await proc.exited;
-
-      // Read any stderr
       const stderr = await proc.stderr.text();
 
       yield {
@@ -509,7 +522,7 @@ export class Session {
         command,
         exitCode,
         result: {
-          stdout: '', // Already streamed
+          stdout: '',
           stderr,
           exitCode,
           success: exitCode === 0
@@ -525,14 +538,13 @@ export class Session {
     }
   }
 
-  // Process management can use same approach - simpler!
+  // Background process management (simplified)
   async startProcess(command: string, options?: {
     processId?: string;
     cwd?: string;
   }): Promise<ProcessRecord> {
-    const processId = options?.processId || `proc_${Date.now()}_${randomBytes(4).toString('hex')}`;
+    const processId = options?.processId || `proc_${Date.now()}`;
 
-    // Spawn process directly with Bun - no shell tricks needed!
     const proc = Bun.spawn({
       cmd: ['bash', '-c', command],
       cwd: options?.cwd || this.options.cwd || '/workspace',
@@ -557,7 +569,6 @@ export class Session {
 
     this.processes.set(processId, processRecord);
 
-    // Monitor process completion
     proc.exited.then((exitCode) => {
       processRecord.status = exitCode === 0 ? 'completed' : 'failed';
       processRecord.exitCode = exitCode;
@@ -596,7 +607,7 @@ export class Session {
       await this.killProcess(id);
     }
 
-    // Kill shell wrapper
+    // Kill shell
     if (this.shell && !this.shell.killed) {
       this.shell.kill();
     }
@@ -604,128 +615,10 @@ export class Session {
     this.ready = false;
     this.shell = null;
   }
-
-  private rejectAllPending(error: Error): void {
-    for (const [id, callback] of this.commandQueue) {
-      clearTimeout(callback.timeout);
-      callback.reject(error);
-    }
-    this.commandQueue.clear();
-  }
-
-  private validatePath(path: string): void {
-    if (!path.startsWith('/')) {
-      throw new Error(`Path must be absolute: ${path}`);
-    }
-    if (path.includes('../') || path.includes('/..')) {
-      throw new Error(`Path traversal not allowed: ${path}`);
-    }
-    if (path.includes('\0') || path.includes('\n')) {
-      throw new Error(`Invalid characters in path: ${path}`);
-    }
-  }
 }
 ```
 
-### Shell Wrapper Script
-
-```typescript
-// shell-wrapper.ts (~80 lines)
-// This runs in a Bun subprocess and manages the persistent bash shell
-
-import { spawn, type ChildProcess } from 'bun';
-
-interface ControlMessage {
-  type: 'exec' | 'exec_stream' | 'health_check';
-  id: string;
-  command?: string;
-  cwd?: string;
-}
-
-interface ControlResponse {
-  type: 'result' | 'error' | 'ready';
-  id: string;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-  error?: string;
-}
-
-// Spawn persistent bash shell
-const shell = spawn({
-  cmd: ['bash', '--norc'],
-  stdin: 'pipe',
-  stdout: 'pipe',
-  stderr: 'pipe'
-});
-
-// Send ready signal to parent
-process.send!({ type: 'ready', id: 'init' });
-
-// Listen for commands from parent via IPC
-process.on('message', async (message: ControlMessage) => {
-  try {
-    if (message.type === 'exec') {
-      await handleExec(message);
-    } else if (message.type === 'health_check') {
-      process.send!({ type: 'result', id: message.id, exitCode: 0 });
-    }
-  } catch (error) {
-    process.send!({
-      type: 'error',
-      id: message.id,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
-
-async function handleExec(message: ControlMessage): Promise<void> {
-  const { id, command, cwd } = message;
-
-  if (!command) {
-    process.send!({ type: 'error', id, error: 'No command provided' });
-    return;
-  }
-
-  // Build command with optional cwd
-  const fullCommand = cwd
-    ? `(cd ${escapeArg(cwd)} && ${command})`
-    : command;
-
-  // Execute in bash
-  const proc = spawn({
-    cmd: ['bash', '-c', fullCommand],
-    stdin: 'ignore',
-    stdout: 'pipe',
-    stderr: 'pipe'
-  });
-
-  // Collect output
-  const [stdout, stderr, exitCode] = await Promise.all([
-    proc.stdout.text(),
-    proc.stderr.text(),
-    proc.exited
-  ]);
-
-  // Send result back via IPC
-  process.send!({
-    type: 'result',
-    id,
-    stdout,
-    stderr,
-    exitCode
-  });
-}
-
-function escapeArg(str: string): string {
-  return `'${str.replace(/'/g, "'\\''")}'`;
-}
-
-// Keep process alive
-process.stdin.resume();
-```
-
-### SessionManager (Simplified)
+### SessionManager (Simplified - No Changes Needed!)
 
 ```typescript
 // session-manager.ts (~80 lines)
@@ -772,16 +665,15 @@ export class SessionManager {
 }
 ```
 
-**Total: ~410 lines across 3 files** (vs 1900+ lines before!)
+**Total: ~280 lines across 2 files** (vs 1900+ lines before - 85% reduction!)
 
 ---
 
 ## 📁 File Changes
 
 ### Files to CREATE
-- ✅ `packages/sandbox-container/src/session.ts` (~250 lines) - Bun-optimized Session class with IPC
+- ✅ `packages/sandbox-container/src/session.ts` (~200 lines) - FIFO-based Session class
 - ✅ `packages/sandbox-container/src/session-manager.ts` (~80 lines) - Session lifecycle management
-- ✅ `packages/sandbox-container/src/shell-wrapper.ts` (~80 lines) - IPC wrapper for bash
 
 ### Files to MODIFY
 - 🔧 `packages/sandbox-container/src/handlers/execute-handler.ts` - Use new Session
@@ -799,7 +691,7 @@ export class SessionManager {
 - ✅ All handler files - Just update to use new Session
 - ✅ All test files - Update to test new implementation
 
-**Net change:** ~1871 lines removed, ~410 lines added = **1461 lines deleted (77% reduction!)**
+**Net change:** ~1871 lines removed, ~280 lines added = **1591 lines deleted (85% reduction!)**
 
 ---
 
@@ -809,7 +701,7 @@ export class SessionManager {
 ```typescript
 // session.test.ts
 describe('Session', () => {
-  it('should execute simple commands via IPC', async () => {
+  it('should execute simple commands via FIFO', async () => {
     const session = new Session({ id: 'test', cwd: '/tmp' });
     await session.initialize();
 
@@ -819,13 +711,22 @@ describe('Session', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should maintain state across commands in wrapper shell', async () => {
+  it('should maintain state across commands in persistent shell', async () => {
     const session = new Session({ id: 'test', cwd: '/tmp' });
     await session.initialize();
 
     await session.exec('cd /workspace');
     const result = await session.exec('pwd');
     expect(result.stdout.trim()).toBe('/workspace');
+  });
+
+  it('should separate stdout and stderr with binary prefixes', async () => {
+    const session = new Session({ id: 'test', cwd: '/tmp' });
+    await session.initialize();
+
+    const result = await session.exec('echo out; echo err >&2');
+    expect(result.stdout.trim()).toBe('out');
+    expect(result.stderr.trim()).toBe('err');
   });
 
   it('should handle command failures', async () => {
@@ -837,16 +738,23 @@ describe('Session', () => {
     expect(result.success).toBe(false);
   });
 
-  it('should validate paths', async () => {
+  it('should handle concurrent commands via FIFO', async () => {
     const session = new Session({ id: 'test', cwd: '/tmp' });
     await session.initialize();
 
-    await expect(
-      session.exec('pwd', { cwd: '../etc' })
-    ).rejects.toThrow('Path traversal not allowed');
+    // Execute multiple commands concurrently
+    const [r1, r2, r3] = await Promise.all([
+      session.exec('echo first'),
+      session.exec('echo second'),
+      session.exec('echo third')
+    ]);
+
+    expect(r1.stdout.trim()).toBe('first');
+    expect(r2.stdout.trim()).toBe('second');
+    expect(r3.stdout.trim()).toBe('third');
   });
 
-  it('should support background processes with Bun.spawn', async () => {
+  it('should support background processes', async () => {
     const session = new Session({ id: 'test', cwd: '/tmp' });
     await session.initialize();
 
@@ -856,21 +764,6 @@ describe('Session', () => {
 
     const killed = await session.killProcess(process.id);
     expect(killed).toBe(true);
-  });
-
-  it('should restart wrapper on crash', async () => {
-    const session = new Session({ id: 'test', cwd: '/tmp' });
-    await session.initialize();
-
-    // Kill the wrapper
-    session['shell']?.kill();
-
-    // Wait for restart
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Should work again
-    const result = await session.exec('echo recovered');
-    expect(result.stdout.trim()).toBe('recovered');
   });
 
   it('should stream command output in real-time', async () => {
@@ -886,48 +779,66 @@ describe('Session', () => {
 
     expect(chunks.length).toBeGreaterThan(0);
   });
+
+  it('should handle FIFO cleanup on errors', async () => {
+    const session = new Session({ id: 'test', cwd: '/tmp' });
+    await session.initialize();
+
+    // Command that will fail
+    await session.exec('exit 1').catch(() => {});
+
+    // Next command should still work (FIFOs cleaned up)
+    const result = await session.exec('echo works');
+    expect(result.stdout.trim()).toBe('works');
+  });
 });
 ```
 
 ### Integration Tests
 - Test full request flow through handlers
-- Test IPC communication reliability
+- Test FIFO-based output labeling
 - Test streaming execution with Bun's ReadableStream
 - Test process lifecycle
-- Test concurrent commands (IPC handles multiplexing)
-- Test session isolation (different wrappers don't interfere)
+- Test concurrent commands (FIFOs handle multiplexing)
+- Test session isolation (different sessions don't interfere)
+- Test FIFO cleanup and no file descriptor leaks
 
 ---
 
 ## 🚀 Migration Plan
 
-### Phase 1: Implement Core (1-2 days)
-**Goal:** Get basic session working
+### Phase 1: Implement Core (1 day)
+**Goal:** Get FIFO-based session working
 
 - [ ] Create `session.ts` with core Session class
-- [ ] Implement `initialize()`, `exec()`, basic I/O handling
-- [ ] Add path validation
+- [ ] Implement `initialize()`, `exec()` with FIFO script injection
+- [ ] Implement `buildFIFOScript()`, `pollForExitCode()`, `parseLogFile()`
 - [ ] Write unit tests for core functionality
 - [ ] Ensure tests pass
 
 **Success Criteria:**
 - Can spawn bash and execute simple commands
+- Binary prefixes correctly separate stdout/stderr
+- Exit code file polling works
 - State persists across commands (`cd` works)
 - Tests pass
 
-### Phase 2: Feature Parity (2-3 days)
+### Phase 2: Feature Parity (1-2 days)
 **Goal:** Match existing functionality
 
 - [ ] Implement `execStream()` for streaming execution
 - [ ] Implement `startProcess()`, `killProcess()` for background processes
 - [ ] Add process monitoring
 - [ ] Create `SessionManager` class
+- [ ] Test FIFO cleanup and concurrent commands
 - [ ] Write tests for all features
 
 **Success Criteria:**
 - Streaming works with real-time output
 - Background processes can be started/stopped
 - SessionManager creates/reuses sessions correctly
+- FIFOs are properly cleaned up
+- Concurrent commands work correctly
 - All feature tests pass
 
 ### Phase 3: Integration (1 day)
@@ -944,21 +855,23 @@ describe('Session', () => {
 - No API changes from client perspective
 - Integration tests pass
 
-### Phase 4: Testing & Validation (2-3 days)
+### Phase 4: Testing & Validation (1-2 days)
 **Goal:** Ensure production readiness
 
 - [ ] Run full test suite
 - [ ] Load testing (concurrent requests)
 - [ ] Memory leak testing (long-running sessions)
-- [ ] Edge case validation (shell crashes, timeouts, IPC failures)
+- [ ] Edge case validation (shell crashes, timeouts, FIFO failures)
+- [ ] Test binary prefix handling with various outputs
 - [ ] Manual testing of examples
-- [ ] Verify IPC reliability under stress
+- [ ] Verify no file descriptor leaks
 
 **Success Criteria:**
 - All tests pass
 - No memory leaks
+- No file descriptor leaks
 - Handles edge cases gracefully
-- IPC communication is reliable
+- Binary prefixes never cause issues
 
 ### Phase 5: Deployment (1 day)
 **Goal:** Safe rollout
@@ -968,13 +881,14 @@ describe('Session', () => {
 - [ ] Monitor for 24 hours
 - [ ] Deploy to production with flag disabled
 - [ ] Gradually enable flag (10% → 50% → 100%)
-- [ ] Monitor error rates and memory usage
+- [ ] Monitor error rates, memory usage, and file descriptor usage
 
 **Success Criteria:**
 - No increase in error rates
 - Memory usage same or better
+- No file descriptor leaks
 - No customer complaints
-- IPC communication stable
+- FIFO-based execution stable
 
 ### Phase 6: Cleanup (1 day)
 **Goal:** Remove old code
@@ -986,7 +900,7 @@ describe('Session', () => {
 - [ ] Remove feature flag
 - [ ] Celebrate 🎉
 
-**Total Time:** 8-11 days
+**Total Time:** 6-9 days (simpler than IPC approach!)
 
 ---
 
@@ -995,20 +909,21 @@ describe('Session', () => {
 ### Code Quality Metrics
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Lines of code | 1871 | 410 | **77% reduction** |
-| Number of files | 2 main | 3 main | **More modular** |
+| Lines of code | 1871 | 280 | **85% reduction** |
+| Number of files | 2 main | 2 main | **Same modularity** |
 | Cyclomatic complexity | High | Low | **Much simpler** |
-| IPC overhead | File-based | Bun-native | **Built-in primitive** |
+| Communication overhead | File-based IPC | FIFOs + stdin | **Unix primitives** |
 | Test coverage | ~60% | Target 80% | **Better** |
 
 ### Architecture Improvements
 | Aspect | Before | After | Benefit |
 |--------|--------|-------|---------|
-| Communication | File-based markers | Bun IPC | Type-safe, no parsing |
-| Process spawning | Node.js spawn | Bun.spawn | Faster, native TS |
-| Streaming | Custom parsing | ReadableStream | Native web API |
-| Persistence | Temp files | In-memory | Less disk I/O |
-| Error handling | String parsing | Structured IPC | Reliable |
+| Communication | File-based IPC | FIFO + stdin pipe | Unix primitives |
+| Process spawning | 3 processes | 2 processes | Simpler |
+| Output labeling | Markers + temp files | Binary prefixes | No collisions |
+| Completion detection | File polling | Exit code file | Simple |
+| State persistence | Complex | Natural (bash) | Automatic |
+| Error handling | JSON parsing | File polling | Simpler |
 
 ### Reliability Targets
 | Metric | Target |
@@ -1134,36 +1049,42 @@ describe('Session', () => {
 - **Pro:** Simple, exactly what we need, no dependencies
 - **Con:** We own the complexity (but it's minimal)
 
-### Why IPC Instead of Markers or File Descriptors?
-**IPC (Bun native):**
-- Clean separation of control vs data channels
-- No parsing needed - structured messages
-- Native Bun support with `.send()` and `.on('message')`
-- No collision possible with command output
-- Type-safe with serialization options
+### Why FIFOs + Binary Prefixes Instead of Markers or IPC?
 
-**Markers (rejected):**
-- Fragile - can appear in command output
-- Requires parsing and edge case handling
-- Easy to break with binary data
+**FIFOs + Binary Prefixes (Daytona approach - CHOSEN):**
+- ✅ Binary prefixes (\x01, \x02) won't appear in normal text output
+- ✅ FIFOs are battle-tested Unix primitives
+- ✅ No wrapper process needed
+- ✅ Simple stdin.write() for commands
+- ✅ Exit code file = clear completion signal
+- ✅ Natural shell state persistence
+
+**String Markers (rejected):**
+- ❌ Can appear in command output (collision risk)
+- ❌ Requires careful escaping and parsing
+- ❌ Fragile with binary data
+
+**IPC (rejected - too complex):**
+- ❌ Requires wrapper process
+- ❌ More complex architecture
+- ❌ Restart logic needed
+- ❌ Not significantly better than FIFOs
 
 **File Descriptors (rejected):**
-- More complex to set up
-- Bash version dependent
-- Harder to debug
+- ❌ More complex to set up
+- ❌ Bash version dependent
+- ❌ Harder to debug
 
-**Decision:** Use Bun's IPC - it's exactly what we need!
+**Decision:** Use Daytona's FIFO approach - proven, simple, reliable!
 
-### Why Auto-Restart Shell?
-**Alternatives:**
-- **Fail fast:** Return error, let client retry
-  - Con: Worse UX, client handles retry logic
-- **Manual restart:** Expose restart API
-  - Con: Client must detect and handle
-- **Auto-restart:** Transparent recovery
-  - Pro: Best UX, self-healing
+### Why No Auto-Restart?
+**With FIFO approach, we don't need auto-restart:**
+- Shell crashes are rare (we're not doing anything exotic)
+- If shell dies, session is marked dead
+- Client can create a new session
+- Simpler than managing restart logic
 
-**Decision:** Auto-restart with monitoring/alerting.
+**Decision:** Fail fast - let client handle session recreation if needed.
 
 ---
 
@@ -1295,30 +1216,37 @@ shell.stdin.write(`
 // Wait for marker, parse output, cleanup files...
 ```
 
-### After: Clean Bun IPC
+### After: FIFO-Based Execution (Daytona-Inspired)
 ```typescript
-// session.ts (~250 lines)
-// - Send command via IPC
-// - Receive structured response
-// - No parsing, no files, no markers
+// session.ts (~200 lines)
+// - Build FIFO-based bash script
+// - Write to shell's stdin
+// - Poll for exit code file
+// - Parse log file with binary prefixes
 
-this.shell!.send({
-  type: 'exec',
-  id: commandId,
-  command
-});
+const bashScript = `{
+  mkfifo stdout.pipe stderr.pipe
+  (label stdout with \\x01\\x01\\x01) >> log &
+  (label stderr with \\x02\\x02\\x02) >> log &
+  { YOUR_COMMAND } > stdout.pipe 2> stderr.pipe
+  echo "$?" >> exit_code
+  wait
+  rm -f *.pipe
+}`;
 
-// IPC callback receives:
-// { type: 'result', id: '123', stdout: '...', stderr: '...', exitCode: 0 }
+this.shell!.stdin.write(bashScript + '\n');
+
+// Poll for exit_code file
+// Read log file, separate by binary prefixes
 ```
 
 **Key differences:**
-- ❌ No temp files → ✅ In-memory IPC
-- ❌ String markers → ✅ Structured messages
-- ❌ Parsing overhead → ✅ Native deserialization
-- ❌ Marker collisions → ✅ Impossible by design
-- ❌ File permissions → ✅ Process isolation
-- ❌ 784 lines → ✅ 250 lines
+- ❌ No temp files with crypto → ✅ Session temp dir
+- ❌ String markers (collision risk) → ✅ Binary prefixes (control chars)
+- ❌ Complex IPC protocol → ✅ Simple stdin + file polling
+- ❌ 3 processes → ✅ 2 processes
+- ❌ Wrapper process → ✅ Direct bash
+- ❌ 784 lines → ✅ 200 lines
 
 ---
 
@@ -1329,11 +1257,11 @@ this.shell!.send({
 **What we're keeping:** Brilliant session management API that users love
 
 **What we're gaining:**
-1. **Simplicity:** 77% less code, much easier to understand
-2. **Reliability:** IPC is battle-tested, no marker parsing edge cases
-3. **Performance:** No file I/O, no temp file cleanup, native Bun primitives
+1. **Simplicity:** 85% less code (1591 lines deleted!), much easier to understand
+2. **Reliability:** FIFOs are battle-tested Unix primitives, proven in Daytona
+3. **Performance:** Direct bash stdin, no wrapper process, no IPC overhead
 4. **Maintainability:** Clear architecture, easier debugging, better for contributors
-5. **Bun-optimized:** Uses Bun's strengths instead of Node.js patterns
+5. **Unix primitives:** Uses stdin pipe + FIFOs + binary prefixes (battle-tested)
 
 **What we're losing:** PID isolation that:
 - Doesn't stop real attacks (user has arbitrary execution)
@@ -1346,6 +1274,8 @@ this.shell!.send({
 ---
 
 **Status:** Ready for review and discussion
-**Next:** Prototype core Session class with IPC to validate approach
+**Approach:** FIFO-based (inspired by Daytona's proven implementation)
+**Next:** Prototype core Session class with FIFO script injection to validate approach
+**Key Innovation:** Binary prefixes (\x01\x01\x01 for stdout, \x02\x02\x02 for stderr) + exit code file polling
 **Owner:** TBD
 **Reviewers:** TBD
