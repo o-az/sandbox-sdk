@@ -91,6 +91,10 @@ WORKDIR /container-server
 RUN cp -r /build/packages/sandbox-container/dist ./dist && \
     cp /build/packages/sandbox-container/package.json ./
 
+# Copy Python executor to dist/runtime/executors (JS/TS executors are already compiled there)
+RUN mkdir -p /container-server/dist/runtime/executors/python && \
+    cp /build/packages/sandbox-container/src/runtime/executors/python/ipython_executor.py /container-server/dist/runtime/executors/python/
+
 # Copy node_modules for runtime (includes workspace-linked shared-types)
 RUN cp -r /build/node_modules ./node_modules
 

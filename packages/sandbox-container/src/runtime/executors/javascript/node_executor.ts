@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import * as readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import * as util from 'node:util';
 import * as vm from 'node:vm';
 import type { RichOutput } from '../../process-pool';
+
+// Create CommonJS-like globals for the sandbox
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const require = createRequire(import.meta.url);
 
 const rl = readline.createInterface({
   input: process.stdin,

@@ -209,15 +209,15 @@ export class ProcessPoolManager {
     switch (language) {
       case "python":
         command = "python3";
-        args = ["-u", "/container-server/runtime/executors/python/ipython_executor.py"];
+        args = ["-u", "/container-server/dist/runtime/executors/python/ipython_executor.py"];
         break;
       case "javascript":
         command = "node";
-        args = ["/container-server/runtime/executors/javascript/node_executor.js"];
+        args = ["/container-server/dist/runtime/executors/javascript/node_executor.js"];
         break;
       case "typescript":
         command = "node";
-        args = ["/container-server/runtime/executors/typescript/ts_executor.js"];
+        args = ["/container-server/dist/runtime/executors/typescript/ts_executor.js"];
         break;
     }
 
