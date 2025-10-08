@@ -381,7 +381,11 @@ console.log("Server started on port 8080");
       const healthData = await healthResponse.json();
       expect(healthData.message).toBe('Hello from Bun!');
 
-      // Cleanup
+      // Cleanup - unexpose port and kill process
+      await fetch(`${workerUrl}/api/exposed-ports/8080`, {
+        method: 'DELETE',
+      });
+
       await fetch(`${workerUrl}/api/process/${processId}?sessionId=${sandboxId}`, {
         method: 'DELETE',
       });
@@ -391,7 +395,7 @@ console.log("Server started on port 8080");
       const sandboxId = createSandboxId();
 
       // Start 3 long-running processes
-      const processes = [];
+      const processes: string[] = [];
       for (let i = 0; i < 3; i++) {
         const startResponse = await vi.waitFor(
           async () => {
@@ -548,7 +552,11 @@ console.log("Server listening on port 8080");
       const logsData = await logsResponse.json();
       expect(logsData.stdout).toContain('Server listening on port 8080');
 
-      // Step 7: Cleanup - kill the process
+      // Step 7: Cleanup - unexpose port and kill the process
+      await fetch(`${workerUrl}/api/exposed-ports/8080`, {
+        method: 'DELETE',
+      });
+
       const killResponse = await fetch(`${workerUrl}/api/process/${processId}?sessionId=${sandboxId}`, {
         method: 'DELETE',
       });

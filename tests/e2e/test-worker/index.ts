@@ -2,9 +2,10 @@
  * Minimal test worker for integration tests
  *
  * Exposes SDK methods via HTTP endpoints for E2E testing.
- * Uses fixed sandbox ID per request (from sessionId parameter).
+ * Supports both default sessions (implicit) and explicit sessions via X-Session-Id header.
  */
 import { Sandbox, getSandbox, proxyToSandbox } from '@cloudflare/sandbox';
+import type { ExecutionSession } from '@repo/shared-types';
 
 export { Sandbox };
 
@@ -20,6 +21,10 @@ async function parseBody(request: Request): Promise<any> {
   }
 }
 
+// Store explicit sessions by ID
+// Key: `${sandboxId}:${sessionId}` to namespace sessions per sandbox
+const sessions = new Map<string, ExecutionSession>();
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Route requests to exposed container ports via their preview URLs
@@ -29,13 +34,19 @@ export default {
     const url = new URL(request.url);
     const body = await parseBody(request);
 
-    // Get sandbox ID and session ID from headers
+    // Get sandbox ID from header
     // Sandbox ID determines which container instance (Durable Object)
-    // Session ID determines which shell session within that container (handled by SDK)
     const sandboxId = request.headers.get('X-Sandbox-Id') || 'default-test-sandbox';
-    const sessionId = request.headers.get('X-Session-Id') || undefined; // SDK handles default
-
     const sandbox = getSandbox(env.Sandbox, sandboxId);
+
+    // Get session ID from header (optional)
+    // If provided, use explicit session instead of default sandbox session
+    const sessionId = request.headers.get('X-Session-Id');
+    const sessionKey = sessionId ? `${sandboxId}:${sessionId}` : null;
+
+    // Executor pattern: use session if specified, otherwise use sandbox
+    // ExecutionSession has same API as Sandbox (except port/session management)
+    const executor = (sessionKey && sessions.get(sessionKey)) || sandbox;
 
     try {
       // Health check
@@ -45,17 +56,27 @@ export default {
         });
       }
 
-      // Command execution
+      // Session management
+      if (url.pathname === '/api/session/create' && request.method === 'POST') {
+        const session = await sandbox.createSession(body);
+        const sessionKey = `${sandboxId}:${session.id}`;
+        sessions.set(sessionKey, session);
+        return new Response(JSON.stringify({ success: true, sessionId: session.id }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Command execution (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/execute' && request.method === 'POST') {
-        const result = await sandbox.exec(body.command);
+        const result = await executor.exec(body.command);
         return new Response(JSON.stringify(result), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // Git clone
+      // Git clone (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/git/clone' && request.method === 'POST') {
-        await sandbox.gitCheckout(body.repoUrl, {
+        await executor.gitCheckout(body.repoUrl, {
           branch: body.branch,
           targetDir: body.targetDir,
         });
@@ -64,78 +85,78 @@ export default {
         });
       }
 
-      // File read
+      // File read (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/file/read' && request.method === 'POST') {
-        const file = await sandbox.readFile(body.path);
+        const file = await executor.readFile(body.path);
         return new Response(JSON.stringify(file), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // File write
+      // File write (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/file/write' && request.method === 'POST') {
-        await sandbox.writeFile(body.path, body.content);
+        await executor.writeFile(body.path, body.content);
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // File mkdir
+      // File mkdir (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/file/mkdir' && request.method === 'POST') {
-        await sandbox.mkdir(body.path, { recursive: body.recursive });
+        await executor.mkdir(body.path, { recursive: body.recursive });
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // File delete
+      // File delete (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/file/delete' && request.method === 'DELETE') {
-        await sandbox.deleteFile(body.path);
+        await executor.deleteFile(body.path);
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // File rename
+      // File rename (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/file/rename' && request.method === 'POST') {
-        await sandbox.renameFile(body.oldPath, body.newPath);
+        await executor.renameFile(body.oldPath, body.newPath);
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // File move
+      // File move (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/file/move' && request.method === 'POST') {
-        await sandbox.moveFile(body.sourcePath, body.destinationPath);
+        await executor.moveFile(body.sourcePath, body.destinationPath);
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // Process start
+      // Process start (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/process/start' && request.method === 'POST') {
-        const process = await sandbox.startProcess(body.command);
+        const process = await executor.startProcess(body.command);
         return new Response(JSON.stringify(process), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // Process list
+      // Process list (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/process/list' && request.method === 'GET') {
-        const processes = await sandbox.listProcesses();
+        const processes = await executor.listProcesses();
         return new Response(JSON.stringify(processes), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // Process get by ID
+      // Process get by ID (works with both sandbox and explicit sessions)
       if (url.pathname.startsWith('/api/process/') && request.method === 'GET') {
         const pathParts = url.pathname.split('/');
         const processId = pathParts[3];
 
         // Handle /api/process/:id/logs
         if (pathParts[4] === 'logs') {
-          const logs = await sandbox.getProcessLogs(processId);
+          const logs = await executor.getProcessLogs(processId);
           return new Response(JSON.stringify(logs), {
             headers: { 'Content-Type': 'application/json' },
           });
@@ -143,7 +164,7 @@ export default {
 
         // Handle /api/process/:id/stream (SSE)
         if (pathParts[4] === 'stream') {
-          const stream = await sandbox.streamProcessLogs(processId);
+          const stream = await executor.streamProcessLogs(processId);
 
           // Convert AsyncIterable to ReadableStream for SSE
           const readableStream = new ReadableStream({
@@ -171,32 +192,40 @@ export default {
 
         // Handle /api/process/:id (get single process)
         if (!pathParts[4]) {
-          const process = await sandbox.getProcess(processId);
+          const process = await executor.getProcess(processId);
           return new Response(JSON.stringify(process), {
             headers: { 'Content-Type': 'application/json' },
           });
         }
       }
 
-      // Process kill by ID
+      // Process kill by ID (works with both sandbox and explicit sessions)
       if (url.pathname.startsWith('/api/process/') && request.method === 'DELETE') {
         const processId = url.pathname.split('/')[3];
-        await sandbox.killProcess(processId);
+        await executor.killProcess(processId);
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // Kill all processes
+      // Kill all processes (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/process/kill-all' && request.method === 'POST') {
-        await sandbox.killAllProcesses();
+        await executor.killAllProcesses();
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
-      // Port exposure
+      // Port exposure (ONLY works with sandbox - sessions don't expose ports)
       if (url.pathname === '/api/port/expose' && request.method === 'POST') {
+        if (sessionKey) {
+          return new Response(JSON.stringify({
+            error: 'Port exposure not supported for explicit sessions. Use default sandbox.'
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
         // Extract hostname from the request
         const hostname = url.hostname + (url.port ? `:${url.port}` : '');
         const preview = await sandbox.exposePort(body.port, {
@@ -208,9 +237,29 @@ export default {
         });
       }
 
-      // Environment variables
+      // Port unexpose (ONLY works with sandbox - sessions don't expose ports)
+      if (url.pathname.startsWith('/api/exposed-ports/') && request.method === 'DELETE') {
+        if (sessionKey) {
+          return new Response(JSON.stringify({
+            error: 'Port exposure not supported for explicit sessions. Use default sandbox.'
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const pathParts = url.pathname.split('/');
+        const port = parseInt(pathParts[3], 10);
+        if (!isNaN(port)) {
+          await sandbox.unexposePort(port);
+          return new Response(JSON.stringify({ success: true, port }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
+      // Environment variables (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/env/set' && request.method === 'POST') {
-        await sandbox.setEnvVars(body.envVars);
+        await executor.setEnvVars(body.envVars);
         return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
