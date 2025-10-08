@@ -45,12 +45,25 @@ export class GitClient extends BaseHttpClient {
     }
   ): Promise<GitCheckoutResponse> {
     try {
-      const data = {
+      // Determine target directory - use provided path or generate from repo name
+      let targetDir = options?.targetDir;
+      if (!targetDir) {
+        const repoName = this.extractRepoName(repoUrl);
+        // Ensure absolute path in /workspace
+        targetDir = `/workspace/${repoName}`;
+      }
+
+      const data: GitCheckoutRequest = {
         repoUrl,
         sessionId,
-        branch: options?.branch || 'main',
-        targetDir: options?.targetDir || this.extractRepoName(repoUrl),
+        targetDir,
       };
+
+      // Only include branch if explicitly specified
+      // This allows Git to use the repository's default branch
+      if (options?.branch) {
+        data.branch = options.branch;
+      }
 
       const response = await this.post<GitCheckoutResponse>(
         '/api/git/checkout',

@@ -90,19 +90,36 @@ export class GitService {
         };
       }
 
-      const branchUsed = this.manager.getDefaultBranch(options);
+      // Determine the actual branch that was checked out by querying Git
+      // This ensures we always return the true current branch, whether it was
+      // explicitly specified or defaulted to the repository's HEAD
+      const branchArgs = this.manager.buildGetCurrentBranchArgs();
+      const branchResult = await this.adapter.execute(branchArgs[0], branchArgs.slice(1), { cwd: targetDirectory });
+
+      let actualBranch: string;
+      if (branchResult.exitCode === 0 && branchResult.stdout.trim()) {
+        actualBranch = branchResult.stdout.trim();
+      } else {
+        // Fallback: use the requested branch or 'unknown'
+        actualBranch = options.branch || 'unknown';
+        this.logger.warn('Could not determine current branch, using fallback', {
+          targetDirectory,
+          requestedBranch: options.branch,
+          fallback: actualBranch
+        });
+      }
       
       this.logger.info('Repository cloned successfully', {
         repoUrl,
         targetDirectory,
-        branch: branchUsed
+        branch: actualBranch
       });
 
       return {
         success: true,
         data: {
           path: targetDirectory,
-          branch: branchUsed
+          branch: actualBranch
         },
       };
     } catch (error) {

@@ -208,13 +208,6 @@ export class GitManager {
   }
 
   /**
-   * Determine default branch from options or return fallback
-   */
-  getDefaultBranch(options: CloneOptions = {}): string {
-    return options.branch || 'main';
-  }
-
-  /**
    * Check if git URL appears to be SSH format
    */
   isSshUrl(url: string): boolean {
