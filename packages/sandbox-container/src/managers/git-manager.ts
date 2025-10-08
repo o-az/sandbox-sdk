@@ -48,15 +48,15 @@ export class GitManager {
   }
 
   /**
-   * Generate unique target directory for cloning
-   * Format: /tmp/git-clone-{repoName}-{timestamp}-{random}
+   * Generate target directory for cloning
+   * Format: /workspace/{repoName}
+   *
+   * Uses the repository name extracted from the URL as the directory name.
+   * Clones to /workspace to match user expectations and keep files accessible.
    */
   generateTargetDirectory(repoUrl: string): string {
     const repoName = this.extractRepoName(repoUrl);
-    const timestamp = Date.now();
-    const randomSuffix = Math.random().toString(36).substring(2, 8);
-
-    return `/tmp/git-clone-${repoName}-${timestamp}-${randomSuffix}`;
+    return `/workspace/${repoName}`;
   }
 
   /**
