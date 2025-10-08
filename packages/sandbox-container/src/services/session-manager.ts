@@ -1,12 +1,12 @@
-// SessionManager Service - Manages isolated execution sessions
+// SessionManager Service - Manages persistent execution sessions
 
 import type { ExecEvent } from '@repo/shared-types';
 import type { Logger, ServiceResult } from '../core/types';
-import { type RawExecResult, Session, type SessionOptions } from '../isolation';
+import { type RawExecResult, Session, type SessionOptions } from '../session';
 
 /**
- * SessionManager manages isolated execution sessions.
- * Wraps the isolation.ts Session class with ServiceResult<T> pattern.
+ * SessionManager manages persistent execution sessions.
+ * Wraps the session.ts Session class with ServiceResult<T> pattern.
  */
 export class SessionManager {
   private sessions = new Map<string, Session>();
@@ -31,12 +31,11 @@ export class SessionManager {
     return await this.createSession({
       id: this.defaultSessionId,
       cwd: '/workspace',
-      isolation: true,
     });
   }
 
   /**
-   * Create a new isolated session
+   * Create a new persistent session
    */
   async createSession(options: SessionOptions): Promise<ServiceResult<Session>> {
     try {
@@ -65,7 +64,7 @@ export class SessionManager {
 
       this.logger.info('Session created successfully', {
         sessionId: options.id,
-        isolation: options.isolation
+        cwd: options.cwd
       });
 
       return {
@@ -78,7 +77,6 @@ export class SessionManager {
 
       console.error('[SessionManager] Session creation failed:', {
         sessionId: options.id,
-        isolation: options.isolation,
         error: errorMessage,
         stack: errorStack,
       });
@@ -139,7 +137,6 @@ export class SessionManager {
         sessionResult = await this.createSession({
           id: sessionId,
           cwd: cwd || '/workspace',
-          isolation: true,
         });
       }
 
@@ -198,7 +195,6 @@ export class SessionManager {
         sessionResult = await this.createSession({
           id: sessionId,
           cwd: cwd || '/workspace',
-          isolation: true,
         });
       }
 

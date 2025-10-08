@@ -8,8 +8,7 @@
     "@sandbox-container/*": "./src/*"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json && npm run build:control-process",
-    "build:control-process": "tsc src/control-process.ts src/shell-escape.ts --outDir dist --module es2020 --target es2020 --esModuleInterop --skipLibCheck --moduleResolution node",
+    "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test tests",
     "test:watch": "bun test --watch tests",
