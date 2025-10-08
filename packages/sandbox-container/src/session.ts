@@ -15,13 +15,13 @@
  * Inspired by Daytona's approach: https://github.com/daytonaio/daytona
  */
 
-import type { Subprocess } from 'bun';
 import { randomUUID } from 'node:crypto';
 import { watch } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { ExecEvent } from '@repo/shared-types';
+import type { Subprocess } from 'bun';
 
 // ============================================================================
 // Configuration
@@ -162,7 +162,7 @@ export class Session {
 
       // Write script to shell's stdin
       if (this.shell!.stdin && typeof this.shell!.stdin !== 'number') {
-        this.shell!.stdin.write(bashScript + '\n');
+        this.shell!.stdin.write(`${bashScript}\n`);
       } else {
         throw new Error('Shell stdin is not available');
       }
@@ -209,7 +209,7 @@ export class Session {
       const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
 
       if (this.shell!.stdin && typeof this.shell!.stdin !== 'number') {
-        this.shell!.stdin.write(bashScript + '\n');
+        this.shell!.stdin.write(`${bashScript}\n`);
       } else {
         throw new Error('Shell stdin is not available');
       }
@@ -406,8 +406,10 @@ export class Session {
       script += `    # Restore directory\n`;
       script += `    cd "$PREV_DIR"\n`;
       script += `  else\n`;
-      script += `    # Failed to change directory\n`;
+      script += `    # Failed to change directory - close both pipes to unblock readers\n`;
       script += `    echo "Failed to change directory to ${safeCwd}" > ${safeStderrPipe}\n`;
+      script += `    # Close stdout pipe (no output expected)\n`;
+      script += `    : > ${safeStdoutPipe}\n`;
       script += `    EXIT_CODE=1\n`;
       script += `  fi\n`;
       script += `  \n`;
@@ -419,12 +421,12 @@ export class Session {
       script += `  \n`;
     }
 
-    // Write exit code and cleanup
-    script += `  # Write exit code\n`;
-    script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
-    script += `  \n`;
-    script += `  # Wait for background processes to finish\n`;
+    // Wait for background processes, then write exit code and cleanup
+    script += `  # Wait for background processes to finish writing to log file\n`;
     script += `  wait\n`;
+    script += `  \n`;
+    script += `  # Write exit code (AFTER background processes finish)\n`;
+    script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
     script += `  \n`;
     script += `  # Remove FIFO pipes\n`;
     script += `  rm -f ${safeStdoutPipe} ${safeStderrPipe}\n`;

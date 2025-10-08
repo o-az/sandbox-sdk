@@ -1,13 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * Misc Handler Tests
- * 
- * Tests the MiscHandler class from the refactored container architecture.
- * Demonstrates testing handlers with utility endpoints and different response types.
- */
-
-import type { CommandsResponse, HandlerErrorResponse, Logger, PingResponse, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
-import type { MiscHandler } from '@sandbox-container/handlers/misc-handler.ts';
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { CommandsResponse, HandlerErrorResponse, Logger, PingResponse, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import { MiscHandler } from '@sandbox-container/handlers/misc-handler';
 
 // Mock the dependencies
 const mockLogger: Logger = {
@@ -29,22 +22,14 @@ const mockContext: RequestContext = {
   sessionId: 'session-456',
 };
 
-// Helper to create validated context
-const createValidatedContext = <T>(data: T): ValidatedRequestContext<T> => ({
-  ...mockContext,
-  validatedData: data
-});
-
 describe('MiscHandler', () => {
   let miscHandler: MiscHandler;
 
   beforeEach(async () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
-    
-    // Import the MiscHandler (dynamic import)
-    const { MiscHandler: MiscHandlerClass } = await import('@sandbox-container/handlers/misc-handler.ts');
-    miscHandler = new MiscHandlerClass(mockLogger);
+
+    miscHandler = new MiscHandler(mockLogger);
   });
 
   describe('handleRoot - GET /', () => {
@@ -404,8 +389,7 @@ describe('MiscHandler', () => {
         debug: vi.fn(),
       };
 
-      const { MiscHandler: MiscHandlerClass } = await import('@sandbox-container/handlers/misc-handler.ts');
-      const independentHandler = new MiscHandlerClass(simpleLogger);
+      const independentHandler = new MiscHandler(simpleLogger);
 
       const request = new Request('http://localhost:3000/api/ping', {
         method: 'GET'

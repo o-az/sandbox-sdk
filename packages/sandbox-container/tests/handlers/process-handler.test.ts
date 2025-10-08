@@ -1,14 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * Process Handler Tests
- *
- * Tests the ProcessHandler class from the refactored container architecture.
- * Demonstrates testing handlers with multiple endpoints and streaming functionality.
- */
-
-import type { GetProcessResponse, HandlerErrorResponse, KillAllProcessesResponse, KillProcessResponse, ListProcessesResponse, Logger, ProcessInfo, ProcessLogsResponse, RequestContext, StartProcessResponse, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
-import type { ProcessHandler } from '@sandbox-container/handlers/process-handler.ts';
-import type { ProcessService } from '@sandbox-container/services/process-service.ts';
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { GetProcessResponse, HandlerErrorResponse, KillAllProcessesResponse, KillProcessResponse, ListProcessesResponse, Logger, ProcessInfo, ProcessLogsResponse, RequestContext, StartProcessResponse, ValidatedRequestContext } from '@sandbox-container/core/types';
+import { ProcessHandler } from '@sandbox-container/handlers/process-handler';
+import type { ProcessService } from '@sandbox-container/services/process-service';
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockProcessService = {
@@ -19,7 +12,7 @@ const mockProcessService = {
   listProcesses: vi.fn(),
   streamProcessLogs: vi.fn(),
   executeCommand: vi.fn(),
-} as ProcessService;
+} as unknown as ProcessService;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -53,9 +46,7 @@ describe('ProcessHandler', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Import the ProcessHandler (dynamic import)
-    const { ProcessHandler: ProcessHandlerClass } = await import('@sandbox-container/handlers/process-handler.ts');
-    processHandler = new ProcessHandlerClass(mockProcessService, mockLogger);
+    processHandler = new ProcessHandler(mockProcessService, mockLogger);
   });
 
   describe('handleStart - POST /api/process/start', () => {
@@ -186,10 +177,9 @@ describe('ProcessHandler', () => {
       expect(responseData.processes[0].id).toBe('proc-1');
       expect(responseData.processes[1].status).toBe('completed');
 
-      // Handler uses context.sessionId as fallback when no query params provided
-      expect(mockProcessService.listProcesses).toHaveBeenCalledWith({
-        sessionId: 'session-456'
-      });
+      // Processes are sandbox-scoped, not session-scoped
+      // Handler only passes status filter, not sessionId
+      expect(mockProcessService.listProcesses).toHaveBeenCalledWith({});
     });
 
     it('should filter processes by query parameters', async () => {
@@ -207,8 +197,8 @@ describe('ProcessHandler', () => {
       expect(response.status).toBe(200);
 
       // Verify filtering parameters were passed to service
+      // Only status is passed, sessionId is not used (sandbox-scoped)
       expect(mockProcessService.listProcesses).toHaveBeenCalledWith({
-        sessionId: 'session-123',
         status: 'running'
       });
     });

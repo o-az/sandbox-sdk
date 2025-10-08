@@ -1,14 +1,7 @@
-/**
- * Core SDK Types - Public API interfaces for Cloudflare Sandbox SDK consumers
- */
+import type { CodeContext, CreateContextOptions, ExecutionResult, RunCodeOptions } from './interpreter-types';
 
 // Base execution options shared across command types
 export interface BaseExecOptions {
-  /**
-   * Session ID for grouping related commands
-   */
-  sessionId?: string;
-
   /**
    * Maximum execution time in milliseconds
    */
@@ -355,9 +348,9 @@ export interface ExecutionSession {
   setEnvVars(envVars: Record<string, string>): Promise<void>;
   
   // Code interpreter methods
-  createCodeContext(options?: import('./interpreter-types').CreateContextOptions): Promise<import('./interpreter-types').CodeContext>;
-  runCode(code: string, options?: import('./interpreter-types').RunCodeOptions): Promise<import('./interpreter-types').ExecutionResult>;
-  listCodeContexts(): Promise<import('./interpreter-types').CodeContext[]>;
+  createCodeContext(options?: CreateContextOptions): Promise<CodeContext>;
+  runCode(code: string, options?: RunCodeOptions): Promise<ExecutionResult>;
+  listCodeContexts(): Promise<CodeContext[]>;
   deleteCodeContext(contextId: string): Promise<void>;
 }
 
@@ -385,9 +378,9 @@ export interface ISandbox {
   createSession(options?: SessionOptions): Promise<ExecutionSession>;
 
   // Code interpreter methods
-  createCodeContext(options?: import('./interpreter-types').CreateContextOptions): Promise<import('./interpreter-types').CodeContext>;
-  runCode(code: string, options?: import('./interpreter-types').RunCodeOptions): Promise<import('./interpreter-types').ExecutionResult>;
-  listCodeContexts(): Promise<import('./interpreter-types').CodeContext[]>;
+  createCodeContext(options?: CreateContextOptions): Promise<CodeContext>;
+  runCode(code: string, options?: RunCodeOptions): Promise<ExecutionResult>;
+  listCodeContexts(): Promise<CodeContext[]>;
   deleteCodeContext(contextId: string): Promise<void>;
 }
 
@@ -411,16 +404,16 @@ export function isProcessStatus(value: string): value is ProcessStatus {
   return ['starting', 'running', 'completed', 'failed', 'killed', 'error'].includes(value);
 }
 
-// Re-export interpreter types for convenience
 export type {
   ChartData,
   CodeContext,
   CreateContextOptions,
   ExecutionError,
-  ExecutionResult, 
+  ExecutionResult,
   OutputMessage,
   Result,
   RunCodeOptions
-} from './interpreter-types.js';
+} from './interpreter-types';
+// Re-export interpreter types for convenience
+export { Execution, ResultImpl } from './interpreter-types';
 
-export { Execution, ResultImpl } from './interpreter-types.js';

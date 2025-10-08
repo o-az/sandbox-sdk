@@ -1,15 +1,21 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import type {
+  CodeContext,
+  CreateContextOptions,
   ExecEvent,
   ExecOptions,
   ExecResult,
+  ExecutionResult,
+  ExecutionSession,
   ISandbox,
   Process,
   ProcessOptions,
   ProcessStatus,
+  RunCodeOptions,
+  SessionOptions,
   StreamOptions
 } from "@repo/shared-types";
-import { SandboxClient } from "./clients";
+import { type ExecuteResponse, SandboxClient } from "./clients";
 import {
   ProcessNotFoundError,
   SandboxError
@@ -22,6 +28,7 @@ import {
   sanitizeSandboxId,
   validatePort
 } from "./security";
+import { parseSSEStream } from "./sse-parser";
 
 export function getSandbox(ns: DurableObjectNamespace<Sandbox>, id: string) {
   const stub = getContainer(ns, id);
@@ -41,6 +48,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   private sandboxName: string | null = null;
   private portTokens: Map<number, string> = new Map();
   private defaultSession: string | null = null;
+  envVars: Record<string, string> = {};
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx as any, env);
@@ -140,17 +148,15 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   private async ensureDefaultSession(): Promise<string> {
     if (!this.defaultSession) {
       const sessionId = `sandbox-${this.sandboxName || 'default'}`;
-      
+
       // Create session in container
-      // Temporarily disable isolation for local dev - isolation requires CAP_SYS_ADMIN
-      // TODO: Re-enable isolation once we verify it works in all environments
       await this.client.utils.createSession({
         id: sessionId,
         env: this.envVars || {},
         cwd: '/workspace',
         isolation: true
       });
-      
+
       this.defaultSession = sessionId;
       console.log(`[Sandbox] Default session initialized: ${sessionId}`);
     }
@@ -218,7 +224,6 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
 
     try {
       const stream = await this.client.commands.executeStream(command, sessionId);
-      const { parseSSEStream } = await import('./sse-parser');
 
       for await (const event of parseSSEStream<ExecEvent>(stream)) {
         // Check for cancellation
@@ -252,7 +257,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
               command,
               duration,
               timestamp,
-              sessionId: options.sessionId
+              sessionId
             };
           }
 
@@ -273,7 +278,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   }
 
   private mapExecuteResponseToExecResult(
-    response: import('./clients').ExecuteResponse,
+    response: ExecuteResponse,
     duration: number,
     sessionId?: string
   ): ExecResult {
@@ -769,9 +774,9 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
    * Create isolated execution session for advanced use cases
    * Returns ExecutionSession with full sandbox API bound to specific session
    */
-  async createSession(options?: import('@repo/shared-types').SessionOptions): Promise<import('@repo/shared-types').ExecutionSession> {
+  async createSession(options?: SessionOptions): Promise<ExecutionSession> {
     const sessionId = options?.id || `session-${Date.now()}`;
-    
+
     // Create session in container
     await this.client.utils.createSession({
       id: sessionId,
@@ -779,25 +784,25 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       cwd: options?.cwd,
       isolation: options?.isolation
     });
-    
+
     // Return wrapper that binds sessionId to all operations
     return {
       id: sessionId,
-      
+
       // Command execution
-      exec: async (command: string, options?: import('@repo/shared-types').ExecOptions) => {
+      exec: async (command: string, options?: ExecOptions) => {
         const startTime = Date.now();
         const response = await this.client.commands.execute(command, sessionId);
         const duration = Date.now() - startTime;
         return this.mapExecuteResponseToExecResult(response, duration, sessionId);
       },
-      
-      execStream: async (command: string, options?: import('@repo/shared-types').StreamOptions) => {
+
+      execStream: async (command: string, options?: StreamOptions) => {
         return this.client.commands.executeStream(command, sessionId);
       },
-      
+
       // Process management
-      startProcess: async (command: string, options?: import('@repo/shared-types').ProcessOptions) => {
+      startProcess: async (command: string, options?: ProcessOptions) => {
         const response = await this.client.processes.startProcess(command, sessionId, {
           processId: options?.processId
         });
@@ -806,7 +811,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           id: process.id,
           pid: process.pid,
           command: process.command,
-          status: process.status as import('@repo/shared-types').ProcessStatus,
+          status: process.status as ProcessStatus,
           startTime: new Date(process.startTime),
           endTime: process.endTime ? new Date(process.endTime) : undefined,
           exitCode: process.exitCode ?? undefined,
@@ -816,7 +821,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           },
           getStatus: async () => {
             const resp = await this.client.processes.getProcess(process.id, sessionId);
-            return resp.process?.status as import('@repo/shared-types').ProcessStatus || "error";
+            return resp.process?.status as ProcessStatus || "error";
           },
           getLogs: async () => {
             const logs = await this.client.processes.getProcessLogs(process.id, sessionId);
@@ -824,14 +829,14 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           },
         };
       },
-      
+
       listProcesses: async () => {
         const response = await this.client.processes.listProcesses(sessionId);
         return response.processes.map(p => ({
           id: p.id,
           pid: p.pid,
           command: p.command,
-          status: p.status as import('@repo/shared-types').ProcessStatus,
+          status: p.status,
           startTime: new Date(p.startTime),
           endTime: p.endTime ? new Date(p.endTime) : undefined,
           exitCode: p.exitCode ?? undefined,
@@ -841,7 +846,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           },
           getStatus: async () => {
             const resp = await this.client.processes.getProcess(p.id, sessionId);
-            return resp.process?.status as import('@repo/shared-types').ProcessStatus || "error";
+            return resp.process?.status || "error";
           },
           getLogs: async () => {
             const logs = await this.client.processes.getProcessLogs(p.id, sessionId);
@@ -849,7 +854,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           },
         }));
       },
-      
+
       getProcess: async (id: string) => {
         const response = await this.client.processes.getProcess(id, sessionId);
         if (!response.process) return null;
@@ -858,7 +863,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           id: p.id,
           pid: p.pid,
           command: p.command,
-          status: p.status as import('@repo/shared-types').ProcessStatus,
+          status: p.status,
           startTime: new Date(p.startTime),
           endTime: p.endTime ? new Date(p.endTime) : undefined,
           exitCode: p.exitCode ?? undefined,
@@ -868,7 +873,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           },
           getStatus: async () => {
             const resp = await this.client.processes.getProcess(p.id, sessionId);
-            return resp.process?.status as import('@repo/shared-types').ProcessStatus || "error";
+            return resp.process?.status || "error";
           },
           getLogs: async () => {
             const logs = await this.client.processes.getProcessLogs(p.id, sessionId);
@@ -876,20 +881,20 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           },
         };
       },
-      
+
       killProcess: async (id: string, signal?: string) => {
         await this.client.processes.killProcess(id, sessionId);
       },
-      
+
       killAllProcesses: async () => {
         const response = await this.client.processes.killAllProcesses(sessionId);
         return response.killedCount;
       },
-      
+
       cleanupCompletedProcesses: async () => {
         return 0; // Placeholder
       },
-      
+
       getProcessLogs: async (id: string) => {
         const response = await this.client.processes.getProcessLogs(id, sessionId);
         return {
@@ -898,31 +903,46 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
           processId: response.processId
         };
       },
-      
+
       streamProcessLogs: async (processId: string, options?: { signal?: AbortSignal }) => {
         return this.client.processes.streamProcessLogs(processId, sessionId);
       },
-      
+
       // Environment management
       setEnvVars: async (envVars: Record<string, string>) => {
-        // Note: Session-specific environment updates would require container endpoint
-        console.log(`[Session ${sessionId}] Environment variables update (not yet implemented)`);
+        try {
+          const response = await this.containerFetch(`/api/session/${sessionId}/env`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ envVars }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };
+            throw new Error(errorData.error || `Failed to set environment variables: ${response.statusText}`);
+          }
+
+          console.log(`[Session ${sessionId}] Environment variables updated successfully`);
+        } catch (error) {
+          console.error(`[Session ${sessionId}] Failed to set environment variables:`, error);
+          throw error;
+        }
       },
-      
+
       // Code interpreter methods - delegate to sandbox's code interpreter
-      createCodeContext: async (options?: import('@repo/shared-types').CreateContextOptions) => {
+      createCodeContext: async (options?: CreateContextOptions) => {
         return this.codeInterpreter.createCodeContext(options);
       },
-      
-      runCode: async (code: string, options?: import('@repo/shared-types').RunCodeOptions) => {
+
+      runCode: async (code: string, options?: RunCodeOptions) => {
         const execution = await this.codeInterpreter.runCode(code, options);
         return execution.toJSON();
       },
-      
+
       listCodeContexts: async () => {
         return this.codeInterpreter.listCodeContexts();
       },
-      
+
       deleteCodeContext: async (contextId: string) => {
         return this.codeInterpreter.deleteCodeContext(contextId);
       },
@@ -962,17 +982,17 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   // ============================================================================
   // Code interpreter methods - delegate to CodeInterpreter wrapper
   // ============================================================================
-  
-  async createCodeContext(options?: import('@repo/shared-types').CreateContextOptions): Promise<import('@repo/shared-types').CodeContext> {
+
+  async createCodeContext(options?: CreateContextOptions): Promise<CodeContext> {
     return this.codeInterpreter.createCodeContext(options);
   }
 
-  async runCode(code: string, options?: import('@repo/shared-types').RunCodeOptions): Promise<import('@repo/shared-types').ExecutionResult> {
+  async runCode(code: string, options?: RunCodeOptions): Promise<ExecutionResult> {
     const execution = await this.codeInterpreter.runCode(code, options);
     return execution.toJSON();
   }
 
-  async listCodeContexts(): Promise<import('@repo/shared-types').CodeContext[]> {
+  async listCodeContexts(): Promise<CodeContext[]> {
     return this.codeInterpreter.listCodeContexts();
   }
 

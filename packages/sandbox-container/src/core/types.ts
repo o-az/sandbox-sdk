@@ -169,8 +169,8 @@ export interface ListSessionsResponse {
   count: number;
   sessions: Array<{
     sessionId: string;
-    createdAt: string;
-    hasActiveProcess: boolean;
+    // Note: createdAt and hasActiveProcess are not included
+    // as they would require querying each session individually
   }>;
   timestamp: string;
 }

@@ -1,11 +1,9 @@
-import type { Mock } from "bun:test";
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-
+import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type { ExecuteRequest, ExecuteResponse, Logger, RequestContext, ServiceResult, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
-import type { ExecuteHandler } from '@sandbox-container/handlers/execute-handler.ts';
+import { ExecuteHandler } from "@sandbox-container/handlers/execute-handler.js";
 import type { ProcessService } from '@sandbox-container/services/process-service.ts';
-import type { SessionService } from '@sandbox-container/services/session-service.ts';
 import type { ContainerErrorResponse } from '@sandbox-container/utils/error-mapping.ts';
+import { mocked } from '../test-utils';
 
 // Mock the service dependencies
 const mockProcessService = {
@@ -15,15 +13,7 @@ const mockProcessService = {
   killProcess: vi.fn(),
   listProcesses: vi.fn(),
   streamProcessLogs: vi.fn(),
-} as ProcessService;
-
-const mockSessionService = {
-  createSession: vi.fn(),
-  getSession: vi.fn(),
-  updateSession: vi.fn(),
-  deleteSession: vi.fn(),
-  listSessions: vi.fn(),
-} as SessionService;
+} as unknown as ProcessService;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -57,9 +47,7 @@ describe('ExecuteHandler', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Import the ExecuteHandler (dynamic import)
-    const { ExecuteHandler: ExecuteHandlerClass } = await import('@sandbox-container/handlers/execute-handler.ts');
-    executeHandler = new ExecuteHandlerClass(
+    executeHandler = new ExecuteHandler(
       mockProcessService,
       mockLogger
     );
@@ -80,7 +68,7 @@ describe('ExecuteHandler', () => {
         }
       } as ServiceResult<{ success: boolean; exitCode: number; stdout: string; stderr: string; }>;
 
-      (mockProcessService.executeCommand as Mock).mockResolvedValue(mockCommandResult);
+      mocked(mockProcessService.executeCommand).mockResolvedValue(mockCommandResult);
 
       // Execute the handler with properly validated context
       const request = new Request('http://localhost:3000/api/execute', {
@@ -123,7 +111,7 @@ describe('ExecuteHandler', () => {
         }
       } as ServiceResult<{ success: boolean; exitCode: number; stdout: string; stderr: string; }>;
 
-      (mockProcessService.executeCommand as Mock).mockResolvedValue(mockCommandResult);
+      mocked(mockProcessService.executeCommand).mockResolvedValue(mockCommandResult);
 
       const request = new Request('http://localhost:3000/api/execute', {
         method: 'POST',
@@ -153,7 +141,7 @@ describe('ExecuteHandler', () => {
         }
       } as ServiceResult<never>;
 
-      (mockProcessService.executeCommand as Mock).mockResolvedValue(mockServiceError);
+      mocked(mockProcessService.executeCommand).mockResolvedValue(mockServiceError);
 
       const request = new Request('http://localhost:3000/api/execute', {
         method: 'POST',
@@ -185,7 +173,7 @@ describe('ExecuteHandler', () => {
       // Use context without validatedData to simulate middleware failure
       try {
         await executeHandler.handle(request, mockContext);
-        expect.fail('Handler should throw when no validated data is provided');
+        expect.unreachable('Handler should throw when no validated data is provided');
       } catch (error) {
         expect((error as Error).message).toContain('No validated data found in context');
       }
@@ -197,22 +185,22 @@ describe('ExecuteHandler', () => {
 
   describe('handle - Background Execution', () => {
     it('should start background process successfully', async () => {
-      // Mock successful validation
-      // Test assumes validation already occurred and data is in context
-
-      // Mock successful process start
       const mockProcessResult = {
-        success: true,
+        success: true as const,
         data: {
           id: 'proc-123',
           command: 'sleep 10',
-          status: 'running',
+          status: 'running' as const,
           startTime: new Date(),
-          pid: 12345
+          pid: 12345,
+          stdout: '',
+          stderr: '',
+          outputListeners: new Set<(stream: 'stdout' | 'stderr', data: string) => void>(),
+          statusListeners: new Set<(status: string) => void>()
         }
-      } as ServiceResult<{ id: string; command: string; status: string; startTime: Date; pid: number; }>;
+      };
 
-      (mockProcessService.startProcess as Mock).mockResolvedValue(mockProcessResult);
+      mocked(mockProcessService.startProcess).mockResolvedValue(mockProcessResult);
 
       const request = new Request('http://localhost:3000/api/execute', {
         method: 'POST',
@@ -226,14 +214,11 @@ describe('ExecuteHandler', () => {
       });
       const response = await executeHandler.handle(request, validatedContext);
 
-      // Verify response
       expect(response.status).toBe(200);
       const responseData = await response.json() as ExecuteResponse;
       expect(responseData.success).toBe(true);
       expect(responseData.processId).toBe('proc-123');
-      // Background process response includes processId
 
-      // Verify service was called correctly
       expect(mockProcessService.startProcess).toHaveBeenCalledWith(
         'sleep 10',
         expect.objectContaining({
@@ -261,19 +246,21 @@ describe('ExecuteHandler', () => {
 
       // Mock successful process start for streaming
       const mockStreamProcessResult = {
-        success: true,
+        success: true as const,
         data: {
           id: 'stream-proc-123',
           command: 'echo "streaming test"',
-          status: 'running',
+          status: 'running' as const,
           startTime: new Date(),
           pid: 12345,
-          outputListeners: new Set(),
-          statusListeners: new Set()
+          stdout: '',
+          stderr: '',
+          outputListeners: new Set<(stream: 'stdout' | 'stderr', data: string) => void>(),
+          statusListeners: new Set<(status: string) => void>()
         }
-      } as ServiceResult<{ id: string; command: string; status: string; startTime: Date; pid: number; outputListeners: Set<any>; statusListeners: Set<any>; }>;
+      };
 
-      (mockProcessService.startProcess as Mock).mockResolvedValue(mockStreamProcessResult);
+      mocked(mockProcessService.startProcess).mockResolvedValue(mockStreamProcessResult);
 
       const request = new Request('http://localhost:3000/api/execute/stream', {
         method: 'POST',

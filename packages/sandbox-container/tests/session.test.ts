@@ -6,11 +6,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test';
-import { Session } from '../src/session';
-import type { Subprocess } from 'bun';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Subprocess } from 'bun';
+import { Session } from '../src/session';
 
 describe('Session', () => {
   let session: Session;

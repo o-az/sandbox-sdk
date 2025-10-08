@@ -29,10 +29,13 @@ export default {
     const url = new URL(request.url);
     const body = await parseBody(request);
 
-    // Support sessionId from query params (for GET requests) or body (for POST/DELETE)
-    const sessionId = url.searchParams.get('sessionId') || body.sessionId || 'default-test-sandbox';
+    // Get sandbox ID and session ID from headers
+    // Sandbox ID determines which container instance (Durable Object)
+    // Session ID determines which shell session within that container (handled by SDK)
+    const sandboxId = request.headers.get('X-Sandbox-Id') || 'default-test-sandbox';
+    const sessionId = request.headers.get('X-Session-Id') || undefined; // SDK handles default
 
-    const sandbox = getSandbox(env.Sandbox, sessionId);
+    const sandbox = getSandbox(env.Sandbox, sandboxId);
 
     try {
       // Health check
@@ -201,6 +204,14 @@ export default {
           hostname: hostname,
         });
         return new Response(JSON.stringify(preview), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Environment variables
+      if (url.pathname === '/api/env/set' && request.method === 'POST') {
+        await sandbox.setEnvVars(body.envVars);
+        return new Response(JSON.stringify({ success: true }), {
           headers: { 'Content-Type': 'application/json' },
         });
       }

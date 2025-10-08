@@ -1,5 +1,3 @@
-// Session Handler
-
 import { randomBytes } from "node:crypto";
 import type { Logger, RequestContext } from '../core/types';
 import type { SessionManager } from '../services/session-manager';
@@ -16,6 +14,13 @@ export class SessionHandler extends BaseHandler<Request, Response> {
   async handle(request: Request, context: RequestContext): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
+
+    // Handle /api/session/:id/env
+    const envMatch = pathname.match(/^\/api\/session\/([^/]+)\/env$/);
+    if (envMatch && request.method === 'POST') {
+      const sessionId = envMatch[1];
+      return await this.handleSetEnvVars(request, context, sessionId);
+    }
 
     switch (pathname) {
       case '/api/session/create':
@@ -117,6 +122,57 @@ export class SessionHandler extends BaseHandler<Request, Response> {
     } else {
       this.logger.error('Session listing failed', undefined, {
         requestId: context.requestId,
+        errorCode: result.error!.code,
+        errorMessage: result.error!.message,
+      });
+      return this.createErrorResponse(result.error!, 500, context);
+    }
+  }
+
+  private async handleSetEnvVars(request: Request, context: RequestContext, sessionId: string): Promise<Response> {
+    this.logger.info('Setting environment variables', { requestId: context.requestId, sessionId });
+
+    let envVars: Record<string, string>;
+
+    try {
+      const body = await request.json() as any;
+      envVars = body.envVars || {};
+
+      if (Object.keys(envVars).length === 0) {
+        return this.createErrorResponse('No environment variables provided', 400, context);
+      }
+    } catch {
+      return this.createErrorResponse('Invalid JSON body', 400, context);
+    }
+
+    const result = await this.sessionManager.setEnvVars(sessionId, envVars);
+
+    if (result.success) {
+      this.logger.info('Environment variables set successfully', {
+        requestId: context.requestId,
+        sessionId,
+        count: Object.keys(envVars).length
+      });
+
+      return new Response(
+        JSON.stringify({
+          message: 'Environment variables set successfully',
+          sessionId,
+          count: Object.keys(envVars).length,
+          timestamp: new Date().toISOString(),
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            ...context.corsHeaders,
+          },
+        }
+      );
+    } else {
+      this.logger.error('Failed to set environment variables', undefined, {
+        requestId: context.requestId,
+        sessionId,
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });

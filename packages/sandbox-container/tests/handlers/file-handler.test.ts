@@ -1,15 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * File Handler Tests
- *
- * Tests the FileHandler class from the refactored container architecture.
- * Demonstrates testing handlers with file system operations and CRUD functionality.
- */
-
-import type { Logger, MkdirResponse, MoveFileResponse, ReadFileResponse, RenameFileResponse, RequestContext, ValidatedRequestContext, WriteFileResponse } from '@sandbox-container/core/types.ts';
-import type { FileHandler } from '@sandbox-container/handlers/file-handler.ts';
-import type { FileService } from '@sandbox-container/services/file-service.ts';
-import type { ContainerErrorResponse } from '@sandbox-container/utils/error-mapping.ts';
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { Logger, MkdirResponse, MoveFileResponse, ReadFileResponse, RenameFileResponse, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import { FileHandler } from "@sandbox-container/handlers/file-handler";
+import type { FileService } from '@sandbox-container/services/file-service';
+import type { ContainerErrorResponse } from '@sandbox-container/utils/error-mapping';
 
 // Mock the dependencies - use partial mock to avoid missing properties
 const mockFileService = {
@@ -29,7 +22,7 @@ const mockFileService = {
   stat: vi.fn(),
   getFileStats: vi.fn(),
   // Remove private properties to avoid type conflicts
-} as FileService;
+} as unknown as FileService;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -63,9 +56,7 @@ describe('FileHandler', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Import the FileHandler (dynamic import)
-    const { FileHandler: FileHandlerClass } = await import('@sandbox-container/handlers/file-handler.ts');
-    fileHandler = new FileHandlerClass(mockFileService, mockLogger);
+    fileHandler = new FileHandler(mockFileService, mockLogger);
   });
 
   describe('handleRead - POST /api/read', () => {

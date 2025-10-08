@@ -1,3 +1,4 @@
+import type { SandboxOperationType } from '../errors';
 import { mapContainerError } from '../utils/error-mapping';
 import type {
   ErrorResponse,
@@ -155,7 +156,7 @@ export abstract class BaseHttpClient {
    * Handle error responses with consistent error throwing
    */
   protected async handleErrorResponse(response: Response): Promise<never> {
-    let errorData: ErrorResponse & { code?: string; operation?: import('../errors').SandboxOperationType; path?: string };
+    let errorData: ErrorResponse & { code?: string; operation?: SandboxOperationType; path?: string };
 
     try {
       errorData = await response.json();

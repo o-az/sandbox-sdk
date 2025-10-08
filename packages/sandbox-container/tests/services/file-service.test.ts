@@ -1,40 +1,40 @@
-import type { Mock } from "bun:test";
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { BunFileAdapter, FileContent } from '@sandbox-container/adapters/bun-file-adapter.ts';
-import type { ExecutionResult } from '@sandbox-container/adapters/bun-process-adapter.ts';
-import type { FileStats, Logger } from '@sandbox-container/core/types.ts';
-import type { FileService, SecurityService } from '@sandbox-container/services/file-service.ts';
+import type { BunFileAdapter, FileContent } from '@sandbox-container/adapters/bun-file-adapter';
+import type { ExecutionResult } from '@sandbox-container/adapters/bun-process-adapter';
+import type { Logger } from '@sandbox-container/core/types';
+import { FileService, type SecurityService } from '@sandbox-container/services/file-service';
+import { mocked } from '../test-utils';
 
 // Mock SecurityService with proper typing
 const mockSecurityService: SecurityService = {
-  validatePath: vi.fn() as Mock<(path: string) => { isValid: boolean; errors: string[] }>,
-  sanitizePath: vi.fn() as Mock<(path: string) => string>,
+  validatePath: vi.fn(),
+  sanitizePath: vi.fn(),
 };
 
 // Mock Logger with proper typing
 const mockLogger: Logger = {
-  info: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  error: vi.fn() as Mock<(message: string, error?: Error, meta?: Record<string, unknown>) => void>,
-  warn: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  debug: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
 };
 
 // Mock BunFileAdapter with proper typing
 const mockAdapter: BunFileAdapter = {
-  getFile: vi.fn() as Mock<(path: string) => any>,
-  exists: vi.fn() as Mock<(path: string) => Promise<boolean>>,
-  readText: vi.fn() as Mock<(path: string) => Promise<string>>,
-  read: vi.fn() as Mock<(path: string) => Promise<FileContent>>,
-  write: vi.fn() as Mock<(path: string, content: string) => Promise<void>>,
-  deleteFile: vi.fn() as Mock<(path: string) => Promise<ExecutionResult>>,
-  renameFile: vi.fn() as Mock<(oldPath: string, newPath: string) => Promise<ExecutionResult>>,
-  createDirectory: vi.fn() as Mock<(args: string[]) => Promise<ExecutionResult>>,
-  getStats: vi.fn() as Mock<(path: string, format: string) => Promise<ExecutionResult>>,
-  copy: vi.fn() as Mock<(sourcePath: string, destPath: string) => Promise<void>>,
-  move: vi.fn() as Mock<(sourcePath: string, destPath: string) => Promise<void>>,
-  getSize: vi.fn() as Mock<(path: string) => Promise<number>>,
-  getFileType: vi.fn() as Mock<(path: string) => string>,
-} as BunFileAdapter;
+  getFile: vi.fn(),
+  exists: vi.fn(),
+  readText: vi.fn(),
+  read: vi.fn(),
+  write: vi.fn(),
+  deleteFile: vi.fn(),
+  renameFile: vi.fn(),
+  createDirectory: vi.fn(),
+  getStats: vi.fn(),
+  copy: vi.fn(),
+  move: vi.fn(),
+  getSize: vi.fn(),
+  getFileType: vi.fn(),
+} as unknown as BunFileAdapter;
 
 describe('FileService', () => {
   let FileServiceClass: typeof FileService;
@@ -45,17 +45,13 @@ describe('FileService', () => {
     vi.clearAllMocks();
 
     // Set up default successful security validation
-    (mockSecurityService.validatePath as Mock).mockReturnValue({
+    mocked(mockSecurityService.validatePath).mockReturnValue({
       isValid: true,
       errors: []
     });
 
-    // Import the FileService (dynamic import for fresh module)
-    const module = await import('@sandbox-container/services/file-service.ts');
-    FileServiceClass = module.FileService;
-
     // Create service with mocked adapter
-    fileService = new FileServiceClass(
+    fileService = new FileService(
       mockSecurityService,
       mockLogger,
       mockAdapter  // Inject mocked adapter
@@ -67,8 +63,8 @@ describe('FileService', () => {
       const testPath = '/tmp/test.txt';
       const testContent = 'Hello, World!';
 
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.read as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.read).mockResolvedValue({
         content: testContent,
         size: testContent.length,
       });
@@ -89,7 +85,7 @@ describe('FileService', () => {
     });
 
     it('should return error when security validation fails', async () => {
-      (mockSecurityService.validatePath as Mock).mockReturnValue({
+      mocked(mockSecurityService.validatePath).mockReturnValue({
         isValid: false,
         errors: ['Path contains invalid characters', 'Path outside sandbox']
       });
@@ -107,7 +103,7 @@ describe('FileService', () => {
     });
 
     it('should return error when file does not exist', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(false);
+      mocked(mockAdapter.exists).mockResolvedValue(false);
 
       const result = await fileService.read('/tmp/nonexistent.txt');
 
@@ -121,8 +117,8 @@ describe('FileService', () => {
     });
 
     it('should handle adapter errors gracefully', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.read as Mock).mockRejectedValue(new Error('Permission denied'));
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.read).mockRejectedValue(new Error('Permission denied'));
 
       const result = await fileService.read('/tmp/test.txt');
 
@@ -139,7 +135,7 @@ describe('FileService', () => {
       const testPath = '/tmp/test.txt';
       const testContent = 'Test content';
 
-      (mockAdapter.write as Mock).mockResolvedValue(undefined);
+      mocked(mockAdapter.write).mockResolvedValue(undefined);
 
       const result = await fileService.write(testPath, testContent);
 
@@ -150,7 +146,7 @@ describe('FileService', () => {
     });
 
     it('should handle write errors', async () => {
-      (mockAdapter.write as Mock).mockRejectedValue(new Error('Disk full'));
+      mocked(mockAdapter.write).mockRejectedValue(new Error('Disk full'));
 
       const result = await fileService.write('/tmp/test.txt', 'content');
 
@@ -165,8 +161,8 @@ describe('FileService', () => {
     it('should delete file successfully', async () => {
       const testPath = '/tmp/test.txt';
 
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.deleteFile as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.deleteFile).mockResolvedValue({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -180,7 +176,7 @@ describe('FileService', () => {
     });
 
     it('should return error when file does not exist', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(false);
+      mocked(mockAdapter.exists).mockResolvedValue(false);
 
       const result = await fileService.delete('/tmp/nonexistent.txt');
 
@@ -194,8 +190,8 @@ describe('FileService', () => {
     });
 
     it('should handle delete command failures', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.deleteFile as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.deleteFile).mockResolvedValue({
         exitCode: 1,
         stdout: '',
         stderr: 'Permission denied',
@@ -216,8 +212,8 @@ describe('FileService', () => {
       const oldPath = '/tmp/old.txt';
       const newPath = '/tmp/new.txt';
 
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.renameFile as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.renameFile).mockResolvedValue({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -235,8 +231,8 @@ describe('FileService', () => {
     });
 
     it('should handle rename command failures', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.renameFile as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.renameFile).mockResolvedValue({
         exitCode: 1,
         stdout: '',
         stderr: 'Target exists',
@@ -256,8 +252,8 @@ describe('FileService', () => {
       const sourcePath = '/tmp/source.txt';
       const destPath = '/tmp/dest.txt';
 
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.move as Mock).mockResolvedValue(undefined);
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.move).mockResolvedValue(undefined);
 
       const result = await fileService.move(sourcePath, destPath);
 
@@ -266,7 +262,7 @@ describe('FileService', () => {
     });
 
     it('should return error when source does not exist', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(false);
+      mocked(mockAdapter.exists).mockResolvedValue(false);
 
       const result = await fileService.move('/tmp/nonexistent.txt', '/tmp/dest.txt');
 
@@ -281,7 +277,7 @@ describe('FileService', () => {
     it('should create directory successfully', async () => {
       const testPath = '/tmp/newdir';
 
-      (mockAdapter.createDirectory as Mock).mockResolvedValue({
+      mocked(mockAdapter.createDirectory).mockResolvedValue({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -297,7 +293,7 @@ describe('FileService', () => {
     it('should create directory recursively when requested', async () => {
       const testPath = '/tmp/nested/dir';
 
-      (mockAdapter.createDirectory as Mock).mockResolvedValue({
+      mocked(mockAdapter.createDirectory).mockResolvedValue({
         exitCode: 0,
         stdout: '',
         stderr: '',
@@ -310,7 +306,7 @@ describe('FileService', () => {
     });
 
     it('should handle mkdir command failures', async () => {
-      (mockAdapter.createDirectory as Mock).mockResolvedValue({
+      mocked(mockAdapter.createDirectory).mockResolvedValue({
         exitCode: 1,
         stdout: '',
         stderr: 'Parent directory not found',
@@ -327,7 +323,7 @@ describe('FileService', () => {
 
   describe('exists', () => {
     it('should return true when file exists', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
+      mocked(mockAdapter.exists).mockResolvedValue(true);
 
       const result = await fileService.exists('/tmp/test.txt');
 
@@ -338,7 +334,7 @@ describe('FileService', () => {
     });
 
     it('should return false when file does not exist', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(false);
+      mocked(mockAdapter.exists).mockResolvedValue(false);
 
       const result = await fileService.exists('/tmp/nonexistent.txt');
 
@@ -349,7 +345,7 @@ describe('FileService', () => {
     });
 
     it('should handle exists check errors', async () => {
-      (mockAdapter.exists as Mock).mockRejectedValue(new Error('Permission denied'));
+      mocked(mockAdapter.exists).mockRejectedValue(new Error('Permission denied'));
 
       const result = await fileService.exists('/tmp/test.txt');
 
@@ -364,8 +360,8 @@ describe('FileService', () => {
     it('should return file statistics successfully', async () => {
       const testPath = '/tmp/test.txt';
 
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.getStats as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.getStats).mockResolvedValue({
         exitCode: 0,
         stdout: 'regular file:1024:1672531200:1672531100\n',
         stderr: '',
@@ -384,7 +380,7 @@ describe('FileService', () => {
     });
 
     it('should return error when file does not exist', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(false);
+      mocked(mockAdapter.exists).mockResolvedValue(false);
 
       const result = await fileService.stat('/tmp/nonexistent.txt');
 
@@ -395,8 +391,8 @@ describe('FileService', () => {
     });
 
     it('should handle stat command failures', async () => {
-      (mockAdapter.exists as Mock).mockResolvedValue(true);
-      (mockAdapter.getStats as Mock).mockResolvedValue({
+      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockAdapter.getStats).mockResolvedValue({
         exitCode: 1,
         stdout: '',
         stderr: 'stat error',

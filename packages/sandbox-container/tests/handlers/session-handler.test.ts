@@ -1,15 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * Session Handler Tests
- * 
- * Tests the SessionHandler class from the refactored container architecture.
- * Demonstrates testing handlers with session management functionality.
- */
-
-import type { CreateSessionResponse, HandlerErrorResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
-import type { SessionHandler } from '@sandbox-container/handlers/session-handler.ts';
-import type { Session } from '@sandbox-container/session.ts';
-import type { SessionManager } from '@sandbox-container/services/session-manager.ts';
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { CreateSessionResponse, HandlerErrorResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import { SessionHandler } from '@sandbox-container/handlers/session-handler';
+import type { SessionManager } from '@sandbox-container/services/session-manager';
+import type { Session } from '@sandbox-container/session';
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockSessionManager = {
@@ -18,7 +11,7 @@ const mockSessionManager = {
   deleteSession: vi.fn(),
   listSessions: vi.fn(),
   destroy: vi.fn(),
-} as SessionManager;
+} as unknown as SessionManager;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -51,10 +44,8 @@ describe('SessionHandler', () => {
   beforeEach(async () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
-    
-    // Import the SessionHandler (dynamic import)
-    const { SessionHandler: SessionHandlerClass } = await import('@sandbox-container/handlers/session-handler.ts');
-    sessionHandler = new SessionHandlerClass(mockSessionManager, mockLogger);
+
+    sessionHandler = new SessionHandler(mockSessionManager, mockLogger);
   });
 
   describe('handleCreate - POST /api/session/create', () => {
@@ -163,6 +154,7 @@ describe('SessionHandler', () => {
       expect(responseData.sessions).toHaveLength(3);
 
       // Verify session data - handler only returns sessionId
+      // (createdAt and hasActiveProcess would require querying each session individually)
       expect(responseData.sessions[0]).toEqual({
         sessionId: 'session-1'
       });
@@ -216,10 +208,16 @@ describe('SessionHandler', () => {
 
       const responseData = await response.json() as ListSessionsResponse;
 
-      // Handler only returns sessionId, no hasActiveProcess field
-      expect(responseData.sessions[0]).toEqual({ sessionId: 'session-1' });
-      expect(responseData.sessions[1]).toEqual({ sessionId: 'session-2' });
-      expect(responseData.sessions[2]).toEqual({ sessionId: 'session-3' });
+      // Handler only returns sessionId (not createdAt/hasActiveProcess)
+      expect(responseData.sessions[0]).toEqual({
+        sessionId: 'session-1'
+      });
+      expect(responseData.sessions[1]).toEqual({
+        sessionId: 'session-2'
+      });
+      expect(responseData.sessions[2]).toEqual({
+        sessionId: 'session-3'
+      });
     });
 
     it('should handle session listing failures', async () => {
@@ -260,8 +258,10 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
 
       const responseData = await response.json() as ListSessionsResponse;
-      // Handler only returns sessionId field
-      expect(responseData.sessions[0]).toEqual({ sessionId: 'session-1' });
+      // Handler only returns sessionId
+      expect(responseData.sessions[0]).toEqual({
+        sessionId: 'session-1'
+      });
     });
   });
 
@@ -424,9 +424,12 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
       const responseData = await response.json() as ListSessionsResponse;
 
-      // Handler doesn't return createdAt field
-      expect(responseData.sessions[0]).toEqual({ sessionId: 'session-1' });
-      expect((responseData.sessions[0] as any).createdAt).toBeUndefined();
+      // Handler only returns sessionId (not createdAt/hasActiveProcess)
+      expect(responseData.sessions[0]).toEqual({
+        sessionId: 'session-1'
+      });
+      // Verify only sessionId is present
+      expect(Object.keys(responseData.sessions[0])).toEqual(['sessionId']);
     });
   });
 
@@ -449,19 +452,19 @@ describe('SessionHandler', () => {
 
       const sessionResponse = responseData.sessions[0];
 
-      // Should only include sessionId field
+      // Handler only returns sessionId (not createdAt/hasActiveProcess)
       expect(sessionResponse.sessionId).toBe('session-external-id');
 
-      // Should not include other fields (not available from SessionManager)
+      // Should not include internal fields or additional fields
       expect((sessionResponse as any).id).toBeUndefined();
-      expect((sessionResponse as any).createdAt).toBeUndefined();
       expect((sessionResponse as any).expiresAt).toBeUndefined();
       expect((sessionResponse as any).activeProcess).toBeUndefined();
+      expect((sessionResponse as any).createdAt).toBeUndefined();
       expect((sessionResponse as any).hasActiveProcess).toBeUndefined();
 
-      // Should only have sessionId field
+      // Should have exactly one field: sessionId
       const expectedFields = ['sessionId'];
-      expect(Object.keys(sessionResponse)).toEqual(expectedFields);
+      expect(Object.keys(sessionResponse).sort()).toEqual(expectedFields.sort());
     });
   });
 });

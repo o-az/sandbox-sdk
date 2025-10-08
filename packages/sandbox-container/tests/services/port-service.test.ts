@@ -1,26 +1,26 @@
-import type { Mock } from "bun:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { Logger, PortInfo, PortNotFoundResponse, ProxyErrorResponse } from '@sandbox-container/core/types.ts';
-import type { PortService, PortStore, SecurityService } from '@sandbox-container/services/port-service.ts';
+import type { Logger, PortInfo, PortNotFoundResponse, ProxyErrorResponse } from '@sandbox-container/core/types';
+import { PortService, type PortStore, type SecurityService } from '@sandbox-container/services/port-service';
+import { mocked } from '../test-utils';
 
 // Properly typed mock dependencies
 const mockPortStore: PortStore = {
-  expose: vi.fn() as Mock<(port: number, info: PortInfo) => Promise<void>>,
-  unexpose: vi.fn() as Mock<(port: number) => Promise<void>>,
-  get: vi.fn() as Mock<(port: number) => Promise<PortInfo | null>>,
-  list: vi.fn() as Mock<() => Promise<Array<{ port: number; info: PortInfo }>>>,
-  cleanup: vi.fn() as Mock<(olderThan: Date) => Promise<number>>,
+  expose: vi.fn(),
+  unexpose: vi.fn(),
+  get: vi.fn(),
+  list: vi.fn(),
+  cleanup: vi.fn(),
 };
 
 const mockSecurityService: SecurityService = {
-  validatePort: vi.fn() as Mock<(port: number) => { isValid: boolean; errors: string[] }>,
+  validatePort: vi.fn(),
 };
 
 const mockLogger: Logger = {
-  info: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  error: vi.fn() as Mock<(message: string, error?: Error, meta?: Record<string, unknown>) => void>,
-  warn: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  debug: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
 };
 
 // Mock fetch for proxy testing
@@ -39,14 +39,12 @@ describe('PortService', () => {
     global.fetch = mockFetch as unknown as typeof fetch;
 
     // Set up default successful security validation
-    (mockSecurityService.validatePort as Mock).mockReturnValue({
+    mocked(mockSecurityService.validatePort).mockReturnValue({
       isValid: true,
       errors: []
     });
 
-    // Import the PortService (dynamic import)
-    const { PortService: PortServiceClass } = await import('@sandbox-container/services/port-service.ts');
-    portService = new PortServiceClass(
+    portService = new PortService(
       mockPortStore,
       mockSecurityService,
       mockLogger
@@ -65,7 +63,7 @@ describe('PortService', () => {
 
   describe('exposePort', () => {
     it('should expose port successfully with valid port number', async () => {
-      (mockPortStore.get as Mock).mockResolvedValue(null);
+      mocked(mockPortStore.get).mockResolvedValue(null);
 
       const result = await portService.exposePort(8080, 'web-server');
 
@@ -80,7 +78,7 @@ describe('PortService', () => {
     });
 
     it('should return error when port validation fails', async () => {
-      (mockSecurityService.validatePort as Mock).mockReturnValue({
+      mocked(mockSecurityService.validatePort).mockReturnValue({
         isValid: false,
         errors: ['Port must be between 1024-65535', 'Port 80 is reserved']
       });
@@ -109,7 +107,7 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(existingPortInfo);
+      mocked(mockPortStore.get).mockResolvedValue(existingPortInfo);
 
       const result = await portService.exposePort(8080);
 
@@ -125,9 +123,9 @@ describe('PortService', () => {
     });
 
     it('should handle store errors gracefully', async () => {
-      (mockPortStore.get as Mock).mockResolvedValue(null);
+      mocked(mockPortStore.get).mockResolvedValue(null);
       const storeError = new Error('Store connection failed');
-      (mockPortStore.expose as Mock).mockRejectedValue(storeError);
+      mocked(mockPortStore.expose).mockRejectedValue(storeError);
 
       const result = await portService.exposePort(8080);
 
@@ -147,7 +145,7 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(existingPortInfo);
+      mocked(mockPortStore.get).mockResolvedValue(existingPortInfo);
 
       const result = await portService.unexposePort(8080);
 
@@ -156,7 +154,7 @@ describe('PortService', () => {
     });
 
     it('should return error when port is not exposed', async () => {
-      (mockPortStore.get as Mock).mockResolvedValue(null);
+      mocked(mockPortStore.get).mockResolvedValue(null);
 
       const result = await portService.unexposePort(8080);
 
@@ -177,9 +175,9 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(existingPortInfo);
+      mocked(mockPortStore.get).mockResolvedValue(existingPortInfo);
       const storeError = new Error('Unexpose failed');
-      (mockPortStore.unexpose as Mock).mockRejectedValue(storeError);
+      mocked(mockPortStore.unexpose).mockRejectedValue(storeError);
 
       const result = await portService.unexposePort(8080);
 
@@ -203,7 +201,7 @@ describe('PortService', () => {
           }
         }
       ];
-      (mockPortStore.list as Mock).mockResolvedValue(mockPorts);
+      mocked(mockPortStore.list).mockResolvedValue(mockPorts);
 
       const result = await portService.getExposedPorts();
 
@@ -216,7 +214,7 @@ describe('PortService', () => {
 
     it('should handle store list errors', async () => {
       const listError = new Error('Store list failed');
-      (mockPortStore.list as Mock).mockRejectedValue(listError);
+      mocked(mockPortStore.list).mockRejectedValue(listError);
 
       const result = await portService.getExposedPorts();
 
@@ -235,7 +233,7 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(portInfo);
+      mocked(mockPortStore.get).mockResolvedValue(portInfo);
 
       const result = await portService.getPortInfo(8080);
 
@@ -246,7 +244,7 @@ describe('PortService', () => {
     });
 
     it('should return error when port is not found', async () => {
-      (mockPortStore.get as Mock).mockResolvedValue(null);
+      mocked(mockPortStore.get).mockResolvedValue(null);
 
       const result = await portService.getPortInfo(8080);
 
@@ -266,7 +264,7 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(portInfo);
+      mocked(mockPortStore.get).mockResolvedValue(portInfo);
 
       const mockResponse = new Response('Hello World', { status: 200 });
       mockFetch.mockResolvedValue(mockResponse);
@@ -283,7 +281,7 @@ describe('PortService', () => {
     });
 
     it('should return 404 when port is not exposed', async () => {
-      (mockPortStore.get as Mock).mockResolvedValue(null);
+      mocked(mockPortStore.get).mockResolvedValue(null);
 
       const testRequest = new Request('http://example.com/proxy/8080/api/test');
       const response = await portService.proxyRequest(8080, testRequest);
@@ -304,7 +302,7 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(portInfo);
+      mocked(mockPortStore.get).mockResolvedValue(portInfo);
 
       const fetchError = new Error('Connection refused');
       mockFetch.mockRejectedValue(fetchError);
@@ -328,8 +326,8 @@ describe('PortService', () => {
         exposedAt: new Date(),
         status: 'active',
       };
-      (mockPortStore.get as Mock).mockResolvedValue(portInfo);
-      (mockPortStore.expose as Mock).mockResolvedValue(undefined);
+      mocked(mockPortStore.get).mockResolvedValue(portInfo);
+      mocked(mockPortStore.expose).mockResolvedValue(undefined);
 
       const result = await portService.markPortInactive(8080);
 
@@ -346,7 +344,7 @@ describe('PortService', () => {
     });
 
     it('should return error when port is not found', async () => {
-      (mockPortStore.get as Mock).mockResolvedValue(null);
+      mocked(mockPortStore.get).mockResolvedValue(null);
 
       const result = await portService.markPortInactive(8080);
 
@@ -362,7 +360,7 @@ describe('PortService', () => {
 
   describe('cleanupInactivePorts', () => {
     it('should cleanup inactive ports and return count', async () => {
-      (mockPortStore.cleanup as Mock).mockResolvedValue(3);
+      mocked(mockPortStore.cleanup).mockResolvedValue(3);
 
       const result = await portService.cleanupInactivePorts();
 
@@ -379,7 +377,7 @@ describe('PortService', () => {
 
     it('should handle cleanup errors', async () => {
       const cleanupError = new Error('Cleanup failed');
-      (mockPortStore.cleanup as Mock).mockRejectedValue(cleanupError);
+      mocked(mockPortStore.cleanup).mockRejectedValue(cleanupError);
 
       const result = await portService.cleanupInactivePorts();
 

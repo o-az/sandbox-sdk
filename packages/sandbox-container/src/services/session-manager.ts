@@ -234,6 +234,66 @@ export class SessionManager {
   }
 
   /**
+   * Set environment variables on an existing session
+   */
+  async setEnvVars(sessionId: string, envVars: Record<string, string>): Promise<ServiceResult<void>> {
+    try {
+      const session = this.sessions.get(sessionId);
+
+      if (!session) {
+        return {
+          success: false,
+          error: {
+            message: `Session '${sessionId}' not found`,
+            code: 'SESSION_NOT_FOUND',
+            details: { sessionId },
+          },
+        };
+      }
+
+      this.logger.info('Setting environment variables on session', { sessionId, vars: Object.keys(envVars) });
+
+      // Export each environment variable in the running bash session
+      for (const [key, value] of Object.entries(envVars)) {
+        // Escape the value for safe bash usage
+        const escapedValue = value.replace(/'/g, "'\\''");
+        const exportCommand = `export ${key}='${escapedValue}'`;
+
+        const result = await session.exec(exportCommand);
+
+        if (result.exitCode !== 0) {
+          return {
+            success: false,
+            error: {
+              message: `Failed to set environment variable ${key}: ${result.stderr}`,
+              code: 'ENV_SET_ERROR',
+              details: { sessionId, key, stderr: result.stderr },
+            },
+          };
+        }
+      }
+
+      this.logger.info('Environment variables set successfully', { sessionId, count: Object.keys(envVars).length });
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to set environment variables', error instanceof Error ? error : undefined, { sessionId });
+
+      return {
+        success: false,
+        error: {
+          message: `Failed to set environment variables: ${errorMessage}`,
+          code: 'ENV_SET_ERROR',
+          details: { sessionId, originalError: errorMessage },
+        },
+      };
+    }
+  }
+
+  /**
    * Delete a session
    */
   async deleteSession(sessionId: string): Promise<ServiceResult<void>> {

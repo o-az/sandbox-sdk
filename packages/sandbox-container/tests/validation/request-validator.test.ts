@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type { SecurityService } from '@sandbox-container/security/security-service.ts';
-import type { RequestValidator } from '@sandbox-container/validation/request-validator.ts';
+import { RequestValidator } from "@sandbox-container/validation/request-validator.js";
 import type { MkdirRequest } from '@sandbox-container/validation/schemas.ts';
 
 // Mock the SecurityService - use partial mock to avoid private property issues
@@ -14,7 +14,7 @@ const mockSecurityService = {
   generateSecureSessionId: vi.fn(),
   hashSensitiveData: vi.fn(),
   logSecurityEvent: vi.fn(),
-} as SecurityService;
+} as unknown as SecurityService;
 
 describe('RequestValidator', () => {
   let requestValidator: RequestValidator;
@@ -45,9 +45,7 @@ describe('RequestValidator', () => {
       data: 'https://github.com/user/repo.git'
     });
 
-    // Import the RequestValidator (dynamic import)
-    const { RequestValidator: RequestValidatorClass } = await import('@sandbox-container/validation/request-validator.ts');
-    requestValidator = new RequestValidatorClass(mockSecurityService);
+    requestValidator = new RequestValidator(mockSecurityService);
   });
 
   describe('validateExecuteRequest', () => {

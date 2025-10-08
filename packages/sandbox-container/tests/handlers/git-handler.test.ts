@@ -1,14 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * Git Handler Tests
- * 
- * Tests the GitHandler class from the refactored container architecture.
- * Demonstrates testing handlers with git operations and repository management.
- */
-
+import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type { GitCheckoutResponse, HandlerErrorResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
-import type { GitHandler } from '@sandbox-container/handlers/git-handler.ts';
-import type { GitService } from '@sandbox-container/services/git-service.ts';
+import { GitHandler } from '@sandbox-container/handlers/git-handler';
+import type { GitService } from '@sandbox-container/services/git-service';
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockGitService = {
@@ -16,7 +9,7 @@ const mockGitService = {
   checkoutBranch: vi.fn(),
   getCurrentBranch: vi.fn(),
   listBranches: vi.fn(),
-} as GitService;
+} as unknown as GitService;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -49,10 +42,8 @@ describe('GitHandler', () => {
   beforeEach(async () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
-    
-    // Import the GitHandler (dynamic import)
-    const { GitHandler: GitHandlerClass } = await import('@sandbox-container/handlers/git-handler.ts');
-    gitHandler = new GitHandlerClass(mockGitService, mockLogger);
+
+    gitHandler = new GitHandler(mockGitService, mockLogger);
   });
 
   describe('handleCheckout - POST /api/git/checkout', () => {

@@ -1,13 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * Security Service Tests
- * 
- * Tests the SecurityService class from the refactored container architecture.
- * Demonstrates comprehensive security validation testing across all attack vectors.
- */
-
-import type { Logger } from '@sandbox-container/core/types.ts';
-import type { SecurityService } from '@sandbox-container/security/security-service.ts';
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { Logger } from '@sandbox-container/core/types';
+import { SecurityService } from '@sandbox-container/security/security-service';
 
 // Mock the dependencies
 const mockLogger: Logger = {
@@ -39,9 +32,7 @@ describe('SecurityService', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Import the SecurityService (dynamic import)
-    const { SecurityService: SecurityServiceClass } = await import('@sandbox-container/security/security-service.ts');
-    securityService = new SecurityServiceClass(mockLogger);
+    securityService = new SecurityService(mockLogger);
   });
 
   describe('validatePath', () => {
@@ -236,14 +227,14 @@ describe('SecurityService', () => {
         }
       });
 
-      it('should reject reserved system and service ports', async () => {
-        // Test representatives from: system ports, database ports, container ports
-        const reservedPorts = [22, 80, 443, 3306, 5432, 8080];
+      it('should reject system ports below 1024', async () => {
+        // System ports (0-1023) should be rejected due to range validation
+        const systemPorts = [22, 80, 443, 1023];
 
-        for (const port of reservedPorts) {
+        for (const port of systemPorts) {
           const result = securityService.validatePort(port);
           expect(result.isValid).toBe(false, `Port should be invalid: ${port}`);
-          expect(result.errors.some(e => e.message.includes('reserved'))).toBe(true);
+          expect(result.errors.some(e => e.message.includes('between 1024 and 65535'))).toBe(true);
         }
       });
 

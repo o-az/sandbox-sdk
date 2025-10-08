@@ -1,122 +1,25 @@
-// Dependency Injection Container
-// Import service interfaces
-import type {
-  CommandResult,
-  ExecuteRequest,
-  ExposePortRequest,
-  FileRequest,
-  GitCheckoutRequest,
-  Logger,
-  NextFunction,
-  PortInfo,
-  ProcessRecord,
-  RequestContext,
-  ServiceResult,
-  StartProcessRequest,
-  ValidationResult
-} from './types';
-
-export interface ProcessService {
-  startProcess(command: string, options: Record<string, unknown>): Promise<ServiceResult<ProcessRecord>>;
-  executeCommand(command: string, options: Record<string, unknown>): Promise<ServiceResult<CommandResult>>;
-  getProcess(id: string): Promise<ServiceResult<ProcessRecord>>;
-  killProcess(id: string): Promise<ServiceResult<void>>;
-  listProcesses(): Promise<ServiceResult<ProcessRecord[]>>;
-  destroy(): Promise<void>;
-}
-
-export interface FileService {
-  read(path: string, options?: { encoding?: string }): Promise<ServiceResult<string>>;
-  write(path: string, content: string, options?: { encoding?: string }): Promise<ServiceResult<void>>;
-  delete(path: string): Promise<ServiceResult<void>>;
-  rename(oldPath: string, newPath: string): Promise<ServiceResult<void>>;
-  move(sourcePath: string, destinationPath: string): Promise<ServiceResult<void>>;
-  mkdir(path: string, options?: { recursive?: boolean }): Promise<ServiceResult<void>>;
-  exists(path: string): Promise<ServiceResult<boolean>>;
-}
-
-export interface PortService {
-  exposePort(port: number, name?: string): Promise<ServiceResult<PortInfo>>;
-  unexposePort(port: number): Promise<ServiceResult<void>>;
-  getExposedPorts(): Promise<ServiceResult<PortInfo[]>>;
-  proxyRequest(port: number, request: Request): Promise<Response>;
-  destroy(): void;
-}
-
-export interface GitService {
-  cloneRepository(repoUrl: string, options: { branch?: string; targetDir?: string }): Promise<ServiceResult<{ path: string; branch: string }>>;
-  checkoutBranch(repoPath: string, branch: string): Promise<ServiceResult<void>>;
-}
-
-export interface SecurityService {
-  validatePath(path: string): ValidationResult<string>;
-  sanitizePath(path: string): string;
-  validatePort(port: number): ValidationResult<number>;
-  validateCommand(command: string): ValidationResult<string>;
-  validateGitUrl(url: string): ValidationResult<string>;
-}
-
-export interface RequestValidator {
-  validateExecuteRequest(request: unknown): ValidationResult<ExecuteRequest>;
-  validateFileRequest(request: unknown, operation?: string): ValidationResult<FileRequest>;
-  validateProcessRequest(request: unknown): ValidationResult<StartProcessRequest>;
-  validatePortRequest(request: unknown): ValidationResult<ExposePortRequest>;
-  validateGitRequest(request: unknown): ValidationResult<GitCheckoutRequest>;
-}
-
-// Handler interfaces
-export interface ExecuteHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface FileHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface ProcessHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface PortHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface GitHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface InterpreterHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface MiscHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-export interface SessionHandler {
-  handle(request: Request, context: RequestContext): Promise<Response>;
-}
-
-// Middleware interfaces  
-export interface CorsMiddleware {
-  handle(request: Request, context: RequestContext, next: NextFunction): Promise<Response>;
-}
-
-export interface ValidationMiddleware {
-  handle(request: Request, context: RequestContext, next: NextFunction): Promise<Response>;
-}
-
-export interface LoggingMiddleware {
-  handle(request: Request, context: RequestContext, next: NextFunction): Promise<Response>;
-}
-
-export interface InterpreterService {
-  getHealthStatus(): Promise<ServiceResult<{ ready: boolean; initializing: boolean; progress: number }>>;
-  createContext(request: { language?: string; cwd?: string }): Promise<ServiceResult<{ id: string; language: string; cwd: string; createdAt: string; lastUsed: string }>>;
-  listContexts(): Promise<ServiceResult<Array<{ id: string; language: string; cwd: string; createdAt: string; lastUsed: string }>>>;
-  deleteContext(contextId: string): Promise<ServiceResult<void>>;
-  executeCode(contextId: string, code: string, language?: string): Promise<Response>;
-}
+import { ExecuteHandler } from '../handlers/execute-handler';
+import { FileHandler } from '../handlers/file-handler';
+import { GitHandler } from '../handlers/git-handler';
+import { InterpreterHandler } from '../handlers/interpreter-handler';
+import { MiscHandler } from '../handlers/misc-handler';
+import { PortHandler } from '../handlers/port-handler';
+import { ProcessHandler } from '../handlers/process-handler';
+import { SessionHandler } from '../handlers/session-handler';
+import { CorsMiddleware } from '../middleware/cors';
+import { LoggingMiddleware } from '../middleware/logging';
+import { ValidationMiddleware } from '../middleware/validation';
+import { SecurityServiceAdapter } from '../security/security-adapter';
+import { SecurityService } from '../security/security-service';
+import { FileService } from '../services/file-service';
+import { GitService } from '../services/git-service';
+import { InterpreterService } from '../services/interpreter-service';
+import { InMemoryPortStore, PortService } from '../services/port-service';
+import { InMemoryProcessStore, ProcessService } from '../services/process-service';
+import { SessionManager } from '../services/session-manager';
+import { RequestValidator } from '../validation/request-validator';
+import { ConsoleLogger } from './logger';
+import type { Logger } from './types';
 
 export interface Dependencies {
   // Services
@@ -173,35 +76,6 @@ export class Container {
     if (this.initialized) {
       return;
     }
-
-    // Import all necessary classes
-    const { ConsoleLogger } = await import('./logger');
-    const { SecurityService } = await import('../security/security-service');
-    const { SecurityServiceAdapter } = await import('../security/security-adapter');
-    const { RequestValidator } = await import('../validation/request-validator');
-    
-    // Services
-    const { ProcessService, InMemoryProcessStore } = await import('../services/process-service');
-    const { FileService } = await import('../services/file-service');
-    const { PortService, InMemoryPortStore } = await import('../services/port-service');
-    const { GitService } = await import('../services/git-service');
-    const { InterpreterService } = await import('../services/interpreter-service');
-    const { SessionManager } = await import('../services/session-manager');
-
-    // Handlers
-    const { SessionHandler } = await import('../handlers/session-handler');
-    const { ExecuteHandler } = await import('../handlers/execute-handler');
-    const { FileHandler } = await import('../handlers/file-handler');
-    const { ProcessHandler } = await import('../handlers/process-handler');
-    const { PortHandler } = await import('../handlers/port-handler');
-    const { GitHandler } = await import('../handlers/git-handler');
-    const { InterpreterHandler } = await import('../handlers/interpreter-handler');
-    const { MiscHandler } = await import('../handlers/misc-handler');
-
-    // Middleware
-    const { CorsMiddleware } = await import('../middleware/cors');
-    const { ValidationMiddleware } = await import('../middleware/validation');
-    const { LoggingMiddleware } = await import('../middleware/logging');
 
     // Initialize infrastructure
     const logger = new ConsoleLogger();

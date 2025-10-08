@@ -1,14 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-/**
- * Port Handler Tests
- *
- * Tests the PortHandler class from the refactored container architecture.
- * Demonstrates testing handlers with port management and proxying functionality.
- */
-
-import type { ExposePortResponse, HandlerErrorResponse, ListExposedPortsResponse, Logger, PortInfo, ProxiedErrorResponse, ProxiedSuccessResponse, RequestContext, UnexposePortResponse, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
-import type { PortHandler } from '@sandbox-container/handlers/port-handler.ts';
-import type { PortService } from '@sandbox-container/services/port-service.ts';
+import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { ExposePortResponse, HandlerErrorResponse, ListExposedPortsResponse, Logger, PortInfo, ProxiedErrorResponse, ProxiedSuccessResponse, RequestContext, UnexposePortResponse, ValidatedRequestContext } from '@sandbox-container/core/types';
+import { PortHandler } from '@sandbox-container/handlers/port-handler';
+import type { PortService } from '@sandbox-container/services/port-service';
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockPortService = {
@@ -20,7 +13,7 @@ const mockPortService = {
   markPortInactive: vi.fn(),
   cleanupInactivePorts: vi.fn(),
   destroy: vi.fn(),
-} as PortService;
+} as unknown as PortService;
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -54,9 +47,7 @@ describe('PortHandler', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Import the PortHandler (dynamic import)
-    const { PortHandler: PortHandlerClass } = await import('@sandbox-container/handlers/port-handler.ts');
-    portHandler = new PortHandlerClass(mockPortService, mockLogger);
+    portHandler = new PortHandler(mockPortService, mockLogger);
   });
 
   describe('handleExpose - POST /api/expose-port', () => {

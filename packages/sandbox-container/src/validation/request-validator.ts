@@ -1,9 +1,6 @@
-// Zod-based Request Validator - No more type casting!
-
-import type { SecurityService } from '../core/container';
+import type { SecurityService } from '@sandbox-container/security/security-service';
 import type { ValidationResult } from '../core/types';
 import {
-  DeleteFileRequestSchema,
   type ExecuteRequest,
   ExecuteRequestSchema,
   type ExposePortRequest,
@@ -13,13 +10,8 @@ import {
   FileRequestSchemas,
   type GitCheckoutRequest,
   GitCheckoutRequestSchema,
-  MkdirRequestSchema,
-  MoveFileRequestSchema,
-  ReadFileRequestSchema,
-  RenameFileRequestSchema,
   type StartProcessRequest,
   StartProcessRequestSchema,
-  WriteFileRequestSchema,
 } from './schemas';
 
 export class RequestValidator {

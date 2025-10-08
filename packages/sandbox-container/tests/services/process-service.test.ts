@@ -1,38 +1,38 @@
-import type { Mock } from 'bun:test';
 import { beforeEach, describe, expect, it, vi } from 'bun:test';
 import type { BunProcessAdapter, ExecutionResult, SpawnOptions, SpawnResult, StreamHandlers } from '@sandbox-container/adapters/bun-process-adapter.ts';
-import type { Logger, ProcessOptions, ProcessRecord } from '@sandbox-container/core/types.ts';
-import type { ProcessFilters, ProcessService, ProcessStore } from '@sandbox-container/services/process-service.ts';
+import type { Logger, ProcessRecord } from '@sandbox-container/core/types.ts';
+import { type ProcessFilters, ProcessService, type ProcessStore } from "@sandbox-container/services/process-service.js";
 import type { Subprocess } from 'bun';
+import { mocked } from '../test-utils';
 
 // Mock the dependencies with proper typing
 const mockProcessStore: ProcessStore = {
-  create: vi.fn() as Mock<(process: ProcessRecord) => Promise<void>>,
-  get: vi.fn() as Mock<(id: string) => Promise<ProcessRecord | null>>,
-  update: vi.fn() as Mock<(id: string, data: Partial<ProcessRecord>) => Promise<void>>,
-  delete: vi.fn() as Mock<(id: string) => Promise<void>>,
-  list: vi.fn() as Mock<(filters?: ProcessFilters) => Promise<ProcessRecord[]>>,
-  cleanup: vi.fn() as Mock<(olderThan: Date) => Promise<number>>,
+  create: vi.fn(),
+  get: vi.fn(),
+  update: vi.fn(),
+  delete: vi.fn(),
+  list: vi.fn(),
+  cleanup: vi.fn(),
 };
 
 const mockLogger: Logger = {
-  info: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  error: vi.fn() as Mock<(message: string, error?: Error, meta?: Record<string, unknown>) => void>,
-  warn: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  debug: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
 };
 
-// Mock adapter with proper typing - this is the key difference from the old approach
+// Mock adapter with proper typing
 const mockAdapter: BunProcessAdapter = {
-  spawn: vi.fn() as Mock<(executable: string, args: string[], options?: SpawnOptions) => SpawnResult>,
-  execute: vi.fn() as Mock<(executable: string, args: string[], options?: SpawnOptions) => Promise<ExecutionResult>>,
-  executeShell: vi.fn() as Mock<(command: string, options?: SpawnOptions) => Promise<ExecutionResult>>,
-  readStream: vi.fn() as Mock<(stream: ReadableStream | undefined) => Promise<string>>,
-  streamOutput: vi.fn() as Mock<(stream: ReadableStream | undefined, onData: (data: string) => void) => Promise<void>>,
-  handleStreams: vi.fn() as Mock<(subprocess: Subprocess, handlers: StreamHandlers) => () => void>,
-  waitForExit: vi.fn() as Mock<(subprocess: Subprocess) => Promise<ExecutionResult>>,
-  kill: vi.fn() as Mock<(subprocess: Subprocess, signal?: number) => boolean>,
-  isRunning: vi.fn() as Mock<(subprocess: Subprocess) => boolean>,
+  spawn: vi.fn(),
+  execute: vi.fn(),
+  executeShell: vi.fn(),
+  readStream: vi.fn(),
+  streamOutput: vi.fn(),
+  handleStreams: vi.fn(),
+  waitForExit: vi.fn(),
+  kill: vi.fn(),
+  isRunning: vi.fn(),
 };
 
 // Mock factory functions
@@ -58,19 +58,14 @@ const createMockSubprocess = (overrides: Partial<Subprocess> = {}): Subprocess =
 } as Subprocess);
 
 describe('ProcessService', () => {
-  let ProcessServiceClass: typeof ProcessService;
   let processService: ProcessService;
 
   beforeEach(async () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Import the ProcessService (dynamic import for fresh module)
-    const module = await import('@sandbox-container/services/process-service.ts');
-    ProcessServiceClass = module.ProcessService;
-
     // Create service with mocked adapter
-    processService = new ProcessServiceClass(
+    processService = new ProcessService(
       mockProcessStore,
       mockLogger,
       undefined,  // No session manager
@@ -81,7 +76,7 @@ describe('ProcessService', () => {
   describe('executeCommand', () => {
     it('should execute command and return success', async () => {
       // Mock adapter to return successful execution
-      (mockAdapter.executeShell as Mock).mockResolvedValue({
+      mocked(mockAdapter.executeShell).mockResolvedValue({
         exitCode: 0,
         stdout: 'hello world\n',
         stderr: '',
@@ -109,7 +104,7 @@ describe('ProcessService', () => {
     });
 
     it('should handle command with non-zero exit code', async () => {
-      (mockAdapter.executeShell as Mock).mockResolvedValue({
+      mocked(mockAdapter.executeShell).mockResolvedValue({
         exitCode: 1,
         stdout: '',
         stderr: 'error message',
@@ -125,7 +120,7 @@ describe('ProcessService', () => {
     });
 
     it('should handle adapter errors', async () => {
-      (mockAdapter.executeShell as Mock).mockRejectedValue(new Error('Spawn failed'));
+      mocked(mockAdapter.executeShell).mockRejectedValue(new Error('Spawn failed'));
 
       const result = await processService.executeCommand('some command');
 
@@ -142,16 +137,16 @@ describe('ProcessService', () => {
       const mockSubprocess: Subprocess = {
         pid: 12345,
         exitCode: undefined,
-        kill: vi.fn() as Mock<(signal?: number) => void>,
+        kill: vi.fn(),
         exited: new Promise(() => {}), // Never resolves (background process)
-      } as Subprocess;
+      } as unknown as Subprocess;
 
-      (mockAdapter.spawn as Mock).mockReturnValue({
+      mocked(mockAdapter.spawn).mockReturnValue({
         pid: 12345,
         subprocess: mockSubprocess,
       });
 
-      (mockAdapter.handleStreams as Mock).mockReturnValue(() => {});
+      mocked(mockAdapter.handleStreams).mockReturnValue(() => {});
 
       const result = await processService.startProcess('sleep 10', {
         cwd: '/tmp',
@@ -204,7 +199,7 @@ describe('ProcessService', () => {
     });
 
     it('should handle spawn errors', async () => {
-      (mockAdapter.spawn as Mock).mockImplementation(() => {
+      mocked(mockAdapter.spawn).mockImplementation(() => {
         throw new Error('Failed to spawn');
       });
 
@@ -222,7 +217,7 @@ describe('ProcessService', () => {
     it('should return process from store', async () => {
       const mockProcess = createMockProcess({ command: 'sleep 5' });
 
-      (mockProcessStore.get as Mock).mockResolvedValue(mockProcess);
+      mocked(mockProcessStore.get).mockResolvedValue(mockProcess);
 
       const result = await processService.getProcess('proc-123');
 
@@ -234,7 +229,7 @@ describe('ProcessService', () => {
     });
 
     it('should return error when process not found', async () => {
-      (mockProcessStore.get as Mock).mockResolvedValue(null);
+      mocked(mockProcessStore.get).mockResolvedValue(null);
 
       const result = await processService.getProcess('nonexistent');
 
@@ -254,8 +249,8 @@ describe('ProcessService', () => {
         subprocess: mockSubprocess,
       });
 
-      (mockProcessStore.get as Mock).mockResolvedValue(mockProcess);
-      (mockAdapter.kill as Mock).mockReturnValue(true);
+      mocked(mockProcessStore.get).mockResolvedValue(mockProcess);
+      mocked(mockAdapter.kill).mockReturnValue(true);
 
       const result = await processService.killProcess('proc-123');
 
@@ -272,7 +267,7 @@ describe('ProcessService', () => {
     });
 
     it('should return error when process not found', async () => {
-      (mockProcessStore.get as Mock).mockResolvedValue(null);
+      mocked(mockProcessStore.get).mockResolvedValue(null);
 
       const result = await processService.killProcess('nonexistent');
 
@@ -290,7 +285,7 @@ describe('ProcessService', () => {
         createMockProcess({ id: 'proc-2', command: 'sleep 10', status: 'running', pid: 200 }),
       ];
 
-      (mockProcessStore.list as Mock).mockResolvedValue(mockProcesses);
+      mocked(mockProcessStore.list).mockResolvedValue(mockProcesses);
 
       const result = await processService.listProcesses();
 
@@ -311,11 +306,11 @@ describe('ProcessService', () => {
         createMockProcess({ id: 'proc-2', command: 'sleep 20', pid: 200, subprocess: mockSubprocess2 }),
       ];
 
-      (mockProcessStore.list as Mock).mockResolvedValue(mockProcesses);
-      (mockProcessStore.get as Mock)
+      mocked(mockProcessStore.list).mockResolvedValue(mockProcesses);
+      mocked(mockProcessStore.get)
         .mockResolvedValueOnce(mockProcesses[0])
         .mockResolvedValueOnce(mockProcesses[1]);
-      (mockAdapter.kill as Mock).mockReturnValue(true);
+      mocked(mockAdapter.kill).mockReturnValue(true);
 
       const result = await processService.killAllProcesses();
 

@@ -1,5 +1,3 @@
-// Bun-optimized File System Service
-
 import { BunFileAdapter } from '../adapters/bun-file-adapter';
 import type {
   FileStats,

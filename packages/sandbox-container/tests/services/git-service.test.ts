@@ -1,28 +1,28 @@
-import type { Mock } from "bun:test";
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { BunProcessAdapter, ExecutionResult } from '@sandbox-container/adapters/bun-process-adapter.ts';
-import type { CloneOptions, Logger } from '@sandbox-container/core/types.ts';
-import type { GitService, SecurityService } from '@sandbox-container/services/git-service.ts';
+import type { BunProcessAdapter, ExecutionResult } from '@sandbox-container/adapters/bun-process-adapter';
+import type { CloneOptions, Logger } from '@sandbox-container/core/types';
+import { GitService, type SecurityService } from '@sandbox-container/services/git-service';
+import { mocked } from '../test-utils';
 
 // Properly typed mock dependencies
 const mockSecurityService: SecurityService = {
-  validateGitUrl: vi.fn() as Mock<(url: string) => { isValid: boolean; errors: string[] }>,
-  validatePath: vi.fn() as Mock<(path: string) => { isValid: boolean; errors: string[] }>,
-  sanitizePath: vi.fn() as Mock<(path: string) => string>,
+  validateGitUrl: vi.fn(),
+  validatePath: vi.fn(),
+  sanitizePath: vi.fn(),
 };
 
 const mockLogger: Logger = {
-  info: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  error: vi.fn() as Mock<(message: string, error?: Error, meta?: Record<string, unknown>) => void>,
-  warn: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
-  debug: vi.fn() as Mock<(message: string, meta?: Record<string, unknown>) => void>,
+  info: vi.fn(),
+  error: vi.fn(),
+  warn: vi.fn(),
+  debug: vi.fn(),
 };
 
 // Properly typed mock BunProcessAdapter
 const mockAdapter: BunProcessAdapter = {
-  execute: vi.fn() as Mock<(command: string, args: string[], cwd?: string) => Promise<ExecutionResult>>,
-  spawn: vi.fn() as Mock<(command: string, args: string[], cwd?: string) => any>,
-} as BunProcessAdapter;
+  execute: vi.fn(),
+  spawn: vi.fn(),
+} as unknown as BunProcessAdapter;
 
 describe('GitService', () => {
   let GitServiceClass: typeof GitService;
@@ -33,25 +33,22 @@ describe('GitService', () => {
     vi.clearAllMocks();
 
     // Set up default successful security validations
-    (mockSecurityService.validateGitUrl as Mock).mockReturnValue({
+    mocked(mockSecurityService.validateGitUrl).mockReturnValue({
       isValid: true,
       errors: []
     });
-    (mockSecurityService.validatePath as Mock).mockReturnValue({
+    mocked(mockSecurityService.validatePath).mockReturnValue({
       isValid: true,
       errors: []
     });
 
-    // Import the GitService (dynamic import)
-    const module = await import('@sandbox-container/services/git-service.ts');
-    GitServiceClass = module.GitService;
-    gitService = new GitServiceClass(mockSecurityService, mockLogger, mockAdapter);
+    gitService = new GitService(mockSecurityService, mockLogger, mockAdapter);
   });
 
   describe('cloneRepository', () => {
     it('should clone repository successfully with default options', async () => {
       // Mock successful git clone
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 0,
         stdout: 'Cloning into target-dir...',
         stderr: '',
@@ -79,7 +76,7 @@ describe('GitService', () => {
     });
 
     it('should clone repository with custom branch and target directory', async () => {
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 0,
         stdout: 'Cloning...',
         stderr: '',
@@ -106,7 +103,7 @@ describe('GitService', () => {
     });
 
     it('should return error when git URL validation fails', async () => {
-      (mockSecurityService.validateGitUrl as Mock).mockReturnValue({
+      mocked(mockSecurityService.validateGitUrl).mockReturnValue({
         isValid: false,
         errors: ['Invalid URL scheme', 'URL not in allowlist']
       });
@@ -128,7 +125,7 @@ describe('GitService', () => {
     });
 
     it('should return error when target directory validation fails', async () => {
-      (mockSecurityService.validatePath as Mock).mockReturnValue({
+      mocked(mockSecurityService.validatePath).mockReturnValue({
         isValid: false,
         errors: ['Path outside sandbox', 'Path contains invalid characters']
       });
@@ -149,7 +146,7 @@ describe('GitService', () => {
     });
 
     it('should return error when git clone command fails', async () => {
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 128,
         stdout: '',
         stderr: 'fatal: repository not found',
@@ -167,7 +164,7 @@ describe('GitService', () => {
 
     it('should handle spawn errors gracefully', async () => {
       const spawnError = new Error('Command not found');
-      (mockAdapter.execute as Mock).mockRejectedValue(spawnError);
+      mocked(mockAdapter.execute).mockRejectedValue(spawnError);
 
       const result = await gitService.cloneRepository('https://github.com/user/repo.git');
 
@@ -181,7 +178,7 @@ describe('GitService', () => {
 
   describe('checkoutBranch', () => {
     it('should checkout branch successfully', async () => {
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 0,
         stdout: 'Switched to branch develop',
         stderr: '',
@@ -212,7 +209,7 @@ describe('GitService', () => {
     });
 
     it('should return error when git checkout fails', async () => {
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 1,
         stdout: '',
         stderr: "error: pathspec 'nonexistent' did not match",
@@ -230,7 +227,7 @@ describe('GitService', () => {
 
   describe('getCurrentBranch', () => {
     it('should return current branch successfully', async () => {
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 0,
         stdout: 'main\n',
         stderr: '',
@@ -261,7 +258,7 @@ describe('GitService', () => {
   remotes/origin/main
   remotes/origin/feature/auth`;
 
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 0,
         stdout: branchOutput,
         stderr: '',
@@ -291,7 +288,7 @@ describe('GitService', () => {
     });
 
     it('should return error when git branch command fails', async () => {
-      (mockAdapter.execute as Mock).mockResolvedValue({
+      mocked(mockAdapter.execute).mockResolvedValue({
         exitCode: 128,
         stdout: '',
         stderr: 'fatal: not a git repository',

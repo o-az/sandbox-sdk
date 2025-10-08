@@ -1,5 +1,3 @@
-// Process Handler
-
 import type { Logger, ProcessStatus, RequestContext, StartProcessRequest } from '../core/types';
 import type { ProcessService } from '../services/process-service';
 import { BaseHandler } from './base-handler';

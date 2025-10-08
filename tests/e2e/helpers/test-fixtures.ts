@@ -3,10 +3,57 @@ import { randomUUID } from 'node:crypto';
 /**
  * Generate unique sandbox ID for test isolation
  *
- * Each test should use a unique ID to prevent pollution between tests.
+ * Sandbox ID determines which container instance (Durable Object) to use.
+ *
+ * Usage patterns:
+ * - **Different sandboxes**: Each test uses its own sandbox for complete isolation
+ * - **Same sandbox**: Multiple operations in one test share a sandbox to test state persistence
  */
 export function createSandboxId(): string {
   return randomUUID();
+}
+
+/**
+ * Generate unique session ID for session isolation testing
+ *
+ * Session ID determines which shell session within a container to use.
+ * Most tests should NOT need this - the SDK handles default sessions automatically.
+ *
+ * Only use this for:
+ * - Testing session isolation (multiple sessions in one sandbox)
+ * - Testing session-specific environment variables
+ */
+export function createSessionId(): string {
+  return `session-${randomUUID()}`;
+}
+
+/**
+ * Create headers for sandbox/session identification
+ *
+ * @param sandboxId - Which container instance to use
+ * @param sessionId - (Optional) Which session within that container (SDK defaults to auto-managed session)
+ *
+ * @example
+ * // Most tests: unique sandbox, default session
+ * const headers = createTestHeaders(createSandboxId());
+ *
+ * @example
+ * // Session isolation tests: one sandbox, multiple sessions
+ * const sandboxId = createSandboxId();
+ * const headers1 = createTestHeaders(sandboxId, createSessionId());
+ * const headers2 = createTestHeaders(sandboxId, createSessionId());
+ */
+export function createTestHeaders(sandboxId: string, sessionId?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Sandbox-Id': sandboxId,
+  };
+
+  if (sessionId) {
+    headers['X-Session-Id'] = sessionId;
+  }
+
+  return headers;
 }
 
 /**
