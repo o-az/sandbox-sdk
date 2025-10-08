@@ -3,17 +3,22 @@
 **Goal**: Comprehensive integration testing of all SDK methods in realistic workflows that match production usage patterns from the README.
 
 **Date**: 2024-10-08
-**Status**: ✅ Phase 1 Complete (12/12 tests passing)
+**Status**: ✅ Phase 2 In Progress - 20/20 tests passing
 
-## Phase 1 Summary
+## Test Summary
 
-**Tests Created:**
+**Phase 1 Complete** (12/12 tests):
 - `git-clone-workflow.test.ts` - 5 tests for Git operations
 - `process-lifecycle-workflow.test.ts` - 7 tests for process management and port exposure
 
-**SDK Methods Covered:** 15 methods tested across 12 test scenarios
+**Phase 2 In Progress** (8/8 tests):
+- `file-operations-workflow.test.ts` - 8 tests for file system operations
+
+**Total**: 20/20 tests passing (100%)
+
+**SDK Methods Covered:** 19 methods tested across 19 test scenarios
 - Git: `gitCheckout()`
-- Files: `writeFile()`, `readFile()`
+- Files: `writeFile()`, `readFile()`, `mkdir()`, `deleteFile()`, `renameFile()`, `moveFile()`
 - Processes: `startProcess()`, `listProcesses()`, `getProcess()`, `killProcess()`, `killAllProcesses()`, `getProcessLogs()`, `streamProcessLogs()`
 - Ports: `exposePort()`, `getExposedPorts()`, port proxying via `proxyToSandbox()`
 - Commands: `exec()`
@@ -24,6 +29,8 @@
 3. Preview URL routing not configured
 4. Local dev port exposure missing
 5. URL concatenation creating double slashes
+6. mkdir missing recursive option in test-worker
+7. deleteFile incorrectly accepting directories (fixed with IS_DIRECTORY validation)
 
 ---
 
@@ -32,8 +39,14 @@
 ### ✅ Currently Tested
 **Basic Operations:**
 - `exec()` - Command execution (git-clone-workflow.test.ts)
-- `writeFile()` / `readFile()` - File I/O (git-clone-workflow.test.ts, process-lifecycle-workflow.test.ts)
+- `writeFile()` / `readFile()` - File I/O (git-clone-workflow.test.ts, process-lifecycle-workflow.test.ts, file-operations-workflow.test.ts)
 - `gitCheckout()` - Git clone with branches (git-clone-workflow.test.ts)
+
+**File Operations:**
+- `mkdir()` - Create directories with recursive support (file-operations-workflow.test.ts)
+- `deleteFile()` - Delete files only (directories return IS_DIRECTORY error) (file-operations-workflow.test.ts)
+- `renameFile()` - Rename files (file-operations-workflow.test.ts)
+- `moveFile()` - Move files between directories (file-operations-workflow.test.ts)
 
 **Process Management:**
 - `startProcess()` - Background process execution (process-lifecycle-workflow.test.ts)
@@ -54,17 +67,8 @@
 - `execStream()` - Streaming command output
 - Streaming with callbacks (`exec()` with `stream: true`)
 
-**File System Operations:**
-- `mkdir()` - Create directories
-- `deleteFile()` - Delete files
-- `renameFile()` - Rename files
-- `moveFile()` - Move files
-- File operations in subdirectories
-
 **Port Management:**
 - `unexposePort()` - Remove port exposure
-- `getExposedPorts()` - List all exposed ports
-- Port proxying (actual HTTP requests to exposed services)
 
 **Session Management:**
 - `createSession()` - Create isolated execution contexts
@@ -134,7 +138,7 @@ Write server code → Start process → Monitor logs → Expose port → HTTP re
 
 ---
 
-### Scenario 3: **File System Operations** ❌ Not Started
+### Scenario 3: **File System Operations** ✅ Complete (8/8 tests passing)
 **Realistic Use Case**: Project scaffolding and file manipulation
 
 **Complete Flow:**
@@ -142,15 +146,26 @@ Write server code → Start process → Monitor logs → Expose port → HTTP re
 Create directory structure → Write files → Rename/move → Verify → Cleanup
 ```
 
-**SDK Methods to Test:**
-- `mkdir()` - Create nested directories
-- `writeFile()` - Write in subdirectories
-- `readFile()` - Verify content
-- `renameFile()` - Rename files
-- `moveFile()` - Move between directories
-- `deleteFile()` - Cleanup
+**Tests:**
+- ✅ Create nested directories with recursive option
+- ✅ Write files in subdirectories and read them back
+- ✅ Rename files (README.txt → README.md)
+- ✅ Move files between directories (source/ → destination/)
+- ✅ Delete files with deleteFile()
+- ✅ Reject deleting directories with deleteFile (IS_DIRECTORY error validation)
+- ✅ Delete directories recursively using exec('rm -rf')
+- ✅ Complete project scaffolding workflow (create → write → rename → move → cleanup)
 
-**Test File**: `file-operations-workflow.test.ts` (to create)
+**SDK Methods Tested:**
+- `mkdir()` - Create nested directories with `recursive: true`
+- `writeFile()` - Write files in subdirectories
+- `readFile()` - Verify file content
+- `renameFile()` - Rename files
+- `moveFile()` - Move files between directories
+- `deleteFile()` - Delete files only (strict file-only validation)
+- `exec()` - Verify file system state and delete directories
+
+**Test File**: `tests/e2e/file-operations-workflow.test.ts` (560 lines)
 
 ---
 
@@ -298,20 +313,19 @@ Create Python context → Run code → Get rich outputs → Switch to JS → Cle
 ✅ GET    /api/port/list              - getExposedPorts() (via GET /api/exposed-ports)
 ```
 
-### Missing Endpoints (Need to Add)
+**File Operations (Phase 2 - Complete):**
+```
+✅ POST   /api/file/mkdir            - mkdir()
+✅ DELETE /api/file/delete           - deleteFile()
+✅ POST   /api/file/rename           - renameFile()
+✅ POST   /api/file/move             - moveFile()
+```
 
-**File Operations:**
-```
-❌ POST   /api/file/mkdir            - mkdir()
-❌ DELETE /api/file/delete           - deleteFile()
-❌ POST   /api/file/rename           - renameFile()
-❌ POST   /api/file/move             - moveFile()
-```
+### Missing Endpoints (Need to Add)
 
 **Port Management:**
 ```
 ❌ DELETE /api/port/:port            - unexposePort()
-❌ GET    /api/port/list             - getExposedPorts()
 ```
 
 **Streaming:**
@@ -347,13 +361,21 @@ Create Python context → Run code → Get rich outputs → Switch to JS → Cle
 - **Bug #4**: Missing `EXPOSE 8080` in Dockerfile (local dev requirement)
 - **Bug #5**: Double-slash in URL concatenation (fixed with URL constructor)
 
-### Phase 2: Advanced Features (Next)
-3. **File Operations** - file-operations-workflow.test.ts
-4. **Streaming Operations** - streaming-workflow.test.ts
-5. **Session Isolation** - session-isolation-workflow.test.ts
-6. **Environment Variables** - environment-workflow.test.ts
+### Phase 2: Advanced Features (In Progress - 8/8 tests passing)
+3. ✅ **File Operations** - file-operations-workflow.test.ts (8/8 tests)
+4. **Streaming Operations** - streaming-workflow.test.ts (not started)
+5. **Session Isolation** - session-isolation-workflow.test.ts (not started)
+6. **Environment Variables** - environment-workflow.test.ts (not started)
 
-**Why**: These test advanced features and isolation guarantees.
+**File Operations Completed**: Full CRUD operations for file system with nested directories, renaming, moving, and strict file-only deletion.
+
+**Bugs Fixed During Implementation:**
+- **Bug #6**: mkdir missing recursive option in test-worker (added support for `recursive: true`)
+- **Bug #7**: deleteFile incorrectly accepting directories (added IS_DIRECTORY validation to enforce file-only deletion)
+
+**Design Decision**: deleteFile() now strictly validates that the target is a file, not a directory. Directory deletion must be done via `exec('rm -rf <path>')`. This prevents accidental deletion of entire directory trees and follows Unix conventions (similar to fs.unlink vs fs.rm).
+
+**Remaining**: Streaming, session isolation, and environment variable testing.
 
 ### Phase 3: Robustness
 7. **Error Scenarios** - error-scenarios-workflow.test.ts

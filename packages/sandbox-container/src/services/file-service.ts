@@ -177,7 +177,20 @@ export class FileService implements FileSystemOperations {
         };
       }
 
-      // 3. Delete file (via adapter)
+      // 3. Check if path is a directory (deleteFile only works on files)
+      const statResult = await this.stat(path);
+      if (statResult.success && statResult.data.isDirectory) {
+        return {
+          success: false,
+          error: {
+            message: `Cannot delete directory with deleteFile(): ${path}. Use exec('rm -rf <path>') instead.`,
+            code: 'IS_DIRECTORY',
+            details: { path, isDirectory: true }
+          }
+        };
+      }
+
+      // 4. Delete file (via adapter)
       const result = await this.adapter.deleteFile(path);
 
       if (result.exitCode !== 0) {

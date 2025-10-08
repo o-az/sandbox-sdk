@@ -84,6 +84,7 @@ export class BunFileAdapter {
    * Delete a file using rm command
    */
   async deleteFile(path: string): Promise<ExecutionResult> {
+    // File-only deletion - directories must be deleted via exec('rm -rf')
     return await this.processAdapter.execute('rm', [path]);
   }
 

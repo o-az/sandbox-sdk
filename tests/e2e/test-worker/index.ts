@@ -77,6 +77,38 @@ export default {
         });
       }
 
+      // File mkdir
+      if (url.pathname === '/api/file/mkdir' && request.method === 'POST') {
+        await sandbox.mkdir(body.path, { recursive: body.recursive });
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // File delete
+      if (url.pathname === '/api/file/delete' && request.method === 'DELETE') {
+        await sandbox.deleteFile(body.path);
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // File rename
+      if (url.pathname === '/api/file/rename' && request.method === 'POST') {
+        await sandbox.renameFile(body.oldPath, body.newPath);
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // File move
+      if (url.pathname === '/api/file/move' && request.method === 'POST') {
+        await sandbox.moveFile(body.sourcePath, body.destinationPath);
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       // Process start
       if (url.pathname === '/api/process/start' && request.method === 'POST') {
         const process = await sandbox.startProcess(body.command);
