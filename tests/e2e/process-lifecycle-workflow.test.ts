@@ -145,9 +145,11 @@ describe('Process Lifecycle Workflow', () => {
       // Cleanup - kill both processes
       await fetch(`${workerUrl}/api/process/${process1Id}`, {
         method: 'DELETE',
+        headers,
       });
       await fetch(`${workerUrl}/api/process/${process2Id}`, {
         method: 'DELETE',
+        headers,
       });
     }, 60000);
 
@@ -227,6 +229,7 @@ console.log("Line 3");
       // Stream logs (SSE)
       const streamResponse = await fetch(`${workerUrl}/api/process/${processId}/stream`, {
         method: 'GET',
+        headers,
       });
 
       expect(streamResponse.status).toBe(200);
@@ -273,6 +276,7 @@ console.log("Line 3");
       // Cleanup
       await fetch(`${workerUrl}/api/process/${processId}`, {
         method: 'DELETE',
+        headers,
       });
     }, 60000);
 
@@ -353,6 +357,7 @@ console.log("Server started on port 8080");
 
       await fetch(`${workerUrl}/api/process/${processId}`, {
         method: 'DELETE',
+        headers,
       });
     }, 90000);
 
@@ -385,6 +390,7 @@ console.log("Server started on port 8080");
       // Verify all processes are running
       const listResponse = await fetch(`${workerUrl}/api/process/list`, {
         method: 'GET',
+        headers,
       });
       const listData = await listResponse.json();
       expect(listData.length).toBeGreaterThanOrEqual(3);
@@ -403,6 +409,7 @@ console.log("Server started on port 8080");
 
       const listAfterResponse = await fetch(`${workerUrl}/api/process/list`, {
         method: 'GET',
+        headers,
       });
       const listAfterData = await listAfterResponse.json();
 
@@ -467,6 +474,7 @@ console.log("Server listening on port 8080");
 
       const statusResponse = await fetch(`${workerUrl}/api/process/${processId}`, {
         method: 'GET',
+        headers,
       });
 
       expect(statusResponse.status).toBe(200);
@@ -510,6 +518,7 @@ console.log("Server listening on port 8080");
 
       const killResponse = await fetch(`${workerUrl}/api/process/${processId}`, {
         method: 'DELETE',
+        headers,
       });
 
       expect(killResponse.status).toBe(200);
