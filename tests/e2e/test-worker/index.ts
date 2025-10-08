@@ -4,7 +4,7 @@
  * Exposes SDK methods via HTTP endpoints for E2E testing.
  * Uses fixed sandbox ID per request (from sessionId parameter).
  */
-import { Sandbox, getSandbox } from '@cloudflare/sandbox';
+import { Sandbox, getSandbox, proxyToSandbox } from '@cloudflare/sandbox';
 
 export { Sandbox };
 
@@ -22,9 +22,15 @@ async function parseBody(request: Request): Promise<any> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Route requests to exposed container ports via their preview URLs
+    const proxyResponse = await proxyToSandbox(request, env);
+    if (proxyResponse) return proxyResponse;
+
     const url = new URL(request.url);
     const body = await parseBody(request);
-    const sessionId = body.sessionId || 'default-test-sandbox';
+
+    // Support sessionId from query params (for GET requests) or body (for POST/DELETE)
+    const sessionId = url.searchParams.get('sessionId') || body.sessionId || 'default-test-sandbox';
 
     const sandbox = getSandbox(env.Sandbox, sessionId);
 
@@ -79,9 +85,89 @@ export default {
         });
       }
 
+      // Process list
+      if (url.pathname === '/api/process/list' && request.method === 'GET') {
+        const processes = await sandbox.listProcesses();
+        return new Response(JSON.stringify(processes), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Process get by ID
+      if (url.pathname.startsWith('/api/process/') && request.method === 'GET') {
+        const pathParts = url.pathname.split('/');
+        const processId = pathParts[3];
+
+        // Handle /api/process/:id/logs
+        if (pathParts[4] === 'logs') {
+          const logs = await sandbox.getProcessLogs(processId);
+          return new Response(JSON.stringify(logs), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Handle /api/process/:id/stream (SSE)
+        if (pathParts[4] === 'stream') {
+          const stream = await sandbox.streamProcessLogs(processId);
+
+          // Convert AsyncIterable to ReadableStream for SSE
+          const readableStream = new ReadableStream({
+            async start(controller) {
+              try {
+                for await (const event of stream) {
+                  const sseData = `data: ${JSON.stringify(event)}\n\n`;
+                  controller.enqueue(new TextEncoder().encode(sseData));
+                }
+                controller.close();
+              } catch (error) {
+                controller.error(error);
+              }
+            },
+          });
+
+          return new Response(readableStream, {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            },
+          });
+        }
+
+        // Handle /api/process/:id (get single process)
+        if (!pathParts[4]) {
+          const process = await sandbox.getProcess(processId);
+          return new Response(JSON.stringify(process), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
+      // Process kill by ID
+      if (url.pathname.startsWith('/api/process/') && request.method === 'DELETE') {
+        const processId = url.pathname.split('/')[3];
+        await sandbox.killProcess(processId);
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Kill all processes
+      if (url.pathname === '/api/process/kill-all' && request.method === 'POST') {
+        await sandbox.killAllProcesses();
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       // Port exposure
       if (url.pathname === '/api/port/expose' && request.method === 'POST') {
-        const preview = await sandbox.exposePort(body.port, { name: body.name });
+        // Extract hostname from the request
+        const hostname = url.hostname + (url.port ? `:${url.port}` : '');
+        const preview = await sandbox.exposePort(body.port, {
+          name: body.name,
+          hostname: hostname,
+        });
         return new Response(JSON.stringify(preview), {
           headers: { 'Content-Type': 'application/json' },
         });

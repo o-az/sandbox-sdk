@@ -21,31 +21,10 @@ export class SecurityService {
     /\/$/,            // Ends with slash (potential dir traversal)
   ];
 
-  // Reserved/dangerous ports that should not be exposed
+  // Reserved ports for sandbox infrastructure
+  // Only block ports that would conflict with the sandbox itself
   private static readonly RESERVED_PORTS = [
-    // System ports (0-1023)
-    22,   // SSH
-    25,   // SMTP  
-    53,   // DNS
-    80,   // HTTP
-    110,  // POP3
-    143,  // IMAP
-    443,  // HTTPS
-    993,  // IMAPS
-    995,  // POP3S
-    
-    // Common database ports
-    3306, // MySQL
-    5432, // PostgreSQL
-    6379, // Redis
-    27017, // MongoDB
-    
-    // Container/orchestration ports
-    2375, // Docker daemon (insecure)
-    2376, // Docker daemon (secure)  
-    6443, // Kubernetes API
-    8080, // Common alternative HTTP
-    9000, // Various services
+    3000, // Container control plane (API endpoints)
   ];
 
   // Dangerous command patterns
@@ -234,19 +213,14 @@ export class SecurityService {
     if (!Number.isInteger(port)) {
       errors.push('Port must be an integer');
     } else {
-      // Port range validation
+      // Port range validation (allow user ports only)
       if (port < 1024 || port > 65535) {
         errors.push('Port must be between 1024 and 65535');
       }
 
-      // Check reserved ports
+      // Only block ports used by sandbox infrastructure
       if (SecurityService.RESERVED_PORTS.includes(port)) {
-        errors.push(`Port ${port} is reserved and cannot be exposed`);
-      }
-
-      // Additional high-risk ports
-      if (port === 3000) {
-        errors.push('Port 3000 is reserved for the container control plane');
+        errors.push(`Port ${port} is reserved for the container control plane`);
       }
     }
 

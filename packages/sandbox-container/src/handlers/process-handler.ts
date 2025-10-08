@@ -46,8 +46,8 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
 
   private async handleStart(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<StartProcessRequest>(context);
-    
-    this.logger.info('Starting process', { 
+
+    this.logger.info('Starting process', {
       requestId: context.requestId,
       command: body.command,
       options: body.options
@@ -103,11 +103,11 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
 
     // Extract query parameters for filtering
     const url = new URL(request.url);
-    const sessionParam = url.searchParams.get('session') || url.searchParams.get('sessionId') || context.sessionId;
     const status = url.searchParams.get('status');
 
-    const filters: { sessionId?: string; status?: ProcessStatus } = {};
-    if (sessionParam) filters.sessionId = sessionParam;
+    // Processes are sandbox-scoped, not session-scoped
+    // All sessions in a sandbox can see all processes (like terminals in Linux)
+    const filters: { status?: ProcessStatus } = {};
     if (status) filters.status = status as ProcessStatus;
 
     const result = await this.processService.listProcesses(filters);

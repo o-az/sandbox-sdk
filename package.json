@@ -9,7 +9,7 @@
     "build": "turbo run build",
     "build:clean": "turbo run build --force",
     "test": "turbo run test",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e": "npm run build && turbo run docker:local --filter=@cloudflare/sandbox && vitest run --config vitest.e2e.config.ts",
     "test:coverage": "turbo run test:coverage",
     "docker:rebuild": "npm run build:clean && npm run docker:local -w @cloudflare/sandbox",
     "toc": "doctoc README.md --github --maxlevel 3 && node scripts/fix-toc-links.js"

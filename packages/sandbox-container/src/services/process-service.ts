@@ -24,7 +24,8 @@ export interface ProcessStore {
 
 export interface ProcessFilters {
   status?: ProcessStatus;
-  sessionId?: string;
+  // Note: sessionId is NOT a filter - processes are sandbox-scoped, not session-scoped
+  // All sessions in a sandbox can see all processes (like terminals in Linux)
 }
 
 // In-memory implementation optimized for Bun
@@ -64,16 +65,13 @@ export class InMemoryProcessStore implements ProcessStore {
 
   async list(filters?: ProcessFilters): Promise<ProcessRecord[]> {
     let processes = Array.from(this.processes.values());
-    
-    if (filters) {
-      if (filters.status) {
-        processes = processes.filter(p => p.status === filters.status);
-      }
-      if (filters.sessionId) {
-        processes = processes.filter(p => p.sessionId === filters.sessionId);
-      }
+
+    // Processes are sandbox-scoped, not session-scoped
+    // Filter by status only (like filtering 'ps' output by state)
+    if (filters?.status) {
+      processes = processes.filter(p => p.status === filters.status);
     }
-    
+
     return processes;
   }
 
