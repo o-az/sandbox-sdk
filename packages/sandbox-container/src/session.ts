@@ -190,8 +190,9 @@ export class Session {
       // Track command
       this.trackCommand(commandId, pidFile, logFile, exitCodeFile);
 
-      // Build FIFO-based bash script (inspired by Daytona)
-      const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
+      // Build FIFO-based bash script for FOREGROUND execution
+      // State changes (cd, export, functions) persist across exec() calls
+      const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd, false);
 
       // Write script to shell's stdin
       if (this.shell!.stdin && typeof this.shell!.stdin !== 'number') {
@@ -246,8 +247,9 @@ export class Session {
       // Track command
       this.trackCommand(commandId, pidFile, logFile, exitCodeFile);
 
-      // Build FIFO script and write to persistent shell
-      const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
+      // Build FIFO script for BACKGROUND execution
+      // Command runs concurrently, shell continues immediately
+      const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd, true);
 
       if (this.shell!.stdin && typeof this.shell!.stdin !== 'number') {
         this.shell!.stdin.write(`${bashScript}\n`);
@@ -371,6 +373,11 @@ export class Session {
 
   /**
    * Kill a running command by its ID
+   *
+   * NOTE: Only works for BACKGROUND commands started via execStream()/startProcess().
+   * Foreground commands from exec() run synchronously and complete before returning,
+   * so they cannot be killed mid-execution (use timeout instead).
+   *
    * @param commandId - The unique command identifier
    * @returns true if command was killed, false if not found or already completed
    */
@@ -464,16 +471,20 @@ export class Session {
    * This is the core of the FIFO approach:
    * 1. Create two FIFO pipes (stdout.pipe, stderr.pipe)
    * 2. Start background processes that read from pipes and label with binary prefixes
-   * 3. Execute command with output redirected to pipes
+   * 3. Execute command (foreground or background based on isBackground flag)
    * 4. Write exit code to file
    * 5. Wait for background processes and cleanup
+   *
+   * @param isBackground - If true, command runs in background (for execStream/startProcess)
+   *                       If false, command runs in foreground (for exec) - state persists!
    */
   private buildFIFOScript(
     command: string,
     cmdId: string,
     logFile: string,
     exitCodeFile: string,
-    cwd?: string
+    cwd?: string,
+    isBackground = false
   ): string {
     // Create unique FIFO names to prevent collisions
     const stdoutPipe = join(this.sessionDir!, `${cmdId}.stdout.pipe`);
@@ -488,78 +499,124 @@ export class Session {
     const safeSessionDir = this.escapeShellPath(this.sessionDir!);
     const safePidFile = this.escapeShellPath(pidFile);
 
-    // Build the FIFO script with Daytona-inspired robustness
+    // Build the FIFO script
+    // For background: monitor handles cleanup (no trap needed)
+    // For foreground: trap handles cleanup (standard pattern)
     let script = `{
   log=${safeLogFile}
   dir=${safeSessionDir}
   sp=${safeStdoutPipe}
   ep=${safeStderrPipe}
 
-  # Cleanup function (called on exit or signals)
-  # Only removes FIFOs - reader processes exit naturally when they read EOF
-  cleanup() { rm -f "$sp" "$ep"; }
-  trap 'cleanup' EXIT HUP INT TERM
-
-  # Pre-cleanup and create FIFOs with error handling
-  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1
-
-  # Label stdout with binary prefix in background (capture PID)
-  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!
-
-  # Label stderr with binary prefix in background (capture PID)
-  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!
-
 `;
 
-    // Add cwd change if needed
-    if (cwd) {
-      const safeCwd = this.escapeShellPath(cwd);
-      script += `  # Save and change directory\n`;
-      script += `  PREV_DIR=$(pwd)\n`;
-      script += `  if cd ${safeCwd}; then\n`;
-      script += `    # Execute command in BACKGROUND to capture PID (enables killing)\n`;
-      script += `    { ${command}; } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
-      script += `    # Write PID immediately (so we can kill it)\n`;
-      script += `    echo "$CMD_PID" > ${safePidFile}\n`;
-      script += `    # Wait for command to complete\n`;
-      script += `    wait "$CMD_PID"\n`;
-      script += `    EXIT_CODE=$?\n`;
-      script += `    # Clean up PID file\n`;
-      script += `    rm -f ${safePidFile}\n`;
-      script += `    # Restore directory\n`;
-      script += `    cd "$PREV_DIR"\n`;
-      script += `  else\n`;
-      script += `    # Failed to change directory - close both pipes to unblock readers\n`;
-      script += `    echo "Failed to change directory to ${safeCwd}" > "$ep"\n`;
-      script += `    # Close stdout pipe (no output expected)\n`;
-      script += `    : > "$sp"\n`;
-      script += `    EXIT_CODE=1\n`;
-      script += `  fi\n`;
-      script += `  \n`;
-    } else {
-      // Execute command in current directory
-      // Use command grouping {} to enable state persistence (cd, export, functions)
-      script += `  # Execute command in BACKGROUND to capture PID (enables killing)\n`;
-      script += `  { ${command}; } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
-      script += `  # Write PID immediately (so we can kill it)\n`;
-      script += `  echo "$CMD_PID" > ${safePidFile}\n`;
-      script += `  # Wait for command to complete\n`;
-      script += `  wait "$CMD_PID"\n`;
-      script += `  EXIT_CODE=$?\n`;
-      script += `  # Clean up PID file\n`;
-      script += `  rm -f ${safePidFile}\n`;
+    // Setup trap only for foreground pattern
+    if (!isBackground) {
+      script += `  # Cleanup function (called on exit or signals)\n`;
+      script += `  cleanup() { rm -f "$sp" "$ep"; }\n`;
+      script += `  trap 'cleanup' EXIT HUP INT TERM\n`;
       script += `  \n`;
     }
 
-    // Wait for specific labeler processes, then write exit code and cleanup
-    script += `  # Wait for specific labeler processes to finish (not all background jobs)\n`;
-    script += `  wait "$r1" "$r2"\n`;
+    script += `  # Pre-cleanup and create FIFOs with error handling\n`;
+    script += `  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1\n`;
     script += `  \n`;
-    script += `  # Write exit code (AFTER labeler processes finish)\n`;
-    script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
+    script += `  # Label stdout with binary prefix in background (capture PID)\n`;
+    script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!\n`;
     script += `  \n`;
-    script += `  # Explicit cleanup (redundant with trap, but ensures cleanup)\n`;
-    script += `  cleanup\n`;
+    script += `  # Label stderr with binary prefix in background (capture PID)\n`;
+    script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!\n`;
+    script += `  \n`;
+    script += `\n`;
+
+    // Execute command based on execution mode (foreground vs background)
+    if (isBackground) {
+      // BACKGROUND PATTERN (for execStream/startProcess)
+      // Command runs in subshell, shell continues immediately
+      if (cwd) {
+        const safeCwd = this.escapeShellPath(cwd);
+        script += `  # Save and change directory\n`;
+        script += `  PREV_DIR=$(pwd)\n`;
+        script += `  if cd ${safeCwd}; then\n`;
+        script += `    # Execute command in BACKGROUND (runs in subshell, enables concurrency)\n`;
+        script += `    # Command writes its own exit code to fd 3, which is redirected to exit file\n`;
+        script += `    {\n`;
+        script += `      ${command}\n`;
+        script += `      CMD_EXIT=$?\n`;
+        script += `      echo "$CMD_EXIT" >&3\n`;
+        script += `    } > "$sp" 2> "$ep" 3> ${safeExitCodeFile} & CMD_PID=$!\n`;
+        script += `    # Write PID immediately (enables killing)\n`;
+        script += `    echo "$CMD_PID" > ${safePidFile}\n`;
+        script += `    # Background monitor waits for labelers and handles cleanup\n`;
+        script += `    (\n`;
+        script += `      wait "$r1" "$r2" 2>/dev/null\n`;
+        script += `      rm -f ${safePidFile} "$sp" "$ep"\n`;
+        script += `    ) &\n`;
+        script += `    # Restore directory immediately\n`;
+        script += `    cd "$PREV_DIR"\n`;
+        script += `  else\n`;
+        script += `    echo "Failed to change directory to ${safeCwd}" > "$ep"\n`;
+        script += `    : > "$sp"\n`;
+        script += `    wait "$r1" "$r2" 2>/dev/null\n`;
+        script += `    echo "1" > ${safeExitCodeFile}\n`;
+        script += `    rm -f "$sp" "$ep"\n`;
+        script += `  fi\n`;
+      } else {
+        script += `  # Execute command in BACKGROUND (runs in subshell, enables concurrency)\n`;
+        script += `  # Command writes its own exit code to fd 3, which is redirected to exit file\n`;
+        script += `  {\n`;
+        script += `    ${command}\n`;
+        script += `    CMD_EXIT=$?\n`;
+        script += `    echo "$CMD_EXIT" >&3\n`;
+        script += `  } > "$sp" 2> "$ep" 3> ${safeExitCodeFile} & CMD_PID=$!\n`;
+        script += `  # Write PID immediately (enables killing)\n`;
+        script += `  echo "$CMD_PID" > ${safePidFile}\n`;
+        script += `  # Background monitor waits for labelers and handles cleanup\n`;
+        script += `  (\n`;
+        script += `    wait "$r1" "$r2" 2>/dev/null\n`;
+        script += `    rm -f ${safePidFile} "$sp" "$ep"\n`;
+        script += `  ) &\n`;
+      }
+    } else {
+      // FOREGROUND PATTERN (for exec)
+      // Command runs in main shell, state persists!
+      if (cwd) {
+        const safeCwd = this.escapeShellPath(cwd);
+        script += `  # Save and change directory\n`;
+        script += `  PREV_DIR=$(pwd)\n`;
+        script += `  if cd ${safeCwd}; then\n`;
+        script += `    # Execute command in FOREGROUND (state persists!)\n`;
+        script += `    { ${command}; } > "$sp" 2> "$ep"\n`;
+        script += `    EXIT_CODE=$?\n`;
+        script += `    # Restore directory\n`;
+        script += `    cd "$PREV_DIR"\n`;
+        script += `  else\n`;
+        script += `    echo "Failed to change directory to ${safeCwd}" > "$ep"\n`;
+        script += `    : > "$sp"\n`;
+        script += `    EXIT_CODE=1\n`;
+        script += `  fi\n`;
+      } else {
+        script += `  # Execute command in FOREGROUND (state persists!)\n`;
+        script += `  { ${command}; } > "$sp" 2> "$ep"\n`;
+        script += `  EXIT_CODE=$?\n`;
+      }
+
+      // For foreground: wait for labelers and write exit code in main script
+      script += `  \n`;
+      script += `  # Wait for labeler processes to finish\n`;
+      script += `  wait "$r1" "$r2" 2>/dev/null\n`;
+      script += `  \n`;
+      script += `  # Write exit code\n`;
+      script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
+    }
+
+    // Cleanup (only for foreground - background monitor handles it)
+    if (!isBackground) {
+      script += `  \n`;
+      script += `  # Explicit cleanup (redundant with trap, but ensures cleanup)\n`;
+      script += `  cleanup\n`;
+    }
+
     script += `}`;
 
     return script;

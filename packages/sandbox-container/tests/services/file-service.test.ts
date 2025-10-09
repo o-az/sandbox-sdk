@@ -85,20 +85,18 @@ describe('FileService', () => {
       // Verify security validation was called
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(testPath);
 
-      // Verify SessionManager was called for exists check
+      // Verify SessionManager was called for exists check (cwd is undefined, so only 2 params)
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         1,
         'session-123',
-        "test -e '/tmp/test.txt'",
-        undefined
+        "test -e '/tmp/test.txt'"
       );
 
-      // Verify SessionManager was called for read with base64
+      // Verify SessionManager was called for read with base64 (cwd is undefined, so only 2 params)
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         2,
         'session-123',
-        "base64 < '/tmp/test.txt'",
-        undefined
+        "base64 < '/tmp/test.txt'"
       );
     });
 
@@ -188,11 +186,10 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify SessionManager was called with base64 encoded content
+      // Verify SessionManager was called with base64 encoded content (cwd is undefined, so only 2 params)
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        `echo '${base64Content}' | base64 -d > '/tmp/test.txt'`,
-        undefined
+        `echo '${base64Content}' | base64 -d > '/tmp/test.txt'`
       );
     });
 
@@ -219,13 +216,25 @@ describe('FileService', () => {
     it('should delete file successfully', async () => {
       const testPath = '/tmp/test.txt';
 
-      // Mock exists check
+      // delete() calls:
+      // 1. exists() - 1 call
+      // 2. stat() which internally calls exists() again + stat command - 2 calls
+      // 3. rm command - 1 call
+      // Total: 4 calls
+
+      // Mock first exists check (from delete)
       mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
         success: true,
         data: { exitCode: 0, stdout: '', stderr: '' },
       } as ServiceResult<RawExecResult>);
 
-      // Mock stat check (to verify it's not a directory)
+      // Mock second exists check (from stat)
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command (to verify it's not a directory)
       mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
         success: true,
         data: { exitCode: 0, stdout: 'regular file:100:1234567890:1234567890\n', stderr: '' },
@@ -241,11 +250,12 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify rm command was called
-      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+      // Verify rm command was called (cwd is undefined, so only 2 params)
+      // Should be the 4th call
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        4,
         'session-123',
-        "rm '/tmp/test.txt'",
-        undefined
+        "rm '/tmp/test.txt'"
       );
     });
 
@@ -317,11 +327,12 @@ describe('FileService', () => {
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(oldPath);
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(newPath);
 
-      // Verify mv command was called
-      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+      // Verify mv command was called (cwd is undefined, so only 2 params)
+      // Should be the 2nd call after exists
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        2,
         'session-123',
-        "mv '/tmp/old.txt' '/tmp/new.txt'",
-        undefined
+        "mv '/tmp/old.txt' '/tmp/new.txt'"
       );
     });
 
@@ -342,7 +353,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('FILE_RENAME_ERROR');
+        expect(result.error.code).toBe('RENAME_ERROR');
       }
     });
   });
@@ -368,11 +379,12 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify mv command was called
-      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+      // Verify mv command was called (cwd is undefined, so only 2 params)
+      // Should be the 2nd call after exists
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        2,
         'session-123',
-        "mv '/tmp/source.txt' '/tmp/dest.txt'",
-        undefined
+        "mv '/tmp/source.txt' '/tmp/dest.txt'"
       );
     });
 
@@ -405,11 +417,10 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify mkdir command was called
+      // Verify mkdir command was called (cwd is undefined, so only 2 params)
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "mkdir '/tmp/newdir'",
-        undefined
+        "mkdir '/tmp/newdir'"
       );
     });
 
@@ -425,11 +436,10 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify mkdir -p command was called
+      // Verify mkdir -p command was called (cwd is undefined, so only 2 params)
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "mkdir -p '/tmp/nested/dir'",
-        undefined
+        "mkdir -p '/tmp/nested/dir'"
       );
     });
 
@@ -462,11 +472,10 @@ describe('FileService', () => {
         expect(result.data).toBe(true);
       }
 
-      // Verify test -e command was called
+      // Verify test -e command was called (cwd is undefined, so only 2 params)
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "test -e '/tmp/test.txt'",
-        undefined
+        "test -e '/tmp/test.txt'"
       );
     });
 

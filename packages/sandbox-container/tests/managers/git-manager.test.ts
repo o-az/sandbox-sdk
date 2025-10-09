@@ -25,23 +25,23 @@ describe('GitManager', () => {
   });
 
   describe('generateTargetDirectory', () => {
-    it('should generate directory with repo name, timestamp, and random suffix', () => {
+    it('should generate directory in /workspace with repo name', () => {
       const dir = manager.generateTargetDirectory('https://github.com/user/repo.git');
 
-      expect(dir).toMatch(/^\/tmp\/git-clone-repo-\d+-[a-z0-9]{6}$/);
+      expect(dir).toBe('/workspace/repo');
     });
 
-    it('should generate unique directories even for same URL', () => {
+    it('should generate consistent directories for same URL', () => {
       const dir1 = manager.generateTargetDirectory('https://github.com/user/repo.git');
       const dir2 = manager.generateTargetDirectory('https://github.com/user/repo.git');
 
-      expect(dir1).not.toBe(dir2);
+      expect(dir1).toBe(dir2);
     });
 
     it('should handle invalid URLs with fallback name', () => {
       const dir = manager.generateTargetDirectory('invalid-url');
 
-      expect(dir).toMatch(/^\/tmp\/git-clone-repository-\d+-[a-z0-9]{6}$/);
+      expect(dir).toBe('/workspace/repository');
     });
   });
 
@@ -215,14 +215,6 @@ describe('GitManager', () => {
       );
       expect(checkoutMsg).toContain('checkout branch');
       expect(checkoutMsg).toContain('branch=develop');
-    });
-  });
-
-  describe('getDefaultBranch', () => {
-    it('should return branch from options or default to main', () => {
-      expect(manager.getDefaultBranch({ branch: 'develop' })).toBe('develop');
-      expect(manager.getDefaultBranch({})).toBe('main');
-      expect(manager.getDefaultBranch()).toBe('main');
     });
   });
 

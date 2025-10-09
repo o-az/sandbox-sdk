@@ -85,12 +85,11 @@ describe('GitService', () => {
       expect(mockSecurityService.validateGitUrl).toHaveBeenCalledWith('https://github.com/user/repo.git');
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/workspace/repo');
 
-      // Verify SessionManager was called for git clone
+      // Verify SessionManager was called for git clone (cwd is undefined)
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         1,
         'default',
-        'git clone https://github.com/user/repo.git /workspace/repo',
-        undefined
+        'git clone https://github.com/user/repo.git /workspace/repo'
       );
 
       // Verify SessionManager was called for getting current branch
@@ -135,12 +134,11 @@ describe('GitService', () => {
         expect(result.data.branch).toBe('develop');
       }
 
-      // Verify git clone command includes branch option
+      // Verify git clone command includes branch option (cwd is undefined)
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         1,
         'session-123',
-        'git clone --branch develop https://github.com/user/repo.git /tmp/custom-target',
-        undefined
+        'git clone --branch develop https://github.com/user/repo.git /tmp/custom-target'
       );
     });
 
