@@ -263,11 +263,25 @@ export class Session {
         command,
       };
 
-      // Hybrid approach: poll log file until exit code appears
+      // Hybrid approach: poll log file until exit code is written
       // (fs.watch on log file would trigger too often during writes)
       let position = 0;
+      let exitCodeContent = '';
 
-      while (!(await Bun.file(exitCodeFile).exists())) {
+      // Wait until exit code file exists AND has content
+      // (File is created immediately by fd 3 redirection, but content written at end)
+      while (true) {
+        // Check if exit code file has content
+        const exitFile = Bun.file(exitCodeFile);
+        if (await exitFile.exists()) {
+          exitCodeContent = (await exitFile.text()).trim();
+          if (exitCodeContent) {
+            // Exit code has been written, break polling loop
+            break;
+          }
+        }
+
+        // Stream any new log content while waiting
         const file = Bun.file(logFile);
         if (await file.exists()) {
           const content = await file.text();
@@ -300,7 +314,7 @@ export class Session {
         await Bun.sleep(CONFIG.STREAM_CHUNK_DELAY_MS);
       }
 
-      // Read final chunks and exit code
+      // Read final chunks
       const file = Bun.file(logFile);
       if (await file.exists()) {
         const content = await file.text();
@@ -328,7 +342,12 @@ export class Session {
         }
       }
 
-      const exitCode = parseInt(await Bun.file(exitCodeFile).text(), 10);
+      // Parse exit code (already read during polling loop)
+      const exitCode = parseInt(exitCodeContent, 10);
+      if (isNaN(exitCode)) {
+        throw new Error(`Invalid exit code in file: "${exitCodeContent}"`);
+      }
+
       const duration = Date.now() - startTime;
 
       yield {

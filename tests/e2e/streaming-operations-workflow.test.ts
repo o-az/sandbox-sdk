@@ -218,7 +218,7 @@ describe('Streaming Operations Workflow', () => {
       expect(completeEvent.exitCode).not.toBe(0);
     }, 60000);
 
-    test('should reject invalid commands before streaming', async () => {
+    test('should handle nonexistent commands with proper exit code', async () => {
       const sandboxId = createSandboxId();
       const headers = createTestHeaders(sandboxId);
 
@@ -234,7 +234,7 @@ describe('Streaming Operations Workflow', () => {
         { timeout: 30000, interval: 2000 }
       );
 
-      // Try to stream a nonexistent command (should fail before streaming starts)
+      // Try to stream a nonexistent command (should execute and fail with exit code 127)
       const streamResponse = await fetch(`${workerUrl}/api/execStream`, {
         method: 'POST',
         headers,
@@ -243,8 +243,25 @@ describe('Streaming Operations Workflow', () => {
         }),
       });
 
-      // Should return error status (400) before streaming starts
-      expect(streamResponse.status).toBe(400);
+      // Should return 200 (streaming started successfully)
+      expect(streamResponse.status).toBe(200);
+      expect(streamResponse.headers.get('content-type')).toBe('text/event-stream');
+
+      // Collect events from stream
+      const events = await collectSSEEvents(streamResponse);
+
+      // Should have complete event with exit code 127 (command not found)
+      const completeEvent = events.find((e) => e.type === 'complete');
+      expect(completeEvent).toBeDefined();
+      expect(completeEvent.exitCode).toBe(127); // Standard Unix "command not found" exit code
+
+      // Should have stderr events with error message
+      const stderrEvents = events.filter((e) => e.type === 'stderr');
+      expect(stderrEvents.length).toBeGreaterThan(0);
+
+      // Verify stderr contains command not found message
+      const stderrData = stderrEvents.map((e) => e.data).join('');
+      expect(stderrData.toLowerCase()).toMatch(/command not found|not found/);
     }, 60000);
 
     test('should handle environment variables in streaming commands', async () => {
