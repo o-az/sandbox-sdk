@@ -276,6 +276,110 @@ class SandboxApiClient {
     });
   }
 
+  async readFileStream(path: string): Promise<{
+    path: string;
+    mimeType: string;
+    size: number;
+    isBinary: boolean;
+    encoding: string;
+    content: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/api/read/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sandbox-Client-Id": this.sandboxId,
+      },
+      body: JSON.stringify({ path }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Parse SSE stream with proper buffering to handle chunk splitting
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("No response body");
+    }
+
+    const decoder = new TextDecoder();
+    let metadata: any = null;
+    let content = "";
+    let buffer = ""; // Buffer for incomplete lines
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (value) {
+          // Add new data to buffer
+          buffer += decoder.decode(value, { stream: true });
+        }
+
+        if (done) break;
+
+        // Process complete lines from buffer
+        let newlineIndex = buffer.indexOf("\n");
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === "metadata") {
+                metadata = data;
+              } else if (data.type === "chunk") {
+                content += data.data;
+              } else if (data.type === "complete") {
+                return {
+                  path,
+                  mimeType: metadata?.mimeType || "unknown",
+                  size: metadata?.size || 0,
+                  isBinary: metadata?.isBinary || false,
+                  encoding: metadata?.encoding || "utf-8",
+                  content,
+                };
+              } else if (data.type === "error") {
+                throw new Error(data.error);
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE line:", line.substring(0, 100), parseError);
+              // Skip malformed lines
+            }
+          }
+
+          newlineIndex = buffer.indexOf("\n");
+        }
+      }
+
+      // Process any remaining data in buffer
+      if (buffer.trim().startsWith("data: ")) {
+        try {
+          const data = JSON.parse(buffer.trim().slice(6));
+          if (data.type === "complete") {
+            return {
+              path,
+              mimeType: metadata?.mimeType || "unknown",
+              size: metadata?.size || 0,
+              isBinary: metadata?.isBinary || false,
+              encoding: metadata?.encoding || "utf-8",
+              content,
+            };
+          }
+        } catch (e) {
+          // Ignore final buffer parsing errors
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    throw new Error("Stream ended unexpectedly");
+  }
+
   async deleteFile(path: string) {
     return this.doFetch("/api/delete", {
       method: "POST",
@@ -318,6 +422,12 @@ class SandboxApiClient {
     return this.doFetch("/api/git/checkout", {
       method: "POST",
       body: JSON.stringify({ repoUrl, branch, targetDir }),
+    });
+  }
+
+  async createTestBinaryFile() {
+    return this.doFetch("/api/create-test-binary", {
+      method: "POST",
     });
   }
 
@@ -1455,6 +1565,20 @@ function FilesTab({
   const [gitBranch, setGitBranch] = useState("main");
   const [gitTargetDir, setGitTargetDir] = useState("");
 
+  // Binary File Support
+  const [binaryFilePath, setBinaryFilePath] = useState("/workspace/demo-chart.png");
+  const [binaryFileMetadata, setBinaryFileMetadata] = useState<{
+    path: string;
+    mimeType: string;
+    size: number;
+    isBinary: boolean;
+    encoding: string;
+    content?: string;
+  } | null>(null);
+  const [isCreatingBinary, setIsCreatingBinary] = useState(false);
+  const [isReadingBinary, setIsReadingBinary] = useState(false);
+  const [useStreaming, setUseStreaming] = useState(false);
+
   const addResult = (type: "success" | "error", message: string) => {
     setResults((prev) => [...prev, { type, message, timestamp: new Date() }]);
   };
@@ -1605,6 +1729,47 @@ function FilesTab({
       );
     } catch (error: any) {
       addResult("error", `Failed to clone repository: ${error.message}`);
+    }
+  };
+
+  const handleCreateTestBinary = async () => {
+    if (!client) return;
+    setIsCreatingBinary(true);
+    try {
+      const result = await client.createTestBinaryFile();
+      addResult("success", `Created test PNG: ${result.path}`);
+      setBinaryFilePath(result.path);
+      // Clear any existing metadata to show fresh state
+      setBinaryFileMetadata(null);
+    } catch (error: any) {
+      addResult("error", `Failed to create test binary: ${error.message}`);
+    } finally {
+      setIsCreatingBinary(false);
+    }
+  };
+
+  const handleReadBinaryFile = async () => {
+    if (!client || !binaryFilePath.trim()) return;
+    setIsReadingBinary(true);
+    try {
+      const result = useStreaming
+        ? await client.readFileStream(binaryFilePath)
+        : await client.readFile(binaryFilePath);
+
+      setBinaryFileMetadata({
+        path: result.path,
+        mimeType: result.mimeType || "unknown",
+        size: result.size || 0,
+        isBinary: result.isBinary || false,
+        encoding: result.encoding || "utf-8",
+        content: result.content,
+      });
+      addResult("success", `Read binary file with metadata${useStreaming ? ' (streamed)' : ''}: ${binaryFilePath}`);
+    } catch (error: any) {
+      addResult("error", `Failed to read binary file: ${error.message}`);
+      setBinaryFileMetadata(null);
+    } finally {
+      setIsReadingBinary(false);
     }
   };
 
@@ -2050,6 +2215,133 @@ function FilesTab({
             </div>
           </button>
         </div>
+      </div>
+
+      {/* Binary File Support Showcase */}
+      <div className="binary-showcase-section">
+        <h2>🎨 Binary File Support Demo</h2>
+        <p className="section-description">
+          Test the new binary file reading capabilities with automatic format detection and metadata extraction.
+        </p>
+
+        <div className="operation-group">
+          <h3>Step 1: Create Test Binary File</h3>
+          <p className="help-text">Generate a PNG chart using matplotlib in the sandbox</p>
+          <button
+            onClick={handleCreateTestBinary}
+            disabled={isCreatingBinary || connectionStatus !== "connected"}
+            className="action-button create-binary"
+          >
+            {isCreatingBinary ? "Creating..." : "🎨 Create Test PNG Chart"}
+          </button>
+        </div>
+
+        <div className="operation-group">
+          <h3>Step 2: Read Binary File with Metadata</h3>
+          <div className="streaming-toggle">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={useStreaming}
+                onChange={(e) => setUseStreaming(e.target.checked)}
+                className="toggle-checkbox"
+              />
+              <span className="toggle-text">
+                Use streaming (readFileStream)
+              </span>
+            </label>
+            <p className="help-text">
+              {useStreaming
+                ? "📡 Streams file in chunks via SSE - better for large files"
+                : "📄 Reads entire file at once - simpler but loads all into memory"}
+            </p>
+          </div>
+          <div className="input-group">
+            <input
+              type="text"
+              placeholder="Binary file path"
+              value={binaryFilePath}
+              onChange={(e) => setBinaryFilePath(e.target.value)}
+              className="file-input"
+            />
+            <button
+              onClick={handleReadBinaryFile}
+              disabled={!binaryFilePath.trim() || isReadingBinary || connectionStatus !== "connected"}
+              className="action-button"
+            >
+              {isReadingBinary ? "Reading..." : "📖 Read & Display"}
+            </button>
+          </div>
+        </div>
+
+        {/* File Metadata Display */}
+        {binaryFileMetadata && (
+          <div className="binary-metadata-card">
+            <h4>📊 File Metadata</h4>
+            <div className="metadata-grid">
+              <div className="metadata-item">
+                <span className="metadata-label">File Type:</span>
+                <span className="metadata-value">
+                  {binaryFileMetadata.isBinary ? "🖼️" : "📄"} {binaryFileMetadata.mimeType}
+                </span>
+              </div>
+              <div className="metadata-item">
+                <span className="metadata-label">Size:</span>
+                <span className="metadata-value">
+                  {(binaryFileMetadata.size / 1024).toFixed(2)} KB
+                </span>
+              </div>
+              <div className="metadata-item">
+                <span className="metadata-label">Encoding:</span>
+                <span className="metadata-value metadata-encoding">
+                  {binaryFileMetadata.encoding}
+                </span>
+              </div>
+              <div className="metadata-item">
+                <span className="metadata-label">Binary:</span>
+                <span className={`metadata-value ${binaryFileMetadata.isBinary ? "binary-yes" : "binary-no"}`}>
+                  {binaryFileMetadata.isBinary ? "✓ Yes" : "✗ No"}
+                </span>
+              </div>
+            </div>
+
+            {/* File Preview */}
+            <div className="file-preview">
+              <h4>🔍 Preview</h4>
+              {binaryFileMetadata.isBinary && binaryFileMetadata.mimeType.startsWith("image/") ? (
+                <div className="image-preview">
+                  <img
+                    src={`data:${binaryFileMetadata.mimeType};base64,${binaryFileMetadata.content}`}
+                    alt="Binary file preview"
+                    className="preview-image"
+                  />
+                  <p className="preview-caption">
+                    ✅ Binary file successfully read and decoded from base64!
+                  </p>
+                </div>
+              ) : binaryFileMetadata.isBinary ? (
+                <div className="binary-preview">
+                  <p className="binary-info">
+                    📦 Binary file ({binaryFileMetadata.mimeType})
+                  </p>
+                  <pre className="base64-preview">
+                    {binaryFileMetadata.content?.substring(0, 200)}...
+                  </pre>
+                  <p className="preview-caption">
+                    Base64 encoded content (first 200 chars shown)
+                  </p>
+                </div>
+              ) : (
+                <div className="text-preview">
+                  <pre className="code-block">
+                    {binaryFileMetadata.content}
+                  </pre>
+                  <p className="preview-caption">Text file content</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Results */}

@@ -12,6 +12,7 @@ import {
   streamProcessLogs,
   unexposePort,
   readFile,
+  readFileStream,
   listFiles,
   deleteFile,
   renameFile,
@@ -22,6 +23,7 @@ import {
   setupReact,
   setupVue,
   setupStatic,
+  createTestBinaryFile,
 } from "./endpoints";
 import { createSession, executeCell, deleteSession } from "./endpoints/notebook";
 import { corsHeaders, errorResponse, jsonResponse, parseJsonBody } from "./http";
@@ -153,6 +155,10 @@ export default {
         return await readFile(sandbox, request);
       }
 
+      if (pathname === "/api/read/stream" && request.method === "POST") {
+        return await readFileStream(sandbox, request);
+      }
+
       if (pathname === "/api/list-files" && request.method === "POST") {
         return await listFiles(sandbox, request);
       }
@@ -175,6 +181,10 @@ export default {
 
       if (pathname === "/api/git/checkout" && request.method === "POST") {
         return await gitCheckout(sandbox, request);
+      }
+
+      if (pathname === "/api/create-test-binary" && request.method === "POST") {
+        return await createTestBinaryFile(sandbox);
       }
 
       // Template Setup APIs
