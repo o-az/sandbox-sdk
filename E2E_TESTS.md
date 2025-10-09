@@ -3,7 +3,7 @@
 **Goal**: Comprehensive integration testing of all SDK methods in realistic workflows that match production usage patterns from the README.
 
 **Date**: 2025-10-09
-**Status**: ✅ Phase 2 Complete - 28/28 tests passing
+**Status**: ✅ Phase 2 Complete - 34/34 tests passing
 
 ## Test Summary
 
@@ -12,19 +12,21 @@
 - `git-clone-workflow.test.ts` - 6 tests for Git operations
 - `process-lifecycle-workflow.test.ts` - 7 tests for process management and port exposure
 
-**Phase 2 Complete** (13/13 tests):
+**Phase 2 Complete** (19/19 tests):
 - `file-operations-workflow.test.ts` - 9 tests for file system operations
 - `environment-workflow.test.ts` - 4 tests for environment variable management
+- `session-state-isolation-workflow.test.ts` - 6 tests for session isolation and state persistence
 
-**Total**: 28/28 tests passing (100%)
+**Total**: 34/34 tests passing (100%)
 
-**SDK Methods Covered:** 20 methods tested across 28 test scenarios
+**SDK Methods Covered:** 22 methods tested across 34 test scenarios
+- Session: `createSession()`, `getSession()`
 - Git: `gitCheckout()`
 - Files: `writeFile()`, `readFile()`, `mkdir()`, `deleteFile()`, `renameFile()`, `moveFile()`
 - Processes: `startProcess()`, `listProcesses()`, `getProcess()`, `killProcess()`, `killAllProcesses()`, `getProcessLogs()`, `streamProcessLogs()`
 - Ports: `exposePort()`, `getExposedPorts()`, port proxying via `proxyToSandbox()`
 - Commands: `exec()`
-- Environment: `setEnvVars()`
+- Environment: `setEnvVars()` (sandbox and session-level)
 
 **Real Bugs Found & Fixed:**
 1. Process listing broken (incorrect sessionId filtering)
@@ -37,6 +39,11 @@
 8. session.setEnvVars() not implemented (only logged, didn't actually update env vars)
 9. sessionId still in BaseExecOptions after PR #59 breaking change
 10. Git clone directory extraction logic broken
+11. ExecutionSession RPC stubs can't be stored across requests (added getSession() method)
+12. Subshell syntax preventing state persistence (changed to command grouping)
+13. setEnvVars() calling non-existent endpoint (changed to use export commands)
+14. Session destroy hanging due to stdin not closed (added proper EOF handling)
+15. FIFO cleanup killing readers too early causing deadlock (let readers exit naturally)
 
 ---
 
@@ -239,8 +246,9 @@ Set env vars → Verify in commands → Test persistence → Verify in backgroun
 
 ---
 
-### Scenario 7: **Session State Isolation** ❌ Not Started (Infrastructure Ready)
+### Scenario 7: **Session State Isolation** ✅ Complete (6/6 tests passing)
 **README Example**: "Session Management" (lines 711-754)
+**Test File**: `tests/e2e/session-state-isolation-workflow.test.ts`
 
 **IMPORTANT:** As of commit `645672aa`, PID namespace isolation was removed. Sessions now provide **state isolation** (env vars, cwd, shell state) for workflow organization, NOT security isolation. All sessions share the same process table.
 
@@ -249,70 +257,63 @@ Set env vars → Verify in commands → Test persistence → Verify in backgroun
 Create session1 & session2 → Execute in each → Verify state isolation → Verify process sharing → Cleanup
 ```
 
-**Planned Tests (5-6 tests):**
+**Tests:**
 
-1. **Environment Variable Isolation**
-   - Create session1 with `env: { NODE_ENV: 'production', API_KEY: 'prod-key' }`
-   - Create session2 with `env: { NODE_ENV: 'test', API_KEY: 'test-key' }`
-   - Verify `session1.exec('echo $NODE_ENV')` → "production"
-   - Verify `session2.exec('echo $NODE_ENV')` → "test"
-   - Verify `session1.setEnvVars({ NEW_VAR: 'value1' })`
-   - Verify `session2.exec('echo $NEW_VAR')` → empty (doesn't leak)
+1. ✅ **Environment Variable Isolation**
+   - Create sessions with different env vars
+   - Verify each session has isolated environment
+   - Use `session.setEnvVars()` to add variables dynamically
+   - Verify no leakage between sessions
 
-2. **Working Directory Isolation**
-   - Create session1 with `cwd: '/workspace/app'`
-   - Create session2 with `cwd: '/workspace/test'`
-   - Verify `session1.exec('pwd')` → "/workspace/app"
-   - Verify `session2.exec('pwd')` → "/workspace/test"
-   - session1: `cd /workspace/app/src`
-   - session2: `cd /workspace/test/unit`
-   - Verify each maintains independent cwd
+2. ✅ **Working Directory Isolation**
+   - Create sessions with different cwd
+   - Use `cd` to change directories
+   - Verify working directory persists across `exec()` calls
+   - Verify each session maintains independent cwd
 
-3. **Shell State Isolation**
-   - session1: `exec('greet() { echo "Hello Production"; }')`
-   - session1: `exec('greet')` → "Hello Production"
-   - session2: `exec('greet')` → should fail (function not defined)
-   - session2: Define different `greet()` function
-   - Verify each session has its own function
+3. ✅ **Shell State Isolation (Functions)**
+   - Define shell functions in session1
+   - Call functions in subsequent commands (same session)
+   - Verify functions don't leak to session2
+   - Verify each session has independent shell state
 
-4. **Process Space is SHARED (Important!)**
-   - session1: Start background process `sleep 300`
-   - session2: `listProcesses()` → **SHOULD include session1's process**
-   - session2: Can kill session1's process (shared process table)
-   - This is **by design** - sessions are for state, not security
+4. ✅ **Process Space is SHARED (by design)**
+   - Start background process in session1
+   - List processes from session2
+   - Verify session2 can see and kill session1's process
+   - This validates shared process table (post-commit 645672aa)
 
-5. **Concurrent Execution**
-   - session1: Execute long command `sleep 5 && echo "done1"`
-   - session2: Execute long command `sleep 5 && echo "done2"` (simultaneously)
-   - Verify both complete independently
-   - Verify no output mixing
+5. ✅ **File System is SHARED (by design)**
+   - Write file from session1
+   - Read file from session2
+   - Verify file system is global across sessions
 
-6. **File System is SHARED**
-   - session1: `writeFile('/workspace/shared.txt', 'from session 1')`
-   - session2: `readFile('/workspace/shared.txt')` → "from session 1"
-   - File system is global across all sessions in same sandbox
+6. ✅ **Concurrent Execution without Output Mixing**
+   - Execute commands simultaneously in both sessions
+   - Verify outputs don't get mixed
+   - Verify independent execution
 
-**SDK Methods to Test:**
+**SDK Methods Tested:**
 - `createSession()` - Create sessions with different env/cwd
+- `getSession()` - Retrieve existing session (respects RPC lifecycle)
 - `session.exec()` - Execute in specific session context
 - `session.setEnvVars()` - Update session environment dynamically
-- `session.startProcess()` - Verify env/cwd inheritance
-- `session.writeFile()` / `session.readFile()` - Verify shared filesystem
+- `session.startProcess()` - Background processes in sessions
+- `session.writeFile()` / `session.readFile()` - File operations in sessions
 
-**Test File**: `session-state-isolation-workflow.test.ts` (to create)
-
-**Implementation Status:**
-- ✅ Test worker has `POST /api/session/create` endpoint
-- ✅ Executor pattern supports `X-Session-Id` header
-- ✅ Sessions stored in Map with `${sandboxId}:${sessionId}` key
-- ✅ All endpoints work with both sandbox and session
-- ✅ Session.isolation flag ignored (backward compatibility only)
+**Key Architectural Fixes:**
+1. **RPC Lifecycle Pattern**: Added `getSession()` method to retrieve fresh ExecutionSession stubs on each request (RPC stubs can't be stored across execution contexts)
+2. **Command Grouping**: Changed from subshell `( )` to grouping `{ }` syntax for state persistence
+3. **Daytona Robustness Patterns**: Added trap-based cleanup, pre-cleanup, specific PID waiting
+4. **Session Destroy**: Proper stdin closing with EOF to gracefully terminate persistent shells
+5. **setEnvVars() Implementation**: Uses `export` commands via `exec()` instead of non-existent endpoint
 
 **Architecture Notes:**
 - Sessions = bash shell instances with independent state
 - No PID namespace isolation (removed in cleanup commit 645672aa)
 - Security boundary is at **container level**, not session level
 - Use separate sandboxes for security isolation, not sessions
+- Test worker uses header-based routing (`X-Session-Id`) with executor pattern
 
 ---
 
