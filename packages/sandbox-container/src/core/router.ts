@@ -232,18 +232,4 @@ export class Router {
       }
     );
   }
-
-  /**
-   * Get all registered routes (for debugging/testing)
-   */
-  getRoutes(): RouteDefinition[] {
-    return [...this.routes];
-  }
-
-  /**
-   * Clear all routes (for testing)
-   */
-  clearRoutes(): void {
-    this.routes = [];
-  }
 }

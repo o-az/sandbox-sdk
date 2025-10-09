@@ -341,20 +341,35 @@ export class Session {
    * Destroy the session and clean up resources
    */
   async destroy(): Promise<void> {
-    // Kill shell if still running
     if (this.shell && !this.shell.killed) {
+      // Close stdin to send EOF to bash (standard way to terminate interactive shells)
+      if (this.shell.stdin && typeof this.shell.stdin !== 'number') {
+        try {
+          this.shell.stdin.end();
+        } catch {
+          // stdin may already be closed
+        }
+      }
+
+      // Send SIGTERM for graceful termination (triggers trap handlers)
       this.shell.kill();
-      // Wait for shell to exit
-      await this.shell.exited;
+
+      // Wait for shell to exit (with 1s timeout)
+      try {
+        await Promise.race([
+          this.shell.exited,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1000))
+        ]);
+      } catch {
+        // Timeout: force kill with SIGKILL
+        this.shell.kill('SIGKILL');
+        await this.shell.exited.catch(() => {});
+      }
     }
 
     // Clean up session directory
     if (this.sessionDir) {
-      try {
-        await rm(this.sessionDir, { recursive: true, force: true });
-      } catch (error) {
-        console.error(`Failed to cleanup session directory: ${error}`);
-      }
+      await rm(this.sessionDir, { recursive: true, force: true }).catch(() => {});
     }
 
     this.ready = false;
@@ -402,6 +417,7 @@ export class Session {
   ep=${safeStderrPipe}
 
   # Cleanup function (called on exit or signals)
+  # Only removes FIFOs - reader processes exit naturally when they read EOF
   cleanup() { rm -f "$sp" "$ep"; }
   trap 'cleanup' EXIT HUP INT TERM
 

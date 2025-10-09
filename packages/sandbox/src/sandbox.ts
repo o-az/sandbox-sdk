@@ -932,15 +932,16 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       // Environment management
       setEnvVars: async (envVars: Record<string, string>) => {
         try {
-          const response = await this.containerFetch(`/api/session/${sessionId}/env`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ envVars }),
-          });
+          // Set environment variables by executing export commands
+          for (const [key, value] of Object.entries(envVars)) {
+            const escapedValue = value.replace(/'/g, "'\\''");
+            const exportCommand = `export ${key}='${escapedValue}'`;
 
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };
-            throw new Error(errorData.error || `Failed to set environment variables: ${response.statusText}`);
+            const result = await this.client.commands.execute(exportCommand, sessionId);
+
+            if (result.exitCode !== 0) {
+              throw new Error(`Failed to set ${key}: ${result.stderr || 'Unknown error'}`);
+            }
           }
 
           console.log(`[Session ${sessionId}] Environment variables updated successfully`);
