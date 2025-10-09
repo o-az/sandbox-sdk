@@ -130,7 +130,7 @@ describe('Streaming Operations Workflow', () => {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            command: 'bash -c "echo stdout message; echo stderr message >&2"',
+            command: "bash -c 'echo stdout message; echo stderr message >&2'",
           }),
         }),
         { timeout: 30000, interval: 2000 }
@@ -257,7 +257,7 @@ describe('Streaming Operations Workflow', () => {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            command: 'bash -c "STREAM_VAR=streaming-value; echo $STREAM_VAR"',
+            command: "bash -c 'STREAM_VAR=streaming-value; echo $STREAM_VAR'",
           }),
         }),
         { timeout: 30000, interval: 2000 }
@@ -283,7 +283,7 @@ describe('Streaming Operations Workflow', () => {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            command: 'bash -c "for i in 1 2 3 4 5; do echo \\"Count: $i\\"; sleep 0.2; done"',
+            command: "bash -c 'for i in 1 2 3 4 5; do echo \"Count: $i\"; sleep 0.2; done'",
           }),
         }),
         { timeout: 30000, interval: 2000 }
