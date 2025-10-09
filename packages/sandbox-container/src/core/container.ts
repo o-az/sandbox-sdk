@@ -94,9 +94,9 @@ export class Container {
 
     // Initialize services
     const processService = new ProcessService(processStore, logger, sessionManager);
-    const fileService = new FileService(securityAdapter, logger);
+    const fileService = new FileService(securityAdapter, logger, sessionManager);
     const portService = new PortService(portStore, securityAdapter, logger);
-    const gitService = new GitService(securityAdapter, logger);
+    const gitService = new GitService(securityAdapter, logger, sessionManager);
     const interpreterService = new InterpreterService(logger);
 
     // Initialize handlers

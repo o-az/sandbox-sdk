@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { BunFileAdapter, FileContent } from '@sandbox-container/adapters/bun-file-adapter';
-import type { ExecutionResult } from '@sandbox-container/adapters/bun-process-adapter';
-import type { Logger } from '@sandbox-container/core/types';
+import type { Logger, ServiceResult } from '@sandbox-container/core/types';
 import { FileService, type SecurityService } from '@sandbox-container/services/file-service';
+import type { RawExecResult, SessionManager } from '@sandbox-container/services/session-manager';
 import { mocked } from '../test-utils';
 
 // Mock SecurityService with proper typing
@@ -19,25 +18,17 @@ const mockLogger: Logger = {
   debug: vi.fn(),
 };
 
-// Mock BunFileAdapter with proper typing
-const mockAdapter: BunFileAdapter = {
-  getFile: vi.fn(),
-  exists: vi.fn(),
-  readText: vi.fn(),
-  read: vi.fn(),
-  write: vi.fn(),
-  deleteFile: vi.fn(),
-  renameFile: vi.fn(),
-  createDirectory: vi.fn(),
-  getStats: vi.fn(),
-  copy: vi.fn(),
-  move: vi.fn(),
-  getSize: vi.fn(),
-  getFileType: vi.fn(),
-} as unknown as BunFileAdapter;
+// Mock SessionManager with proper typing
+const mockSessionManager: Partial<SessionManager> = {
+  executeInSession: vi.fn(),
+  executeStreamInSession: vi.fn(),
+  killCommand: vi.fn(),
+  setEnvVars: vi.fn(),
+  getSession: vi.fn(),
+  createSession: vi.fn(),
+};
 
 describe('FileService', () => {
-  let FileServiceClass: typeof FileService;
   let fileService: FileService;
 
   beforeEach(async () => {
@@ -50,26 +41,41 @@ describe('FileService', () => {
       errors: []
     });
 
-    // Create service with mocked adapter
+    // Create service with mocked SessionManager
     fileService = new FileService(
       mockSecurityService,
       mockLogger,
-      mockAdapter  // Inject mocked adapter
+      mockSessionManager as SessionManager
     );
   });
 
   describe('read', () => {
-    it('should read file successfully', async () => {
+    it('should read file successfully with base64 encoding', async () => {
       const testPath = '/tmp/test.txt';
       const testContent = 'Hello, World!';
+      const base64Content = Buffer.from(testContent, 'utf-8').toString('base64');
 
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.read).mockResolvedValue({
-        content: testContent,
-        size: testContent.length,
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.read(testPath);
+      // Mock read command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: base64Content,
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.read(testPath, {}, 'session-123');
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -79,9 +85,21 @@ describe('FileService', () => {
       // Verify security validation was called
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(testPath);
 
-      // Verify adapter was called correctly
-      expect(mockAdapter.exists).toHaveBeenCalledWith(testPath);
-      expect(mockAdapter.read).toHaveBeenCalledWith(testPath);
+      // Verify SessionManager was called for exists check
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        1,
+        'session-123',
+        "test -e '/tmp/test.txt'",
+        undefined
+      );
+
+      // Verify SessionManager was called for read with base64
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        2,
+        'session-123',
+        "base64 < '/tmp/test.txt'",
+        undefined
+      );
     });
 
     it('should return error when security validation fails', async () => {
@@ -99,11 +117,19 @@ describe('FileService', () => {
       }
 
       // Should not attempt file operations
-      expect(mockAdapter.exists).not.toHaveBeenCalled();
+      expect(mockSessionManager.executeInSession).not.toHaveBeenCalled();
     });
 
     it('should return error when file does not exist', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(false);
+      // Mock exists check returning false
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 1, // test -e returns 1 when file doesn't exist
+          stdout: '',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.read('/tmp/nonexistent.txt');
 
@@ -111,48 +137,80 @@ describe('FileService', () => {
       if (!result.success) {
         expect(result.error.code).toBe('FILE_NOT_FOUND');
       }
-
-      // Should not attempt to read
-      expect(mockAdapter.read).not.toHaveBeenCalled();
     });
 
-    it('should handle adapter errors gracefully', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.read).mockRejectedValue(new Error('Permission denied'));
+    it('should handle read command errors', async () => {
+      // Mock exists check success
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock read command failure
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: {
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Permission denied',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.read('/tmp/test.txt');
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PERMISSION_DENIED');
-        expect(result.error.message).toContain('Permission denied');
+        expect(result.error.code).toBe('FILE_READ_ERROR');
       }
     });
   });
 
   describe('write', () => {
-    it('should write file successfully', async () => {
+    it('should write file successfully with base64 encoding', async () => {
       const testPath = '/tmp/test.txt';
       const testContent = 'Test content';
+      const base64Content = Buffer.from(testContent, 'utf-8').toString('base64');
 
-      mocked(mockAdapter.write).mockResolvedValue(undefined);
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.write(testPath, testContent);
+      const result = await fileService.write(testPath, testContent, {}, 'session-123');
 
       expect(result.success).toBe(true);
 
-      // Verify adapter was called
-      expect(mockAdapter.write).toHaveBeenCalledWith(testPath, testContent);
+      // Verify SessionManager was called with base64 encoded content
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        `echo '${base64Content}' | base64 -d > '/tmp/test.txt'`,
+        undefined
+      );
     });
 
     it('should handle write errors', async () => {
-      mocked(mockAdapter.write).mockRejectedValue(new Error('Disk full'));
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Disk full',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.write('/tmp/test.txt', 'content');
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('DISK_FULL');
+        expect(result.error.code).toBe('FILE_WRITE_ERROR');
       }
     });
   });
@@ -161,22 +219,42 @@ describe('FileService', () => {
     it('should delete file successfully', async () => {
       const testPath = '/tmp/test.txt';
 
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.deleteFile).mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.delete(testPath);
+      // Mock stat check (to verify it's not a directory)
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'regular file:100:1234567890:1234567890\n', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock delete command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.delete(testPath, 'session-123');
 
       expect(result.success).toBe(true);
-      expect(mockAdapter.exists).toHaveBeenCalledWith(testPath);
-      expect(mockAdapter.deleteFile).toHaveBeenCalledWith(testPath);
+
+      // Verify rm command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "rm '/tmp/test.txt'",
+        undefined
+      );
     });
 
     it('should return error when file does not exist', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(false);
+      // Mock exists check returning false
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.delete('/tmp/nonexistent.txt');
 
@@ -184,25 +262,32 @@ describe('FileService', () => {
       if (!result.success) {
         expect(result.error.code).toBe('FILE_NOT_FOUND');
       }
-
-      // Should not attempt to delete
-      expect(mockAdapter.deleteFile).not.toHaveBeenCalled();
     });
 
     it('should handle delete command failures', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.deleteFile).mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Permission denied',
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'regular file:100:1234567890:1234567890\n', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock delete command failure
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: 'Permission denied' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.delete('/tmp/test.txt');
 
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('FILE_DELETE_ERROR');
-        expect(result.error.details?.exitCode).toBe(1);
       }
     });
   });
@@ -212,14 +297,19 @@ describe('FileService', () => {
       const oldPath = '/tmp/old.txt';
       const newPath = '/tmp/new.txt';
 
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.renameFile).mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.rename(oldPath, newPath);
+      // Mock rename command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.rename(oldPath, newPath, 'session-123');
 
       expect(result.success).toBe(true);
 
@@ -227,42 +317,71 @@ describe('FileService', () => {
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(oldPath);
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(newPath);
 
-      expect(mockAdapter.renameFile).toHaveBeenCalledWith(oldPath, newPath);
+      // Verify mv command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "mv '/tmp/old.txt' '/tmp/new.txt'",
+        undefined
+      );
     });
 
     it('should handle rename command failures', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.renameFile).mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Target exists',
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock rename failure
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: 'Target exists' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.rename('/tmp/old.txt', '/tmp/new.txt');
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('RENAME_ERROR');
+        expect(result.error.code).toBe('FILE_RENAME_ERROR');
       }
     });
   });
 
   describe('move', () => {
-    it('should move file using zero-copy operations', async () => {
+    it('should move file using atomic mv operation', async () => {
       const sourcePath = '/tmp/source.txt';
       const destPath = '/tmp/dest.txt';
 
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.move).mockResolvedValue(undefined);
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.move(sourcePath, destPath);
+      // Mock move command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.move(sourcePath, destPath, 'session-123');
 
       expect(result.success).toBe(true);
-      expect(mockAdapter.move).toHaveBeenCalledWith(sourcePath, destPath);
+
+      // Verify mv command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "mv '/tmp/source.txt' '/tmp/dest.txt'",
+        undefined
+      );
     });
 
     it('should return error when source does not exist', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(false);
+      // Mock exists check returning false
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.move('/tmp/nonexistent.txt', '/tmp/dest.txt');
 
@@ -277,40 +396,48 @@ describe('FileService', () => {
     it('should create directory successfully', async () => {
       const testPath = '/tmp/newdir';
 
-      mocked(mockAdapter.createDirectory).mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.mkdir(testPath);
+      const result = await fileService.mkdir(testPath, {}, 'session-123');
 
       expect(result.success).toBe(true);
-      // createDirectory is called with args from buildMkdirArgs: ['mkdir', '/tmp/newdir']
-      expect(mockAdapter.createDirectory).toHaveBeenCalledWith(['mkdir', testPath]);
+
+      // Verify mkdir command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "mkdir '/tmp/newdir'",
+        undefined
+      );
     });
 
     it('should create directory recursively when requested', async () => {
       const testPath = '/tmp/nested/dir';
 
-      mocked(mockAdapter.createDirectory).mockResolvedValue({
-        exitCode: 0,
-        stdout: '',
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.mkdir(testPath, { recursive: true });
+      const result = await fileService.mkdir(testPath, { recursive: true }, 'session-123');
 
       expect(result.success).toBe(true);
-      expect(mockAdapter.createDirectory).toHaveBeenCalledWith(['mkdir', '-p', testPath]);
+
+      // Verify mkdir -p command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "mkdir -p '/tmp/nested/dir'",
+        undefined
+      );
     });
 
     it('should handle mkdir command failures', async () => {
-      mocked(mockAdapter.createDirectory).mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Parent directory not found',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: 'Parent directory not found' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.mkdir('/tmp/newdir');
 
@@ -323,18 +450,31 @@ describe('FileService', () => {
 
   describe('exists', () => {
     it('should return true when file exists', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(true);
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.exists('/tmp/test.txt');
+      const result = await fileService.exists('/tmp/test.txt', 'session-123');
 
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data).toBe(true);
       }
+
+      // Verify test -e command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "test -e '/tmp/test.txt'",
+        undefined
+      );
     });
 
     it('should return false when file does not exist', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(false);
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.exists('/tmp/nonexistent.txt');
 
@@ -344,14 +484,20 @@ describe('FileService', () => {
       }
     });
 
-    it('should handle exists check errors', async () => {
-      mocked(mockAdapter.exists).mockRejectedValue(new Error('Permission denied'));
+    it('should handle execution failures gracefully', async () => {
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: false,
+        error: {
+          message: 'Session error',
+          code: 'SESSION_ERROR',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.exists('/tmp/test.txt');
 
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('PERMISSION_DENIED');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toBe(false);
       }
     });
   });
@@ -360,14 +506,19 @@ describe('FileService', () => {
     it('should return file statistics successfully', async () => {
       const testPath = '/tmp/test.txt';
 
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.getStats).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'regular file:1024:1672531200:1672531100\n',
-        stderr: '',
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await fileService.stat(testPath);
+      // Mock stat command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'regular file:1024:1672531200:1672531100\n', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.stat(testPath, 'session-123');
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -380,7 +531,11 @@ describe('FileService', () => {
     });
 
     it('should return error when file does not exist', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(false);
+      // Mock exists check returning false
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.stat('/tmp/nonexistent.txt');
 
@@ -391,12 +546,17 @@ describe('FileService', () => {
     });
 
     it('should handle stat command failures', async () => {
-      mocked(mockAdapter.exists).mockResolvedValue(true);
-      mocked(mockAdapter.getStats).mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'stat error',
-      });
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command failure
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: 'stat error' },
+      } as ServiceResult<RawExecResult>);
 
       const result = await fileService.stat('/tmp/test.txt');
 

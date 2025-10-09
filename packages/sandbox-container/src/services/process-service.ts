@@ -22,8 +22,6 @@ export interface ProcessStore {
 
 export interface ProcessFilters {
   status?: ProcessStatus;
-  // Note: sessionId is NOT a filter - processes are sandbox-scoped, not session-scoped
-  // All sessions in a sandbox can see all processes (like terminals in Linux)
 }
 
 // In-memory implementation optimized for Bun
@@ -76,17 +74,6 @@ export class InMemoryProcessStore implements ProcessStore {
       }
     }
     return cleaned;
-  }
-
-  // Helper methods for testing
-  clear(): void {
-    // Note: Tests should call ProcessService.killAllProcesses() first if needed
-    // This method only clears the in-memory storage
-    this.processes.clear();
-  }
-
-  size(): number {
-    return this.processes.size;
   }
 }
 
@@ -206,18 +193,18 @@ export class ProcessService {
         command,
         (event) => {
           // Route events to process record listeners
-          if (event.type === 'stdout') {
+          if (event.type === 'stdout' && event.data) {
             processRecord.stdout += event.data;
             processRecord.outputListeners.forEach(listener => {
-              listener('stdout', event.data);
+              listener('stdout', event.data!);
             });
-          } else if (event.type === 'stderr') {
+          } else if (event.type === 'stderr' && event.data) {
             processRecord.stderr += event.data;
             processRecord.outputListeners.forEach(listener => {
-              listener('stderr', event.data);
+              listener('stderr', event.data!);
             });
           } else if (event.type === 'complete') {
-            const exitCode = event.exitCode;
+            const exitCode = event.exitCode ?? 0;
             const status = this.manager.interpretExitCode(exitCode);
             const endTime = new Date();
 

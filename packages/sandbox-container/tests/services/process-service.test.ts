@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'bun:test';
-import type { BunProcessAdapter, ExecutionResult, SpawnOptions, SpawnResult, StreamHandlers } from '@sandbox-container/adapters/bun-process-adapter.ts';
-import type { Logger, ProcessRecord } from '@sandbox-container/core/types.ts';
+import type { Logger, ProcessRecord, ServiceResult } from '@sandbox-container/core/types.ts';
 import { type ProcessFilters, ProcessService, type ProcessStore } from "@sandbox-container/services/process-service.js";
-import type { Subprocess } from 'bun';
+import type { RawExecResult, SessionManager } from '@sandbox-container/services/session-manager';
 import { mocked } from '../test-utils';
 
 // Mock the dependencies with proper typing
@@ -22,17 +21,14 @@ const mockLogger: Logger = {
   debug: vi.fn(),
 };
 
-// Mock adapter with proper typing
-const mockAdapter: BunProcessAdapter = {
-  spawn: vi.fn(),
-  execute: vi.fn(),
-  executeShell: vi.fn(),
-  readStream: vi.fn(),
-  streamOutput: vi.fn(),
-  handleStreams: vi.fn(),
-  waitForExit: vi.fn(),
-  kill: vi.fn(),
-  isRunning: vi.fn(),
+// Mock SessionManager with proper typing
+const mockSessionManager: Partial<SessionManager> = {
+  executeInSession: vi.fn(),
+  executeStreamInSession: vi.fn(),
+  killCommand: vi.fn(),
+  setEnvVars: vi.fn(),
+  getSession: vi.fn(),
+  createSession: vi.fn(),
 };
 
 // Mock factory functions
@@ -41,21 +37,16 @@ const createMockProcess = (overrides: Partial<ProcessRecord> = {}): ProcessRecor
   command: 'test command',
   status: 'running',
   startTime: new Date(),
-  pid: 12345,
   stdout: '',
   stderr: '',
   outputListeners: new Set(),
   statusListeners: new Set(),
+  commandHandle: {
+    sessionId: 'default',
+    commandId: 'proc-123',
+  },
   ...overrides,
 });
-
-const createMockSubprocess = (overrides: Partial<Subprocess> = {}): Subprocess => ({
-  pid: 12345,
-  exitCode: undefined,
-  kill: vi.fn(),
-  exited: new Promise(() => {}),
-  ...overrides,
-} as Subprocess);
 
 describe('ProcessService', () => {
   let processService: ProcessService;
@@ -64,23 +55,25 @@ describe('ProcessService', () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
 
-    // Create service with mocked adapter
+    // Create service with mocked SessionManager
     processService = new ProcessService(
       mockProcessStore,
       mockLogger,
-      undefined,  // No session manager
-      mockAdapter // Inject mocked adapter
+      mockSessionManager as SessionManager
     );
   });
 
   describe('executeCommand', () => {
     it('should execute command and return success', async () => {
-      // Mock adapter to return successful execution
-      mocked(mockAdapter.executeShell).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'hello world\n',
-        stderr: '',
-      });
+      // Mock SessionManager to return successful execution
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: 'hello world\n',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await processService.executeCommand('echo "hello world"', {
         cwd: '/tmp',
@@ -94,21 +87,23 @@ describe('ProcessService', () => {
         expect(result.data.stderr).toBe('');
       }
 
-      // Verify adapter was called correctly
-      expect(mockAdapter.executeShell).toHaveBeenCalledWith(
+      // Verify SessionManager was called correctly
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'default',  // sessionId
         'echo "hello world"',
-        expect.objectContaining({
-          cwd: '/tmp',
-        })
+        '/tmp'  // cwd
       );
     });
 
     it('should handle command with non-zero exit code', async () => {
-      mocked(mockAdapter.executeShell).mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: 'error message',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 1,
+          stdout: '',
+          stderr: 'error message',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await processService.executeCommand('false');
 
@@ -119,34 +114,30 @@ describe('ProcessService', () => {
       }
     });
 
-    it('should handle adapter errors', async () => {
-      mocked(mockAdapter.executeShell).mockRejectedValue(new Error('Spawn failed'));
+    it('should handle SessionManager errors', async () => {
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: false,
+        error: {
+          message: 'Session execution failed',
+          code: 'SESSION_ERROR',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await processService.executeCommand('some command');
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('COMMAND_EXEC_ERROR');
-        expect(result.error.message).toBe('Failed to execute command');
+        expect(result.error.code).toBe('SESSION_ERROR');
       }
     });
   });
 
   describe('startProcess', () => {
     it('should start background process successfully', async () => {
-      const mockSubprocess: Subprocess = {
-        pid: 12345,
-        exitCode: undefined,
-        kill: vi.fn(),
-        exited: new Promise(() => {}), // Never resolves (background process)
-      } as unknown as Subprocess;
-
-      mocked(mockAdapter.spawn).mockReturnValue({
-        pid: 12345,
-        subprocess: mockSubprocess,
-      });
-
-      mocked(mockAdapter.handleStreams).mockReturnValue(() => {});
+      // Mock SessionManager.executeStreamInSession to return a promise that doesn't resolve immediately
+      mocked(mockSessionManager.executeStreamInSession).mockReturnValue(
+        new Promise(() => {}) // Never resolves (background process)
+      );
 
       const result = await processService.startProcess('sleep 10', {
         cwd: '/tmp',
@@ -158,17 +149,18 @@ describe('ProcessService', () => {
         expect(result.data.id).toMatch(/^proc_\d+_[a-z0-9]+$/);
         expect(result.data.command).toBe('sleep 10');
         expect(result.data.status).toBe('running');
-        expect(result.data.pid).toBe(12345);
-        expect(result.data.sessionId).toBe('session-123');
+        expect(result.data.commandHandle).toEqual({
+          sessionId: 'session-123',
+          commandId: result.data.id,
+        });
       }
 
-      // Verify adapter was called correctly
-      expect(mockAdapter.spawn).toHaveBeenCalledWith(
-        'sleep',
-        ['10'],
-        expect.objectContaining({
-          cwd: '/tmp',
-        })
+      // Verify SessionManager.executeStreamInSession was called
+      expect(mockSessionManager.executeStreamInSession).toHaveBeenCalledWith(
+        'session-123',
+        'sleep 10',
+        expect.any(Function),  // event handler callback
+        '/tmp'
       );
 
       // Verify process was stored
@@ -176,13 +168,11 @@ describe('ProcessService', () => {
         expect.objectContaining({
           command: 'sleep 10',
           status: 'running',
-          pid: 12345,
-          sessionId: 'session-123',
+          commandHandle: expect.objectContaining({
+            sessionId: 'session-123',
+          }),
         })
       );
-
-      // Verify stream handling was set up
-      expect(mockAdapter.handleStreams).toHaveBeenCalled();
     });
 
     it('should reject empty command', async () => {
@@ -194,21 +184,22 @@ describe('ProcessService', () => {
         expect(result.error.message).toContain('empty command');
       }
 
-      // Verify adapter was not called
-      expect(mockAdapter.spawn).not.toHaveBeenCalled();
+      // Verify SessionManager was not called
+      expect(mockSessionManager.executeStreamInSession).not.toHaveBeenCalled();
     });
 
-    it('should handle spawn errors', async () => {
-      mocked(mockAdapter.spawn).mockImplementation(() => {
-        throw new Error('Failed to spawn');
+    it('should handle stream execution errors', async () => {
+      // Mock SessionManager to throw error
+      mocked(mockSessionManager.executeStreamInSession).mockImplementation(() => {
+        throw new Error('Failed to execute stream');
       });
 
       const result = await processService.startProcess('echo test', {});
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PROCESS_START_ERROR');
-        expect(result.error.message).toBe('Failed to start process');
+        expect(result.error.code).toBe('COMMAND_STREAM_ERROR');
+        expect(result.error.message).toBe('Failed to start streaming command');
       }
     });
   });
@@ -243,21 +234,28 @@ describe('ProcessService', () => {
 
   describe('killProcess', () => {
     it('should kill process and update store', async () => {
-      const mockSubprocess = createMockSubprocess();
       const mockProcess = createMockProcess({
         command: 'sleep 10',
-        subprocess: mockSubprocess,
+        commandHandle: {
+          sessionId: 'default',
+          commandId: 'proc-123',
+        },
       });
 
       mocked(mockProcessStore.get).mockResolvedValue(mockProcess);
-      mocked(mockAdapter.kill).mockReturnValue(true);
+      mocked(mockSessionManager.killCommand).mockResolvedValue({
+        success: true,
+      } as ServiceResult<void>);
 
       const result = await processService.killProcess('proc-123');
 
       expect(result.success).toBe(true);
 
-      // Verify adapter kill was called
-      expect(mockAdapter.kill).toHaveBeenCalledWith(mockSubprocess);
+      // Verify SessionManager.killCommand was called
+      expect(mockSessionManager.killCommand).toHaveBeenCalledWith(
+        'default',
+        'proc-123'
+      );
 
       // Verify store was updated
       expect(mockProcessStore.update).toHaveBeenCalledWith('proc-123', {
@@ -276,13 +274,29 @@ describe('ProcessService', () => {
         expect(result.error.code).toBe('PROCESS_NOT_FOUND');
       }
     });
+
+    it('should succeed when process has no commandHandle', async () => {
+      const mockProcess = createMockProcess({
+        command: 'echo test',
+        commandHandle: undefined,
+      });
+
+      mocked(mockProcessStore.get).mockResolvedValue(mockProcess);
+
+      const result = await processService.killProcess('proc-123');
+
+      expect(result.success).toBe(true);
+
+      // Should not attempt to kill
+      expect(mockSessionManager.killCommand).not.toHaveBeenCalled();
+    });
   });
 
   describe('listProcesses', () => {
     it('should return all processes from store', async () => {
       const mockProcesses = [
-        createMockProcess({ id: 'proc-1', command: 'ls', status: 'completed', pid: 100 }),
-        createMockProcess({ id: 'proc-2', command: 'sleep 10', status: 'running', pid: 200 }),
+        createMockProcess({ id: 'proc-1', command: 'ls', status: 'completed' }),
+        createMockProcess({ id: 'proc-2', command: 'sleep 10', status: 'running' }),
       ];
 
       mocked(mockProcessStore.list).mockResolvedValue(mockProcesses);
@@ -298,19 +312,26 @@ describe('ProcessService', () => {
 
   describe('killAllProcesses', () => {
     it('should kill all running processes', async () => {
-      const mockSubprocess1 = createMockSubprocess({ pid: 100 });
-      const mockSubprocess2 = createMockSubprocess({ pid: 200 });
-
       const mockProcesses = [
-        createMockProcess({ id: 'proc-1', command: 'sleep 10', pid: 100, subprocess: mockSubprocess1 }),
-        createMockProcess({ id: 'proc-2', command: 'sleep 20', pid: 200, subprocess: mockSubprocess2 }),
+        createMockProcess({
+          id: 'proc-1',
+          command: 'sleep 10',
+          commandHandle: { sessionId: 'default', commandId: 'proc-1' },
+        }),
+        createMockProcess({
+          id: 'proc-2',
+          command: 'sleep 20',
+          commandHandle: { sessionId: 'default', commandId: 'proc-2' },
+        }),
       ];
 
       mocked(mockProcessStore.list).mockResolvedValue(mockProcesses);
       mocked(mockProcessStore.get)
         .mockResolvedValueOnce(mockProcesses[0])
         .mockResolvedValueOnce(mockProcesses[1]);
-      mocked(mockAdapter.kill).mockReturnValue(true);
+      mocked(mockSessionManager.killCommand).mockResolvedValue({
+        success: true,
+      } as ServiceResult<void>);
 
       const result = await processService.killAllProcesses();
 
@@ -318,6 +339,9 @@ describe('ProcessService', () => {
       if (result.success) {
         expect(result.data).toBe(2); // Killed 2 processes
       }
+
+      // Verify killCommand was called for each process
+      expect(mockSessionManager.killCommand).toHaveBeenCalledTimes(2);
     });
   });
 });

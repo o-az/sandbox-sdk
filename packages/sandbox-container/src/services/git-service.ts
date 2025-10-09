@@ -1,8 +1,8 @@
 // Git Operations Service
 
-import { BunProcessAdapter } from '../adapters/bun-process-adapter';
 import type { CloneOptions, Logger, ServiceResult } from '../core/types';
 import { GitManager } from '../managers/git-manager';
+import type { SessionManager } from './session-manager';
 
 export interface SecurityService {
   validateGitUrl(url: string): { isValid: boolean; errors: string[] };
@@ -12,15 +12,26 @@ export interface SecurityService {
 
 export class GitService {
   private manager: GitManager;
-  private adapter: BunProcessAdapter;
 
   constructor(
     private security: SecurityService,
     private logger: Logger,
-    adapter?: BunProcessAdapter  // Injectable for testing
+    private sessionManager: SessionManager
   ) {
     this.manager = new GitManager();
-    this.adapter = adapter || new BunProcessAdapter();
+  }
+
+  /**
+   * Build a shell command string from an array of arguments
+   * Quotes arguments that contain spaces for safe shell execution
+   */
+  private buildCommand(args: string[]): string {
+    return args.map(arg => {
+      if (arg.includes(' ')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    }).join(' ');
   }
 
   async cloneRepository(repoUrl: string, options: CloneOptions = {}): Promise<ServiceResult<{ path: string; branch: string }>> {
@@ -62,9 +73,17 @@ export class GitService {
 
       // Build git clone command (via manager)
       const args = this.manager.buildCloneArgs(repoUrl, targetDirectory, options);
+      const command = this.buildCommand(args);
 
-      // Execute git clone (via adapter)
-      const result = await this.adapter.execute(args[0], args.slice(1));
+      // Execute git clone (via SessionManager)
+      const sessionId = options.sessionId || 'default';
+      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+
+      if (!execResult.success) {
+        return execResult as ServiceResult<{ path: string; branch: string }>;
+      }
+
+      const result = execResult.data;
 
       if (result.exitCode !== 0) {
         this.logger.error('Git clone failed', undefined, {
@@ -94,7 +113,28 @@ export class GitService {
       // This ensures we always return the true current branch, whether it was
       // explicitly specified or defaulted to the repository's HEAD
       const branchArgs = this.manager.buildGetCurrentBranchArgs();
-      const branchResult = await this.adapter.execute(branchArgs[0], branchArgs.slice(1), { cwd: targetDirectory });
+      const branchCommand = this.buildCommand(branchArgs);
+      const branchExecResult = await this.sessionManager.executeInSession(sessionId, branchCommand, targetDirectory);
+
+      if (!branchExecResult.success) {
+        // If we can't get the branch, use fallback but don't fail the entire operation
+        const actualBranch = options.branch || 'unknown';
+        this.logger.warn('Could not determine current branch, using fallback', {
+          targetDirectory,
+          requestedBranch: options.branch,
+          fallback: actualBranch
+        });
+
+        return {
+          success: true,
+          data: {
+            path: targetDirectory,
+            branch: actualBranch
+          },
+        };
+      }
+
+      const branchResult = branchExecResult.data;
 
       let actualBranch: string;
       if (branchResult.exitCode === 0 && branchResult.stdout.trim()) {
@@ -137,7 +177,7 @@ export class GitService {
     }
   }
 
-  async checkoutBranch(repoPath: string, branch: string): Promise<ServiceResult<void>> {
+  async checkoutBranch(repoPath: string, branch: string, sessionId = 'default'): Promise<ServiceResult<void>> {
     try {
       // Validate repository path
       const pathValidation = this.security.validatePath(repoPath);
@@ -169,9 +209,16 @@ export class GitService {
 
       // Build git checkout command (via manager)
       const args = this.manager.buildCheckoutArgs(branch);
+      const command = this.buildCommand(args);
 
-      // Execute git checkout (via adapter)
-      const result = await this.adapter.execute(args[0], args.slice(1), { cwd: repoPath });
+      // Execute git checkout (via SessionManager)
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, repoPath);
+
+      if (!execResult.success) {
+        return execResult as ServiceResult<void>;
+      }
+
+      const result = execResult.data;
 
       if (result.exitCode !== 0) {
         this.logger.error('Git checkout failed', undefined, {
@@ -217,7 +264,7 @@ export class GitService {
     }
   }
 
-  async getCurrentBranch(repoPath: string): Promise<ServiceResult<string>> {
+  async getCurrentBranch(repoPath: string, sessionId = 'default'): Promise<ServiceResult<string>> {
     try {
       // Validate repository path
       const pathValidation = this.security.validatePath(repoPath);
@@ -234,9 +281,16 @@ export class GitService {
 
       // Build git branch --show-current command (via manager)
       const args = this.manager.buildGetCurrentBranchArgs();
+      const command = this.buildCommand(args);
 
-      // Execute command (via adapter)
-      const result = await this.adapter.execute(args[0], args.slice(1), { cwd: repoPath });
+      // Execute command (via SessionManager)
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, repoPath);
+
+      if (!execResult.success) {
+        return execResult as ServiceResult<string>;
+      }
+
+      const result = execResult.data;
 
       if (result.exitCode !== 0) {
         return {
@@ -270,7 +324,7 @@ export class GitService {
     }
   }
 
-  async listBranches(repoPath: string): Promise<ServiceResult<string[]>> {
+  async listBranches(repoPath: string, sessionId = 'default'): Promise<ServiceResult<string[]>> {
     try {
       // Validate repository path
       const pathValidation = this.security.validatePath(repoPath);
@@ -287,9 +341,16 @@ export class GitService {
 
       // Build git branch -a command (via manager)
       const args = this.manager.buildListBranchesArgs();
+      const command = this.buildCommand(args);
 
-      // Execute command (via adapter)
-      const result = await this.adapter.execute(args[0], args.slice(1), { cwd: repoPath });
+      // Execute command (via SessionManager)
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, repoPath);
+
+      if (!execResult.success) {
+        return execResult as ServiceResult<string[]>;
+      }
+
+      const result = execResult.data;
 
       if (result.exitCode !== 0) {
         return {

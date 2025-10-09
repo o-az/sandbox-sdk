@@ -12,7 +12,7 @@
  * - Target directory generation
  * - Error code determination
  *
- * NO I/O operations - all infrastructure delegated to BunProcessAdapter
+ * NO I/O operations - all infrastructure delegated to SessionManager via GitService
  */
 
 import type { CloneOptions } from '../core/types';

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { BunProcessAdapter, ExecutionResult } from '@sandbox-container/adapters/bun-process-adapter';
-import type { CloneOptions, Logger } from '@sandbox-container/core/types';
+import type { CloneOptions, Logger, ServiceResult } from '@sandbox-container/core/types';
 import { GitService, type SecurityService } from '@sandbox-container/services/git-service';
+import type { RawExecResult, SessionManager } from '@sandbox-container/services/session-manager';
 import { mocked } from '../test-utils';
 
 // Properly typed mock dependencies
@@ -18,14 +18,17 @@ const mockLogger: Logger = {
   debug: vi.fn(),
 };
 
-// Properly typed mock BunProcessAdapter
-const mockAdapter: BunProcessAdapter = {
-  execute: vi.fn(),
-  spawn: vi.fn(),
-} as unknown as BunProcessAdapter;
+// Properly typed mock SessionManager
+const mockSessionManager: Partial<SessionManager> = {
+  executeInSession: vi.fn(),
+  executeStreamInSession: vi.fn(),
+  killCommand: vi.fn(),
+  setEnvVars: vi.fn(),
+  getSession: vi.fn(),
+  createSession: vi.fn(),
+};
 
 describe('GitService', () => {
-  let GitServiceClass: typeof GitService;
   let gitService: GitService;
 
   beforeEach(async () => {
@@ -42,49 +45,86 @@ describe('GitService', () => {
       errors: []
     });
 
-    gitService = new GitService(mockSecurityService, mockLogger, mockAdapter);
+    gitService = new GitService(
+      mockSecurityService,
+      mockLogger,
+      mockSessionManager as SessionManager
+    );
   });
 
   describe('cloneRepository', () => {
     it('should clone repository successfully with default options', async () => {
       // Mock successful git clone
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'Cloning into target-dir...',
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession)
+        .mockResolvedValueOnce({
+          success: true,
+          data: {
+            exitCode: 0,
+            stdout: 'Cloning into target-dir...',
+            stderr: '',
+          },
+        } as ServiceResult<RawExecResult>)
+        .mockResolvedValueOnce({
+          success: true,
+          data: {
+            exitCode: 0,
+            stdout: 'main\n',
+            stderr: '',
+          },
+        } as ServiceResult<RawExecResult>);
 
       const result = await gitService.cloneRepository('https://github.com/user/repo.git');
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.path).toMatch(/^\/tmp\/git-clone-repo-\d+-[a-z0-9]+$/);
+        expect(result.data.path).toBe('/workspace/repo');
         expect(result.data.branch).toBe('main');
       }
 
       // Verify security validations were called
       expect(mockSecurityService.validateGitUrl).toHaveBeenCalledWith('https://github.com/user/repo.git');
-      expect(mockSecurityService.validatePath).toHaveBeenCalledWith(
-        expect.stringMatching(/^\/tmp\/git-clone-repo-\d+-[a-z0-9]+$/)
+      expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/workspace/repo');
+
+      // Verify SessionManager was called for git clone
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        1,
+        'default',
+        'git clone https://github.com/user/repo.git /workspace/repo',
+        undefined
       );
 
-      // Verify git clone command was executed
-      expect(mockAdapter.execute).toHaveBeenCalledWith(
-        'git',
-        ['clone', 'https://github.com/user/repo.git', expect.stringMatching(/^\/tmp\/git-clone-repo-\d+-[a-z0-9]+$/)]
+      // Verify SessionManager was called for getting current branch
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        2,
+        'default',
+        'git branch --show-current',
+        '/workspace/repo'
       );
     });
 
     it('should clone repository with custom branch and target directory', async () => {
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'Cloning...',
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession)
+        .mockResolvedValueOnce({
+          success: true,
+          data: {
+            exitCode: 0,
+            stdout: 'Cloning...',
+            stderr: '',
+          },
+        } as ServiceResult<RawExecResult>)
+        .mockResolvedValueOnce({
+          success: true,
+          data: {
+            exitCode: 0,
+            stdout: 'develop\n',
+            stderr: '',
+          },
+        } as ServiceResult<RawExecResult>);
 
       const options: CloneOptions = {
         branch: 'develop',
-        targetDir: '/tmp/custom-target'
+        targetDir: '/tmp/custom-target',
+        sessionId: 'session-123',
       };
 
       const result = await gitService.cloneRepository('https://github.com/user/repo.git', options);
@@ -96,9 +136,11 @@ describe('GitService', () => {
       }
 
       // Verify git clone command includes branch option
-      expect(mockAdapter.execute).toHaveBeenCalledWith(
-        'git',
-        ['clone', '--branch', 'develop', 'https://github.com/user/repo.git', '/tmp/custom-target']
+      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
+        1,
+        'session-123',
+        'git clone --branch develop https://github.com/user/repo.git /tmp/custom-target',
+        undefined
       );
     });
 
@@ -121,7 +163,7 @@ describe('GitService', () => {
       }
 
       // Should not attempt git clone
-      expect(mockAdapter.execute).not.toHaveBeenCalled();
+      expect(mockSessionManager.executeInSession).not.toHaveBeenCalled();
     });
 
     it('should return error when target directory validation fails', async () => {
@@ -142,15 +184,18 @@ describe('GitService', () => {
       }
 
       // Should not attempt git clone
-      expect(mockAdapter.execute).not.toHaveBeenCalled();
+      expect(mockSessionManager.executeInSession).not.toHaveBeenCalled();
     });
 
     it('should return error when git clone command fails', async () => {
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 128,
-        stdout: '',
-        stderr: 'fatal: repository not found',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 128,
+          stdout: '',
+          stderr: 'fatal: repository not found',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await gitService.cloneRepository('https://github.com/user/nonexistent.git');
 
@@ -162,37 +207,44 @@ describe('GitService', () => {
       }
     });
 
-    it('should handle spawn errors gracefully', async () => {
-      const spawnError = new Error('Command not found');
-      mocked(mockAdapter.execute).mockRejectedValue(spawnError);
+    it('should handle execution errors gracefully', async () => {
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: false,
+        error: {
+          message: 'Session execution failed',
+          code: 'SESSION_ERROR',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await gitService.cloneRepository('https://github.com/user/repo.git');
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('GIT_CLONE_ERROR');
-        expect(result.error.details?.originalError).toBe('Command not found');
+        expect(result.error.code).toBe('SESSION_ERROR');
       }
     });
   });
 
   describe('checkoutBranch', () => {
     it('should checkout branch successfully', async () => {
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'Switched to branch develop',
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: 'Switched to branch develop',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await gitService.checkoutBranch('/tmp/repo', 'develop');
+      const result = await gitService.checkoutBranch('/tmp/repo', 'develop', 'session-123');
 
       expect(result.success).toBe(true);
 
-      // Verify git checkout command was executed with correct cwd
-      expect(mockAdapter.execute).toHaveBeenCalledWith(
-        'git',
-        ['checkout', 'develop'],
-        { cwd: '/tmp/repo' }
+      // Verify SessionManager was called with correct parameters
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        'git checkout develop',
+        '/tmp/repo'
       );
     });
 
@@ -205,15 +257,18 @@ describe('GitService', () => {
         expect(result.error.message).toBe('Branch name cannot be empty');
       }
 
-      expect(mockAdapter.execute).not.toHaveBeenCalled();
+      expect(mockSessionManager.executeInSession).not.toHaveBeenCalled();
     });
 
     it('should return error when git checkout fails', async () => {
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 1,
-        stdout: '',
-        stderr: "error: pathspec 'nonexistent' did not match",
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 1,
+          stdout: '',
+          stderr: "error: pathspec 'nonexistent' did not match",
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await gitService.checkoutBranch('/tmp/repo', 'nonexistent');
 
@@ -227,23 +282,26 @@ describe('GitService', () => {
 
   describe('getCurrentBranch', () => {
     it('should return current branch successfully', async () => {
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'main\n',
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: 'main\n',
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await gitService.getCurrentBranch('/tmp/repo');
+      const result = await gitService.getCurrentBranch('/tmp/repo', 'session-123');
 
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data).toBe('main');
       }
 
-      expect(mockAdapter.execute).toHaveBeenCalledWith(
-        'git',
-        ['branch', '--show-current'],
-        { cwd: '/tmp/repo' }
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        'git branch --show-current',
+        '/tmp/repo'
       );
     });
   });
@@ -258,13 +316,16 @@ describe('GitService', () => {
   remotes/origin/main
   remotes/origin/feature/auth`;
 
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 0,
-        stdout: branchOutput,
-        stderr: '',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 0,
+          stdout: branchOutput,
+          stderr: '',
+        },
+      } as ServiceResult<RawExecResult>);
 
-      const result = await gitService.listBranches('/tmp/repo');
+      const result = await gitService.listBranches('/tmp/repo', 'session-123');
 
       expect(result.success).toBe(true);
       if (result.success) {
@@ -280,19 +341,22 @@ describe('GitService', () => {
         expect(result.data.filter(b => b === 'main')).toHaveLength(1);
       }
 
-      expect(mockAdapter.execute).toHaveBeenCalledWith(
-        'git',
-        ['branch', '-a'],
-        { cwd: '/tmp/repo' }
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        'git branch -a',
+        '/tmp/repo'
       );
     });
 
     it('should return error when git branch command fails', async () => {
-      mocked(mockAdapter.execute).mockResolvedValue({
-        exitCode: 128,
-        stdout: '',
-        stderr: 'fatal: not a git repository',
-      });
+      mocked(mockSessionManager.executeInSession).mockResolvedValue({
+        success: true,
+        data: {
+          exitCode: 128,
+          stdout: '',
+          stderr: 'fatal: not a git repository',
+        },
+      } as ServiceResult<RawExecResult>);
 
       const result = await gitService.listBranches('/tmp/not-a-repo');
 
