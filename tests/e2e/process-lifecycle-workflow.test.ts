@@ -291,7 +291,7 @@ const server = Bun.serve({
   fetch(req) {
     return new Response(JSON.stringify({ message: "Hello from Bun!" }), {
       status: 200,
-      headers,
+      headers: { 'Content-Type': 'application/json' },
     });
   },
 });
@@ -431,7 +431,7 @@ const server = Bun.serve({
     if (url.pathname === '/health') {
       return new Response(JSON.stringify({ status: 'ok' }), {
         status: 200,
-        headers,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
     return new Response('Not found', { status: 404 });
@@ -505,6 +505,7 @@ console.log("Server listening on port 8080");
       // Step 6: Get process logs
       const logsResponse = await fetch(`${workerUrl}/api/process/${processId}/logs`, {
         method: 'GET',
+        headers,
       });
 
       expect(logsResponse.status).toBe(200);
