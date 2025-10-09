@@ -12,6 +12,19 @@
  * - Exit code file signals completion (watched via fs.watch)
  * - Session directory for temp files (cleaned up on destroy)
  *
+ * State Persistence:
+ * - Commands execute in the session's shell context (using {} grouping, not () subshells)
+ * - Working directory changes (cd) persist across exec() calls
+ * - Environment variables (export) persist across exec() calls
+ * - Shell functions defined in one exec() are available in subsequent calls
+ * - Like a terminal: running 'exit' will terminate the persistent shell
+ *
+ * Robustness Features:
+ * - Trap-based cleanup ensures FIFO removal on signals (EXIT, HUP, INT, TERM)
+ * - Pre-cleanup prevents "file exists" errors from previous failures
+ * - Fail-fast error handling for mkfifo failures (permissions, disk space)
+ * - Specific PID waiting prevents interference from unrelated background jobs
+ *
  * Inspired by Daytona's approach: https://github.com/daytonaio/daytona
  */
 
@@ -379,18 +392,27 @@ export class Session {
     const safeStderrPipe = this.escapeShellPath(stderrPipe);
     const safeLogFile = this.escapeShellPath(logFile);
     const safeExitCodeFile = this.escapeShellPath(exitCodeFile);
+    const safeSessionDir = this.escapeShellPath(this.sessionDir!);
 
-    // Build the FIFO script
-    // Note: Using subshell with {} to ensure proper cleanup even if command fails
+    // Build the FIFO script with Daytona-inspired robustness
     let script = `{
-  # Create FIFO pipes
-  mkfifo ${safeStdoutPipe} ${safeStderrPipe}
+  log=${safeLogFile}
+  dir=${safeSessionDir}
+  sp=${safeStdoutPipe}
+  ep=${safeStderrPipe}
 
-  # Label stdout with binary prefix in background
-  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < ${safeStdoutPipe}) >> ${safeLogFile} &
+  # Cleanup function (called on exit or signals)
+  cleanup() { rm -f "$sp" "$ep"; }
+  trap 'cleanup' EXIT HUP INT TERM
 
-  # Label stderr with binary prefix in background
-  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < ${safeStderrPipe}) >> ${safeLogFile} &
+  # Pre-cleanup and create FIFOs with error handling
+  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1
+
+  # Label stdout with binary prefix in background (capture PID)
+  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!
+
+  # Label stderr with binary prefix in background (capture PID)
+  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!
 
 `;
 
@@ -400,37 +422,37 @@ export class Session {
       script += `  # Save and change directory\n`;
       script += `  PREV_DIR=$(pwd)\n`;
       script += `  if cd ${safeCwd}; then\n`;
-      script += `    # Execute command in subshell (prevents 'exit' from killing session)\n`;
-      script += `    ( ${command}; ) > ${safeStdoutPipe} 2> ${safeStderrPipe}\n`;
+      script += `    # Execute command in current shell (enables state persistence)\n`;
+      script += `    { ${command}; } > "$sp" 2> "$ep"\n`;
       script += `    EXIT_CODE=$?\n`;
       script += `    # Restore directory\n`;
       script += `    cd "$PREV_DIR"\n`;
       script += `  else\n`;
       script += `    # Failed to change directory - close both pipes to unblock readers\n`;
-      script += `    echo "Failed to change directory to ${safeCwd}" > ${safeStderrPipe}\n`;
+      script += `    echo "Failed to change directory to ${safeCwd}" > "$ep"\n`;
       script += `    # Close stdout pipe (no output expected)\n`;
-      script += `    : > ${safeStdoutPipe}\n`;
+      script += `    : > "$sp"\n`;
       script += `    EXIT_CODE=1\n`;
       script += `  fi\n`;
       script += `  \n`;
     } else {
       // Execute command in current directory
-      // Use a true subshell () to prevent 'exit' from killing the persistent shell
-      script += `  # Execute command in subshell (prevents 'exit' from killing session)\n`;
-      script += `  ( ${command}; ) > ${safeStdoutPipe} 2> ${safeStderrPipe}\n`;
+      // Use command grouping {} to enable state persistence (cd, export, functions)
+      script += `  # Execute command in current shell (enables state persistence)\n`;
+      script += `  { ${command}; } > "$sp" 2> "$ep"\n`;
       script += `  EXIT_CODE=$?\n`;
       script += `  \n`;
     }
 
-    // Wait for background processes, then write exit code and cleanup
-    script += `  # Wait for background processes to finish writing to log file\n`;
-    script += `  wait\n`;
+    // Wait for specific labeler processes, then write exit code and cleanup
+    script += `  # Wait for specific labeler processes to finish (not all background jobs)\n`;
+    script += `  wait "$r1" "$r2"\n`;
     script += `  \n`;
-    script += `  # Write exit code (AFTER background processes finish)\n`;
+    script += `  # Write exit code (AFTER labeler processes finish)\n`;
     script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
     script += `  \n`;
-    script += `  # Remove FIFO pipes\n`;
-    script += `  rm -f ${safeStdoutPipe} ${safeStderrPipe}\n`;
+    script += `  # Explicit cleanup (redundant with trap, but ensures cleanup)\n`;
+    script += `  cleanup\n`;
     script += `}`;
 
     return script;

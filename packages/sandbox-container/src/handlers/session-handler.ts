@@ -39,27 +39,23 @@ export class SessionHandler extends BaseHandler<Request, Response> {
     let sessionId: string;
     let env: Record<string, string>;
     let cwd: string;
-    let isolation: boolean;
 
     try {
       const body = await request.json() as any;
       sessionId = body.id || this.generateSessionId();
       env = body.env || {};
       cwd = body.cwd || '/workspace';
-      isolation = body.isolation !== undefined ? body.isolation : true;
     } catch {
       // If no body or invalid JSON, use defaults
       sessionId = this.generateSessionId();
       env = {};
       cwd = '/workspace';
-      isolation = true;
     }
 
     const result = await this.sessionManager.createSession({
       id: sessionId,
       env,
       cwd,
-      isolation
     });
 
     if (result.success) {

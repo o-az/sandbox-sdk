@@ -24,7 +24,6 @@ export interface CreateSessionRequest {
   id: string;
   env?: Record<string, string>;
   cwd?: string;
-  isolation?: boolean;
 }
 
 /**
@@ -79,7 +78,7 @@ export class UtilityClient extends BaseHttpClient {
 
   /**
    * Create a new execution session
-   * @param options - Session configuration (id, env, cwd, isolation)
+   * @param options - Session configuration (id, env, cwd)
    */
   async createSession(options: CreateSessionRequest): Promise<CreateSessionResponse> {
     try {

@@ -98,7 +98,6 @@ describe('Sandbox - Automatic Session Management', () => {
         id: expect.stringMatching(/^sandbox-/),
         env: {},
         cwd: '/workspace',
-        isolation: true,
       });
 
       expect(sandbox.client.commands.execute).toHaveBeenCalledWith(
@@ -178,7 +177,6 @@ describe('Sandbox - Automatic Session Management', () => {
         id: 'sandbox-my-sandbox',
         env: {},
         cwd: '/workspace',
-        isolation: true,
       });
     });
   });
@@ -201,7 +199,6 @@ describe('Sandbox - Automatic Session Management', () => {
         id: 'custom-session-123',
         env: { NODE_ENV: 'test' },
         cwd: '/test',
-        isolation: undefined,
       });
 
       expect(session.id).toBe('custom-session-123');
@@ -283,7 +280,6 @@ describe('Sandbox - Automatic Session Management', () => {
         id: expect.stringMatching(/^session-/),
         env: undefined,
         cwd: undefined,
-        isolation: undefined,
       });
     });
   });
@@ -380,7 +376,6 @@ describe('Sandbox - Automatic Session Management', () => {
         id: expect.any(String),
         env: {},
         cwd: '/workspace',
-        isolation: true,
       });
     });
 
@@ -393,7 +388,6 @@ describe('Sandbox - Automatic Session Management', () => {
         id: expect.any(String),
         env: { NODE_ENV: 'production', DEBUG: 'true' },
         cwd: '/workspace',
-        isolation: true,
       });
     });
   });

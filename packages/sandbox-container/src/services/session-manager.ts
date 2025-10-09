@@ -10,28 +10,9 @@ import { type RawExecResult, Session, type SessionOptions } from '../session';
  */
 export class SessionManager {
   private sessions = new Map<string, Session>();
-  private defaultSessionId = 'default';
 
   constructor(private logger: Logger) {
     this.logger.info('SessionManager initialized');
-  }
-
-  /**
-   * Get or create the default session for this sandbox
-   */
-  async getDefaultSession(): Promise<ServiceResult<Session>> {
-    const existing = this.sessions.get(this.defaultSessionId);
-    if (existing) {
-      return {
-        success: true,
-        data: existing,
-      };
-    }
-
-    return await this.createSession({
-      id: this.defaultSessionId,
-      cwd: '/workspace',
-    });
   }
 
   /**

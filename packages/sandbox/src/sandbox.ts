@@ -154,7 +154,6 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
         id: sessionId,
         env: this.envVars || {},
         cwd: '/workspace',
-        isolation: true
       });
 
       this.defaultSession = sessionId;
@@ -782,10 +781,32 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       id: sessionId,
       env: options?.env,
       cwd: options?.cwd,
-      isolation: options?.isolation
     });
 
     // Return wrapper that binds sessionId to all operations
+    return this.getSessionWrapper(sessionId);
+  }
+
+  /**
+   * Get an existing session by ID
+   * Returns ExecutionSession wrapper bound to the specified session
+   *
+   * This is useful for retrieving sessions across different requests/contexts
+   * without storing the ExecutionSession object (which has RPC lifecycle limitations)
+   *
+   * @param sessionId - The ID of an existing session
+   * @returns ExecutionSession wrapper bound to the session
+   */
+  async getSession(sessionId: string): Promise<ExecutionSession> {
+    // No need to verify session exists in container - operations will fail naturally if it doesn't
+    return this.getSessionWrapper(sessionId);
+  }
+
+  /**
+   * Internal helper to create ExecutionSession wrapper for a given sessionId
+   * Used by both createSession and getSession
+   */
+  private getSessionWrapper(sessionId: string): ExecutionSession {
     return {
       id: sessionId,
 

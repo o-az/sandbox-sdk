@@ -19,10 +19,6 @@ async function parseBody(request: Request): Promise<any> {
   }
 }
 
-// Store explicit sessions by ID
-// Key: `${sandboxId}:${sessionId}` to namespace sessions per sandbox
-const sessions = new Map<string, ExecutionSession>();
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Route requests to exposed container ports via their preview URLs
@@ -38,13 +34,15 @@ export default {
     const sandbox = getSandbox(env.Sandbox, sandboxId) as Sandbox<Env>;
 
     // Get session ID from header (optional)
-    // If provided, use explicit session instead of default sandbox session
+    // If provided, retrieve the session fresh from the Sandbox DO on each request
     const sessionId = request.headers.get('X-Session-Id');
-    const sessionKey = sessionId ? `${sandboxId}:${sessionId}` : null;
 
-    // Executor pattern: use session if specified, otherwise use sandbox
-    // ExecutionSession has same API as Sandbox (except port/session management)
-    const executor = (sessionKey && sessions.get(sessionKey)) || sandbox;
+    // Executor pattern: retrieve session fresh if specified, otherwise use sandbox
+    // Important: We get the session fresh on EVERY request to respect RPC lifecycle
+    // The ExecutionSession stub is only valid during this request's execution context
+    const executor = sessionId
+      ? await sandbox.getSession(sessionId)
+      : sandbox;
 
     try {
       // Health check
@@ -57,8 +55,7 @@ export default {
       // Session management
       if (url.pathname === '/api/session/create' && request.method === 'POST') {
         const session = await sandbox.createSession(body);
-        const sessionKey = `${sandboxId}:${session.id}`;
-        sessions.set(sessionKey, session);
+        // Note: We don't store the session - it will be retrieved fresh via getSession() on each request
         return new Response(JSON.stringify({ success: true, sessionId: session.id }), {
           headers: { 'Content-Type': 'application/json' },
         });
@@ -216,7 +213,7 @@ export default {
 
       // Port exposure (ONLY works with sandbox - sessions don't expose ports)
       if (url.pathname === '/api/port/expose' && request.method === 'POST') {
-        if (sessionKey) {
+        if (sessionId) {
           return new Response(JSON.stringify({
             error: 'Port exposure not supported for explicit sessions. Use default sandbox.'
           }), {
@@ -237,7 +234,7 @@ export default {
 
       // Port unexpose (ONLY works with sandbox - sessions don't expose ports)
       if (url.pathname.startsWith('/api/exposed-ports/') && request.method === 'DELETE') {
-        if (sessionKey) {
+        if (sessionId) {
           return new Response(JSON.stringify({
             error: 'Port exposure not supported for explicit sessions. Use default sandbox.'
           }), {
