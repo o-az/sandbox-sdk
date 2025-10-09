@@ -168,7 +168,26 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
         })}\n\n`;
         controller.enqueue(new TextEncoder().encode(initialData));
 
-        // Set up output listeners
+        // Send any already-buffered stdout/stderr (for fast-completing processes)
+        if (process.stdout) {
+          const stdoutData = `data: ${JSON.stringify({
+            type: 'stdout',
+            data: process.stdout,
+            timestamp: new Date().toISOString(),
+          })}\n\n`;
+          controller.enqueue(new TextEncoder().encode(stdoutData));
+        }
+
+        if (process.stderr) {
+          const stderrData = `data: ${JSON.stringify({
+            type: 'stderr',
+            data: process.stderr,
+            timestamp: new Date().toISOString(),
+          })}\n\n`;
+          controller.enqueue(new TextEncoder().encode(stderrData));
+        }
+
+        // Set up output listeners for future output
         const outputListener = (stream: 'stdout' | 'stderr', data: string) => {
           const eventData = `data: ${JSON.stringify({
             type: stream, // 'stdout' or 'stderr' directly
@@ -194,6 +213,17 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
         // Add listeners
         process.outputListeners.add(outputListener);
         process.statusListeners.add(statusListener);
+
+        // If process already completed, send complete event immediately
+        if (['completed', 'failed', 'killed', 'error'].includes(process.status)) {
+          const finalData = `data: ${JSON.stringify({
+            type: 'complete',
+            exitCode: process.exitCode,
+            timestamp: new Date().toISOString(),
+          })}\n\n`;
+          controller.enqueue(new TextEncoder().encode(finalData));
+          controller.close();
+        }
 
         // Cleanup when stream is cancelled
         return () => {

@@ -35,6 +35,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@container': path.resolve(__dirname, 'packages/sandbox-container/src'),
+      '@sandbox-utils': path.resolve(__dirname, 'packages/sandbox/src'),
     },
   },
 });

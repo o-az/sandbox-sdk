@@ -1,0 +1,418 @@
+import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { WranglerDevRunner } from './helpers/wrangler-runner';
+import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { parseSSEStream } from '@sandbox-utils/sse-parser';
+
+/**
+ * Streaming Operations Workflow Integration Tests
+ *
+ * Tests the README "AsyncIterable Streaming Support" (lines 636-709):
+ * - Real-time output streaming via execStream()
+ * - Event types: start, stdout, stderr, complete, error
+ * - State persistence after streaming commands
+ * - Error handling during streaming
+ * - Concurrent streaming operations
+ *
+ * This validates the execStream() method which provides SSE-based
+ * streaming for real-time command output.
+ */
+describe('Streaming Operations Workflow', () => {
+  describe('local', () => {
+    let runner: WranglerDevRunner;
+    let workerUrl: string;
+
+    beforeAll(async () => {
+      runner = new WranglerDevRunner({
+        cwd: 'tests/e2e/test-worker',
+      });
+      workerUrl = await runner.getUrl();
+    });
+
+    afterAll(async () => {
+      if (runner) {
+        await runner.stop();
+      }
+    });
+
+    /**
+     * Helper to collect events from streaming response using SDK's parseSSEStream utility
+     */
+    async function collectSSEEvents(response: Response, maxEvents: number = 50): Promise<any[]> {
+      if (!response.body) {
+        throw new Error('No readable stream in response');
+      }
+
+      console.log('[Test] Starting to consume stream...');
+      const events: any[] = [];
+      const abortController = new AbortController();
+
+      try {
+        for await (const event of parseSSEStream(response.body, abortController.signal)) {
+          console.log('[Test] Received event:', event.type);
+          events.push(event);
+
+          // Stop after complete or error event
+          if (event.type === 'complete' || event.type === 'error') {
+            abortController.abort();
+            break;
+          }
+
+          // Stop if we've collected enough events
+          if (events.length >= maxEvents) {
+            abortController.abort();
+            break;
+          }
+        }
+      } catch (error) {
+        // Ignore abort errors (expected when we stop early)
+        if (error instanceof Error && error.message !== 'Operation was aborted') {
+          throw error;
+        }
+      }
+
+      console.log('[Test] Collected', events.length, 'events total');
+      return events;
+    }
+
+    test('should stream stdout events in real-time', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Stream a command that outputs multiple lines
+      const streamResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'echo "Line 1"; echo "Line 2"; echo "Line 3"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      expect(streamResponse.status).toBe(200);
+      expect(streamResponse.headers.get('content-type')).toBe('text/event-stream');
+
+      // Collect events from stream
+      const events = await collectSSEEvents(streamResponse);
+
+      // Verify we got events
+      expect(events.length).toBeGreaterThan(0);
+
+      // Should have start event
+      const startEvent = events.find((e) => e.type === 'start');
+      expect(startEvent).toBeDefined();
+      expect(startEvent.command).toContain('echo');
+
+      // Should have stdout events
+      const stdoutEvents = events.filter((e) => e.type === 'stdout');
+      expect(stdoutEvents.length).toBeGreaterThan(0);
+
+      // Combine stdout data
+      const output = stdoutEvents.map((e) => e.data).join('');
+      expect(output).toContain('Line 1');
+      expect(output).toContain('Line 2');
+      expect(output).toContain('Line 3');
+
+      // Should have complete event
+      const completeEvent = events.find((e) => e.type === 'complete');
+      expect(completeEvent).toBeDefined();
+      expect(completeEvent.exitCode).toBe(0);
+    }, 60000);
+
+    test('should stream stderr events separately', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Stream a command that outputs to both stdout and stderr (wrap in bash -c for >&2)
+      const streamResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'bash -c "echo stdout message; echo stderr message >&2"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      expect(streamResponse.status).toBe(200);
+
+      const events = await collectSSEEvents(streamResponse);
+
+      // Should have both stdout and stderr events
+      const stdoutEvents = events.filter((e) => e.type === 'stdout');
+      const stderrEvents = events.filter((e) => e.type === 'stderr');
+
+      expect(stdoutEvents.length).toBeGreaterThan(0);
+      expect(stderrEvents.length).toBeGreaterThan(0);
+
+      // Verify data
+      const stdoutData = stdoutEvents.map((e) => e.data).join('');
+      const stderrData = stderrEvents.map((e) => e.data).join('');
+
+      expect(stdoutData).toContain('stdout message');
+      expect(stderrData).toContain('stderr message');
+
+      // Verify stdout doesn't contain stderr and vice versa
+      expect(stdoutData).not.toContain('stderr message');
+      expect(stderrData).not.toContain('stdout message');
+    }, 60000);
+
+    test('should include all event types: start, stdout, complete', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      const streamResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'echo "Hello Streaming"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      const events = await collectSSEEvents(streamResponse);
+
+      // Verify event types
+      const eventTypes = new Set(events.map((e) => e.type));
+
+      expect(eventTypes.has('start')).toBe(true);
+      expect(eventTypes.has('stdout')).toBe(true);
+      expect(eventTypes.has('complete')).toBe(true);
+
+      // Verify event order: start should be first, complete should be last
+      expect(events[0].type).toBe('start');
+      expect(events[events.length - 1].type).toBe('complete');
+
+      // Verify all events have timestamps
+      for (const event of events) {
+        expect(event.timestamp).toBeDefined();
+        expect(typeof event.timestamp).toBe('string');
+      }
+    }, 60000);
+
+    test('should handle command failures with non-zero exit code', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Stream a command that fails
+      const streamResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'false', // Always fails with exit code 1
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      const events = await collectSSEEvents(streamResponse);
+
+      // Should have complete event with non-zero exit code
+      const completeEvent = events.find((e) => e.type === 'complete');
+      expect(completeEvent).toBeDefined();
+      expect(completeEvent.exitCode).not.toBe(0);
+    }, 60000);
+
+    test('should reject invalid commands before streaming', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Initialize sandbox first
+      await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'echo "init"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      // Try to stream a nonexistent command (should fail before streaming starts)
+      const streamResponse = await fetch(`${workerUrl}/api/execStream`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: 'nonexistentcommand123',
+        }),
+      });
+
+      // Should return error status (400) before streaming starts
+      expect(streamResponse.status).toBe(400);
+    }, 60000);
+
+    test('should handle environment variables in streaming commands', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Stream a command that sets and uses a variable within the same bash invocation
+      const streamResponse1 = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'bash -c "STREAM_VAR=streaming-value; echo $STREAM_VAR"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      const events1 = await collectSSEEvents(streamResponse1);
+      const completeEvent1 = events1.find((e) => e.type === 'complete');
+      expect(completeEvent1?.exitCode).toBe(0);
+
+      // Verify the output shows the variable value
+      const stdoutEvents1 = events1.filter((e) => e.type === 'stdout');
+      const output1 = stdoutEvents1.map((e) => e.data).join('');
+      expect(output1).toContain('streaming-value');
+    }, 90000);
+
+    test('should handle long-running streaming commands', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Stream a command that outputs over time (wrap in bash -c for loop)
+      const streamResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'bash -c "for i in 1 2 3 4 5; do echo \\"Count: $i\\"; sleep 0.2; done"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      const events = await collectSSEEvents(streamResponse, 20);
+
+      // Should receive multiple stdout events over time
+      const stdoutEvents = events.filter((e) => e.type === 'stdout');
+      expect(stdoutEvents.length).toBeGreaterThanOrEqual(5);
+
+      // Verify we got all counts
+      const output = stdoutEvents.map((e) => e.data).join('');
+      for (let i = 1; i <= 5; i++) {
+        expect(output).toContain(`Count: ${i}`);
+      }
+
+      // Should complete successfully
+      const completeEvent = events.find((e) => e.type === 'complete');
+      expect(completeEvent).toBeDefined();
+      expect(completeEvent.exitCode).toBe(0);
+    }, 60000);
+
+    test('should support concurrent streaming operations', async () => {
+      const sandboxId = createSandboxId();
+      const headers = createTestHeaders(sandboxId);
+
+      // Initialize with first request
+      await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'echo "init"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      // Start two streaming commands concurrently
+      const stream1Promise = fetch(`${workerUrl}/api/execStream`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: 'echo "Stream 1"; sleep 1; echo "Stream 1 done"',
+        }),
+      });
+
+      const stream2Promise = fetch(`${workerUrl}/api/execStream`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: 'echo "Stream 2"; sleep 1; echo "Stream 2 done"',
+        }),
+      });
+
+      // Wait for both streams to start
+      const [stream1Response, stream2Response] = await Promise.all([stream1Promise, stream2Promise]);
+
+      expect(stream1Response.status).toBe(200);
+      expect(stream2Response.status).toBe(200);
+
+      // Collect events from both streams
+      const [events1, events2] = await Promise.all([
+        collectSSEEvents(stream1Response),
+        collectSSEEvents(stream2Response),
+      ]);
+
+      // Verify both completed successfully
+      const complete1 = events1.find((e) => e.type === 'complete');
+      const complete2 = events2.find((e) => e.type === 'complete');
+
+      expect(complete1).toBeDefined();
+      expect(complete1.exitCode).toBe(0);
+      expect(complete2).toBeDefined();
+      expect(complete2.exitCode).toBe(0);
+
+      // Verify outputs didn't mix
+      const output1 = events1.filter((e) => e.type === 'stdout').map((e) => e.data).join('');
+      const output2 = events2.filter((e) => e.type === 'stdout').map((e) => e.data).join('');
+
+      expect(output1).toContain('Stream 1');
+      expect(output1).not.toContain('Stream 2');
+      expect(output2).toContain('Stream 2');
+      expect(output2).not.toContain('Stream 1');
+    }, 90000);
+
+    test('should work with explicit sessions', async () => {
+      const sandboxId = createSandboxId();
+
+      // Create a session with environment variables
+      const sessionResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/session/create`, {
+          method: 'POST',
+          headers: createTestHeaders(sandboxId),
+          body: JSON.stringify({
+            env: {
+              SESSION_ID: 'test-session-streaming',
+              NODE_ENV: 'test',
+            },
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      const sessionData = await sessionResponse.json();
+      const sessionId = sessionData.sessionId;
+
+      // Stream a command in the session
+      const streamResponse = await fetch(`${workerUrl}/api/execStream`, {
+        method: 'POST',
+        headers: createTestHeaders(sandboxId, sessionId),
+        body: JSON.stringify({
+          command: 'echo "Session: $SESSION_ID, Env: $NODE_ENV"',
+        }),
+      });
+
+      const events = await collectSSEEvents(streamResponse);
+
+      // Verify output contains session environment variables
+      const stdoutEvents = events.filter((e) => e.type === 'stdout');
+      const output = stdoutEvents.map((e) => e.data).join('');
+
+      expect(output).toContain('Session: test-session-streaming');
+      expect(output).toContain('Env: test');
+
+      // Verify complete
+      const completeEvent = events.find((e) => e.type === 'complete');
+      expect(completeEvent?.exitCode).toBe(0);
+    }, 90000);
+  });
+});

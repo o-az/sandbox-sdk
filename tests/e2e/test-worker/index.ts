@@ -69,6 +69,23 @@ export default {
         });
       }
 
+      // Command execution with streaming (works with both sandbox and explicit sessions)
+      if (url.pathname === '/api/execStream' && request.method === 'POST') {
+        console.log('[TestWorker] execStream called for command:', body.command);
+        const startTime = Date.now();
+        const stream = await executor.execStream(body.command);
+        console.log('[TestWorker] Stream received in', Date.now() - startTime, 'ms');
+
+        // Return SSE stream directly
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
+      }
+
       // Git clone (works with both sandbox and explicit sessions)
       if (url.pathname === '/api/git/clone' && request.method === 'POST') {
         await executor.gitCheckout(body.repoUrl, {
