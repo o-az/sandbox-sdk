@@ -1,5 +1,70 @@
 # Command Execution Consolidation Plan
 
+## ✅ Implementation Status
+
+**Clean Break Consolidation - Complete!**
+
+### Completed Phases
+
+- ✅ **Phase 1: Enhanced Session class with command killing** (COMPLETE)
+  - Added `CommandHandle` interface and `runningCommands` map
+  - Modified FIFO script to capture command PID via background execution
+  - Added `killCommand()` and `getRunningCommandIds()` methods
+  - Updated `exec()` and `execStream()` to track/untrack commands
+
+- ✅ **Phase 2: Added SessionManager.killCommand() wrapper** (COMPLETE)
+  - Delegates to Session.killCommand()
+  - Returns proper ServiceResult<void>
+  - Handles session not found errors
+
+- ✅ **Phase 3: Made SessionManager required** (COMPLETE)
+  - Changed constructor from `sessionManager?` to `sessionManager` (required)
+  - Removed fallback path in `executeCommand()`
+  - All execution now uses SessionManager
+
+- ✅ **Phase 4: Added ProcessService.executeCommandStream()** (COMPLETE)
+  - Uses SessionManager.executeStreamInSession()
+  - Creates ProcessRecord with `commandHandle` instead of `subprocess`
+  - Routes events to process record listeners
+
+- ✅ **Phase 5: Updated startProcess()** (COMPLETE)
+  - Now simply calls `executeCommandStream()`
+  - Unified execution model - same implementation
+
+- ✅ **Phase 6: Updated killing and streaming methods** (COMPLETE)
+  - `killProcess()` uses SessionManager.killCommand() exclusively
+  - `streamProcessLogs()` creates stream from listeners (no subprocess)
+  - All legacy subprocess paths removed
+
+- ✅ **Phase 7: Complete clean break** (COMPLETE)
+  - Removed `subprocess` field from ProcessRecord type
+  - Removed all subprocess handling from InMemoryProcessStore
+  - Removed BunProcessAdapter dependency from ProcessService
+  - Removed Subprocess import from core/types.ts
+  - Zero divergent code paths remaining!
+
+### Remaining Work
+
+- ⏳ **Phase 8: Update tests** (IN PROGRESS)
+  - Need to create mock SessionManager for tests
+  - Update ProcessService instantiation in tests
+  - Remove subprocess-related test expectations
+
+- ⏳ **Phase 9: Verification** (PENDING)
+  - Run `npm run build`
+  - Run `npm run test:unit`
+  - Run `npm run test:container`
+  - Run `npm run test:e2e`
+  - Verify all 9/9 streaming operation tests pass
+
+### Key Decisions Made
+
+1. **Clean Break over Backward Compatibility**: Removed all subprocess fields and legacy paths completely. This is safe because containers restart on deployment.
+
+2. **SessionManager for Everything**: ALL processes (commands and background) use SessionManager for unified execution with session state.
+
+3. **No Test-Only Code**: ProcessService now requires SessionManager - tests must use production code paths.
+
 ## Problem Statement
 
 The container runtime has two divergent execution paths that cause inconsistent behavior:

@@ -1,7 +1,5 @@
 // Bun-optimized Process Management Service
 
-import type { Subprocess } from 'bun';
-import { BunProcessAdapter } from '../adapters/bun-process-adapter';
 import type {
   CommandResult,
   Logger,
@@ -51,15 +49,8 @@ export class InMemoryProcessStore implements ProcessStore {
   }
 
   async delete(id: string): Promise<void> {
-    const process = this.processes.get(id);
-    if (process?.subprocess) {
-      // Kill the subprocess if it's still running
-      try {
-        process.subprocess.kill();
-      } catch (error) {
-        console.warn(`Failed to kill subprocess ${id}:`, error);
-      }
-    }
+    // Note: ProcessService is responsible for killing processes via SessionManager
+    // This method only removes the record from storage
     this.processes.delete(id);
   }
 
@@ -89,16 +80,8 @@ export class InMemoryProcessStore implements ProcessStore {
 
   // Helper methods for testing
   clear(): void {
-    // Kill all running processes first
-    for (const process of Array.from(this.processes.values())) {
-      if (process.subprocess) {
-        try {
-          process.subprocess.kill();
-        } catch (error) {
-          console.warn(`Failed to kill subprocess ${process.id}:`, error);
-        }
-      }
-    }
+    // Note: Tests should call ProcessService.killAllProcesses() first if needed
+    // This method only clears the in-memory storage
     this.processes.clear();
   }
 
@@ -110,22 +93,82 @@ export class InMemoryProcessStore implements ProcessStore {
 export class ProcessService {
   private cleanupInterval: Timer | null = null;
   private manager: ProcessManager;
-  private adapter: BunProcessAdapter;
 
   constructor(
     private store: ProcessStore,
     private logger: Logger,
-    private sessionManager?: SessionManager,
-    adapter?: BunProcessAdapter  // Injectable for testing
+    private sessionManager: SessionManager
   ) {
     this.manager = new ProcessManager();
-    this.adapter = adapter || new BunProcessAdapter();
 
     // Start cleanup process every 30 minutes
     this.startCleanupProcess();
   }
 
+  /**
+   * Start a background process via SessionManager
+   * Semantically identical to executeCommandStream() - both use SessionManager
+   * The difference is conceptual: startProcess() runs in background for long-lived processes
+   */
   async startProcess(command: string, options: ProcessOptions = {}): Promise<ServiceResult<ProcessRecord>> {
+    this.logger.info('Starting background process via SessionManager', { command, options });
+    return this.executeCommandStream(command, options);
+  }
+
+  async executeCommand(command: string, options: ProcessOptions = {}): Promise<ServiceResult<CommandResult>> {
+    try {
+      this.logger.info('Executing command', { command, options });
+
+      // Always use SessionManager for execution (unified model)
+      const sessionId = options.sessionId || 'default';
+      const result = await this.sessionManager.executeInSession(
+        sessionId,
+        command,
+        options.cwd
+      );
+
+      if (!result.success) {
+        return result as ServiceResult<CommandResult>;
+      }
+
+      // Convert RawExecResult to CommandResult
+      const commandResult: CommandResult = {
+        success: result.data.exitCode === 0,
+        exitCode: result.data.exitCode,
+        stdout: result.data.stdout,
+        stderr: result.data.stderr,
+      };
+
+      this.logger.info('Command executed successfully', {
+        command,
+        exitCode: commandResult.exitCode,
+        success: commandResult.success
+      });
+
+      return {
+        success: true,
+        data: commandResult,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to execute command', error instanceof Error ? error : undefined, { command, options });
+
+      return {
+        success: false,
+        error: {
+          message: 'Failed to execute command',
+          code: 'COMMAND_EXEC_ERROR',
+          details: { command, originalError: errorMessage },
+        },
+      };
+    }
+  }
+
+  /**
+   * Execute a command with streaming output via SessionManager
+   * Used by both execStream() and startProcess()
+   */
+  async executeCommandStream(command: string, options: ProcessOptions = {}): Promise<ServiceResult<ProcessRecord>> {
     try {
       // 1. Validate command (business logic via manager)
       const validation = this.manager.validateCommand(command);
@@ -139,92 +182,90 @@ export class ProcessService {
         };
       }
 
-      // 2. Parse command (business logic via manager)
-      const { executable, args } = this.manager.parseCommand(command);
+      this.logger.info('Starting streaming command execution', { command, options });
 
-      this.logger.info('Starting process', { command, options });
+      // 2. Create process record (without subprocess)
+      const processRecordData = this.manager.createProcessRecord(command, undefined, options);
 
-      // 3. Spawn process (infrastructure via adapter)
-      // Filter out undefined values from process.env to match Record<string, string> type
-      const envWithoutUndefined = Object.fromEntries(
-        Object.entries(process.env).filter(([, v]) => v !== undefined)
-      ) as Record<string, string>;
-
-      const spawnResult = this.adapter.spawn(executable, args, {
-        stdout: 'pipe',
-        stderr: 'pipe',
-        stdin: 'pipe',
-        cwd: options.cwd || process.cwd(),
-        env: { ...envWithoutUndefined, ...options.env },
-      });
-
-      // 4. Create process record (business logic via manager)
-      const processRecordData = this.manager.createProcessRecord(command, spawnResult.pid, options);
-
-      // 5. Build full process record with subprocess
+      // 3. Build full process record with commandHandle instead of subprocess
+      const sessionId = options.sessionId || 'default';
       const processRecord: ProcessRecord = {
         ...processRecordData,
-        subprocess: spawnResult.subprocess,
+        commandHandle: {
+          sessionId,
+          commandId: processRecordData.id,  // Use process ID as command ID
+        },
       };
 
-      // 6. Set up stream handling (infrastructure via adapter)
-      this.adapter.handleStreams(spawnResult.subprocess, {
-        onStdout: (data) => {
-          processRecord.stdout += data;
-          processRecord.outputListeners.forEach(listener => {
-            listener('stdout', data);
-          });
-        },
-        onStderr: (data) => {
-          processRecord.stderr += data;
-          processRecord.outputListeners.forEach(listener => {
-            listener('stderr', data);
-          });
-        },
-        onExit: (exitCode) => {
-          const status = this.manager.interpretExitCode(exitCode);
-          const endTime = new Date();
-
-          processRecord.status = status;
-          processRecord.endTime = endTime;
-          processRecord.exitCode = exitCode;
-
-          processRecord.statusListeners.forEach(listener => {
-            listener(status);
-          });
-
-          this.store.update(processRecord.id, {
-            status,
-            endTime,
-            exitCode,
-          }).catch(error => {
-            this.logger.error('Failed to update process status', error, { processId: processRecord.id });
-          });
-
-          this.logger.info('Process exited', {
-            processId: processRecord.id,
-            exitCode,
-            status,
-            duration: endTime.getTime() - processRecord.startTime.getTime(),
-          });
-        },
-        onError: (error) => {
-          processRecord.status = 'error';
-          processRecord.endTime = new Date();
-          processRecord.statusListeners.forEach(listener => {
-            listener('error');
-          });
-
-          this.logger.error('Process error', error, { processId: processRecord.id });
-        },
-      });
-
-      // 7. Store record (data layer)
+      // 4. Store record (data layer)
       await this.store.create(processRecord);
 
-      this.logger.info('Process started successfully', {
+      // 5. Execute command via SessionManager with streaming
+      const streamResult = this.sessionManager.executeStreamInSession(
+        sessionId,
+        command,
+        (event) => {
+          // Route events to process record listeners
+          if (event.type === 'stdout') {
+            processRecord.stdout += event.data;
+            processRecord.outputListeners.forEach(listener => {
+              listener('stdout', event.data);
+            });
+          } else if (event.type === 'stderr') {
+            processRecord.stderr += event.data;
+            processRecord.outputListeners.forEach(listener => {
+              listener('stderr', event.data);
+            });
+          } else if (event.type === 'complete') {
+            const exitCode = event.exitCode;
+            const status = this.manager.interpretExitCode(exitCode);
+            const endTime = new Date();
+
+            processRecord.status = status;
+            processRecord.endTime = endTime;
+            processRecord.exitCode = exitCode;
+
+            processRecord.statusListeners.forEach(listener => {
+              listener(status);
+            });
+
+            this.store.update(processRecord.id, {
+              status,
+              endTime,
+              exitCode,
+            }).catch(error => {
+              this.logger.error('Failed to update process status', error, { processId: processRecord.id });
+            });
+
+            this.logger.info('Streaming command completed', {
+              processId: processRecord.id,
+              exitCode,
+              status,
+              duration: endTime.getTime() - processRecord.startTime.getTime(),
+            });
+          } else if (event.type === 'error') {
+            processRecord.status = 'error';
+            processRecord.endTime = new Date();
+            processRecord.statusListeners.forEach(listener => {
+              listener('error');
+            });
+
+            this.logger.error('Streaming command error', new Error(event.error), { processId: processRecord.id });
+          }
+        },
+        options.cwd
+      );
+
+      // Execute streaming in background (don't await)
+      streamResult.catch(error => {
+        this.logger.error('Failed to execute streaming command', error, {
+          processId: processRecord.id,
+          command
+        });
+      });
+
+      this.logger.info('Streaming command started successfully', {
         processId: processRecord.id,
-        pid: spawnResult.pid
       });
 
       return {
@@ -233,95 +274,13 @@ export class ProcessService {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error('Failed to start process', error instanceof Error ? error : undefined, { command, options });
+      this.logger.error('Failed to start streaming command', error instanceof Error ? error : undefined, { command, options });
 
       return {
         success: false,
         error: {
-          message: 'Failed to start process',
-          code: 'PROCESS_START_ERROR',
-          details: { command, originalError: errorMessage },
-        },
-      };
-    }
-  }
-
-  async executeCommand(command: string, options: ProcessOptions = {}): Promise<ServiceResult<CommandResult>> {
-    try {
-      this.logger.info('Executing command', { command, options });
-
-      // If SessionManager is available, use isolated execution
-      if (this.sessionManager) {
-        const sessionId = options.sessionId || 'default';
-        const result = await this.sessionManager.executeInSession(
-          sessionId,
-          command,
-          options.cwd
-        );
-
-        if (!result.success) {
-          return result as ServiceResult<CommandResult>;
-        }
-
-        // Convert RawExecResult to CommandResult
-        const commandResult: CommandResult = {
-          success: result.data.exitCode === 0,
-          exitCode: result.data.exitCode,
-          stdout: result.data.stdout,
-          stderr: result.data.stderr,
-        };
-
-        this.logger.info('Command executed via isolation', {
-          command,
-          exitCode: commandResult.exitCode,
-          success: commandResult.success
-        });
-
-        return {
-          success: true,
-          data: commandResult,
-        };
-      }
-
-      // Fallback to adapter-based execution if no SessionManager
-      // Filter out undefined values from process.env to match Record<string, string> type
-      const envWithoutUndefined = Object.fromEntries(
-        Object.entries(process.env).filter(([, v]) => v !== undefined)
-      ) as Record<string, string>;
-
-      const executionResult = await this.adapter.executeShell(command, {
-        cwd: options.cwd || process.cwd(),
-        env: { ...envWithoutUndefined, ...options.env },
-      });
-
-      const result: CommandResult = {
-        success: executionResult.exitCode === 0,
-        exitCode: executionResult.exitCode,
-        stdout: executionResult.stdout,
-        stderr: executionResult.stderr,
-      };
-
-      this.logger.info('Command executed (no isolation)', {
-        command,
-        exitCode: result.exitCode,
-        success: result.success
-      });
-
-      // Service operation was successful regardless of command exit code
-      // Command failure is indicated in CommandResult.success, not ServiceResult.success
-      return {
-        success: true,
-        data: result,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error('Failed to execute command', error instanceof Error ? error : undefined, { command, options });
-
-      return {
-        success: false,
-        error: {
-          message: 'Failed to execute command',
-          code: 'COMMAND_EXEC_ERROR',
+          message: 'Failed to start streaming command',
+          code: 'COMMAND_STREAM_ERROR',
           details: { command, originalError: errorMessage },
         },
       };
@@ -375,21 +334,29 @@ export class ProcessService {
         };
       }
 
-      if (process.subprocess) {
-        // Use adapter to kill the process
-        this.adapter.kill(process.subprocess);
+      // All processes use SessionManager for unified execution model
+      if (!process.commandHandle) {
+        // Process has no commandHandle - likely already completed or malformed
+        return {
+          success: true,
+        };
+      }
 
+      const result = await this.sessionManager.killCommand(
+        process.commandHandle.sessionId,
+        process.commandHandle.commandId
+      );
+
+      if (result.success) {
         await this.store.update(id, {
           status: 'killed',
           endTime: new Date()
         });
 
-        this.logger.info('Process killed', { processId: id, pid: process.pid });
+        this.logger.info('Process killed', { processId: id });
       }
 
-      return {
-        success: true,
-      };
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to kill process', error instanceof Error ? error : undefined, { processId: id });
@@ -464,7 +431,7 @@ export class ProcessService {
   async streamProcessLogs(id: string): Promise<ServiceResult<ReadableStream>> {
     try {
       const process = await this.store.get(id);
-      
+
       if (!process) {
         return {
           success: false,
@@ -475,28 +442,48 @@ export class ProcessService {
         };
       }
 
-      const stdout = process.subprocess?.stdout;
+      // All processes use SessionManager - create stream from listeners and buffered output
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
 
-      // Check if stdout exists and is a ReadableStream (not a file descriptor number)
-      if (!stdout || typeof stdout === 'number') {
-        return {
-          success: false,
-          error: {
-            message: `Process ${id} has no stdout stream`,
-            code: 'NO_STDOUT_STREAM',
-          },
-        };
-      }
+          // Send already-buffered output
+          if (process.stdout) {
+            controller.enqueue(encoder.encode(process.stdout));
+          }
+          if (process.stderr) {
+            controller.enqueue(encoder.encode(process.stderr));
+          }
 
-      // Return Bun's native readable stream for better performance
+          // Set up listener for future output
+          const outputListener = (stream: 'stdout' | 'stderr', data: string) => {
+            controller.enqueue(encoder.encode(data));
+          };
+
+          const statusListener = (status: string) => {
+            if (['completed', 'failed', 'killed', 'error'].includes(status)) {
+              controller.close();
+            }
+          };
+
+          process.outputListeners.add(outputListener);
+          process.statusListeners.add(statusListener);
+
+          // If already completed, close immediately
+          if (['completed', 'failed', 'killed', 'error'].includes(process.status)) {
+            controller.close();
+          }
+        },
+      });
+
       return {
         success: true,
-        data: stdout,
+        data: stream,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to stream process logs', error instanceof Error ? error : undefined, { processId: id });
-      
+
       return {
         success: false,
         error: {

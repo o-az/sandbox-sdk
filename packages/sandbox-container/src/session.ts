@@ -111,6 +111,20 @@ interface ExecOptions {
   cwd?: string;
 }
 
+/** Command handle for tracking and killing running commands */
+interface CommandHandle {
+  /** Unique command identifier */
+  commandId: string;
+  /** Process ID of the command (not the shell) */
+  pid?: number;
+  /** Path to PID file */
+  pidFile: string;
+  /** Path to log file */
+  logFile: string;
+  /** Path to exit code file */
+  exitCodeFile: string;
+}
+
 // ============================================================================
 // Session Class
 // ============================================================================
@@ -123,6 +137,8 @@ export class Session {
   private readonly options: SessionOptions;
   private readonly commandTimeoutMs: number;
   private readonly maxOutputSizeBytes: number;
+  /** Map of running commands for tracking and killing */
+  private runningCommands = new Map<string, CommandHandle>();
 
   constructor(options: SessionOptions) {
     this.id = options.id;
@@ -168,8 +184,12 @@ export class Session {
     const commandId = randomUUID();
     const logFile = join(this.sessionDir!, `${commandId}.log`);
     const exitCodeFile = join(this.sessionDir!, `${commandId}.exit`);
+    const pidFile = join(this.sessionDir!, `${commandId}.pid`);
 
     try {
+      // Track command
+      this.trackCommand(commandId, pidFile, logFile, exitCodeFile);
+
       // Build FIFO-based bash script (inspired by Daytona)
       const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
 
@@ -186,6 +206,9 @@ export class Session {
       // Read log file and parse prefixes
       const { stdout, stderr } = await this.parseLogFile(logFile);
 
+      // Untrack command
+      this.untrackCommand(commandId);
+
       // Clean up temp files
       await this.cleanupCommandFiles(logFile, exitCodeFile);
 
@@ -200,7 +223,8 @@ export class Session {
         timestamp: new Date(startTime).toISOString(),
       };
     } catch (error) {
-      // Clean up on error
+      // Untrack and clean up on error
+      this.untrackCommand(commandId);
       await this.cleanupCommandFiles(logFile, exitCodeFile);
       throw error;
     }
@@ -216,8 +240,12 @@ export class Session {
     const commandId = randomUUID();
     const logFile = join(this.sessionDir!, `${commandId}.log`);
     const exitCodeFile = join(this.sessionDir!, `${commandId}.exit`);
+    const pidFile = join(this.sessionDir!, `${commandId}.pid`);
 
     try {
+      // Track command
+      this.trackCommand(commandId, pidFile, logFile, exitCodeFile);
+
       // Build FIFO script and write to persistent shell
       const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd);
 
@@ -316,10 +344,14 @@ export class Session {
         },
       };
 
+      // Untrack command
+      this.untrackCommand(commandId);
+
       // Clean up temp files
       await this.cleanupCommandFiles(logFile, exitCodeFile);
     } catch (error) {
-      // Clean up on error
+      // Untrack and clean up on error
+      this.untrackCommand(commandId);
       await this.cleanupCommandFiles(logFile, exitCodeFile);
 
       yield {
@@ -335,6 +367,51 @@ export class Session {
    */
   isReady(): boolean {
     return this.ready && this.shell !== null && !this.shell.killed;
+  }
+
+  /**
+   * Kill a running command by its ID
+   * @param commandId - The unique command identifier
+   * @returns true if command was killed, false if not found or already completed
+   */
+  async killCommand(commandId: string): Promise<boolean> {
+    const handle = this.runningCommands.get(commandId);
+    if (!handle) {
+      return false; // Command not found or already completed
+    }
+
+    try {
+      // Try reading PID from file (might still exist if command running)
+      const pidFile = Bun.file(handle.pidFile);
+      if (await pidFile.exists()) {
+        const pidText = await pidFile.text();
+        const pid = parseInt(pidText.trim(), 10);
+
+        if (!isNaN(pid)) {
+          // Send SIGTERM for graceful termination
+          process.kill(pid, 'SIGTERM');
+
+          // Clean up
+          this.runningCommands.delete(commandId);
+          return true;
+        }
+      }
+
+      // PID file gone = command already completed
+      this.runningCommands.delete(commandId);
+      return false;
+    } catch (error) {
+      // Process already dead or PID invalid
+      this.runningCommands.delete(commandId);
+      return false;
+    }
+  }
+
+  /**
+   * Get list of running command IDs
+   */
+  getRunningCommandIds(): string[] {
+    return Array.from(this.runningCommands.keys());
   }
 
   /**
@@ -401,6 +478,7 @@ export class Session {
     // Create unique FIFO names to prevent collisions
     const stdoutPipe = join(this.sessionDir!, `${cmdId}.stdout.pipe`);
     const stderrPipe = join(this.sessionDir!, `${cmdId}.stderr.pipe`);
+    const pidFile = join(this.sessionDir!, `${cmdId}.pid`);
 
     // Escape paths for safe shell usage
     const safeStdoutPipe = this.escapeShellPath(stdoutPipe);
@@ -408,6 +486,7 @@ export class Session {
     const safeLogFile = this.escapeShellPath(logFile);
     const safeExitCodeFile = this.escapeShellPath(exitCodeFile);
     const safeSessionDir = this.escapeShellPath(this.sessionDir!);
+    const safePidFile = this.escapeShellPath(pidFile);
 
     // Build the FIFO script with Daytona-inspired robustness
     let script = `{
@@ -438,9 +517,15 @@ export class Session {
       script += `  # Save and change directory\n`;
       script += `  PREV_DIR=$(pwd)\n`;
       script += `  if cd ${safeCwd}; then\n`;
-      script += `    # Execute command in current shell (enables state persistence)\n`;
-      script += `    { ${command}; } > "$sp" 2> "$ep"\n`;
+      script += `    # Execute command in BACKGROUND to capture PID (enables killing)\n`;
+      script += `    { ${command}; } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
+      script += `    # Write PID immediately (so we can kill it)\n`;
+      script += `    echo "$CMD_PID" > ${safePidFile}\n`;
+      script += `    # Wait for command to complete\n`;
+      script += `    wait "$CMD_PID"\n`;
       script += `    EXIT_CODE=$?\n`;
+      script += `    # Clean up PID file\n`;
+      script += `    rm -f ${safePidFile}\n`;
       script += `    # Restore directory\n`;
       script += `    cd "$PREV_DIR"\n`;
       script += `  else\n`;
@@ -454,9 +539,15 @@ export class Session {
     } else {
       // Execute command in current directory
       // Use command grouping {} to enable state persistence (cd, export, functions)
-      script += `  # Execute command in current shell (enables state persistence)\n`;
-      script += `  { ${command}; } > "$sp" 2> "$ep"\n`;
+      script += `  # Execute command in BACKGROUND to capture PID (enables killing)\n`;
+      script += `  { ${command}; } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
+      script += `  # Write PID immediately (so we can kill it)\n`;
+      script += `  echo "$CMD_PID" > ${safePidFile}\n`;
+      script += `  # Wait for command to complete\n`;
+      script += `  wait "$CMD_PID"\n`;
       script += `  EXIT_CODE=$?\n`;
+      script += `  # Clean up PID file\n`;
+      script += `  rm -f ${safePidFile}\n`;
       script += `  \n`;
     }
 
@@ -554,6 +645,9 @@ export class Session {
    * Clean up command temp files
    */
   private async cleanupCommandFiles(logFile: string, exitCodeFile: string): Promise<void> {
+    // Derive PID file from log file
+    const pidFile = logFile.replace('.log', '.pid');
+
     try {
       await rm(logFile, { force: true });
     } catch (error) {
@@ -562,6 +656,12 @@ export class Session {
 
     try {
       await rm(exitCodeFile, { force: true });
+    } catch (error) {
+      // Ignore errors
+    }
+
+    try {
+      await rm(pidFile, { force: true });
     } catch (error) {
       // Ignore errors
     }
@@ -582,5 +682,25 @@ export class Session {
     if (!this.isReady()) {
       throw new Error(`Session '${this.id}' is not ready or shell has died`);
     }
+  }
+
+  /**
+   * Track a command when it starts
+   */
+  private trackCommand(commandId: string, pidFile: string, logFile: string, exitCodeFile: string): void {
+    const handle: CommandHandle = {
+      commandId,
+      pidFile,
+      logFile,
+      exitCodeFile,
+    };
+    this.runningCommands.set(commandId, handle);
+  }
+
+  /**
+   * Untrack a command when it completes
+   */
+  private untrackCommand(commandId: string): void {
+    this.runningCommands.delete(commandId);
   }
 }

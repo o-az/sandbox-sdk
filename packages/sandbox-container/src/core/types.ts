@@ -1,5 +1,4 @@
 // Core architectural types and interfaces for the refactored container
-import type { Subprocess } from 'bun';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS';
 
@@ -249,9 +248,11 @@ export interface ProcessRecord {
   stderr: string;
   outputListeners: Set<(stream: 'stdout' | 'stderr', data: string) => void>;
   statusListeners: Set<(status: ProcessStatus) => void>;
-  // For Bun subprocess
-  // Store the full Subprocess type to support all operations (kill, streams, etc.)
-  subprocess?: Subprocess;
+  // Unified execution model: All processes use SessionManager
+  commandHandle?: {
+    sessionId: string;
+    commandId: string;
+  };
   // For isolation layer (file-based IPC)
   stdoutFile?: string;
   stderrFile?: string;

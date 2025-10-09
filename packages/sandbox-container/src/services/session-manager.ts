@@ -215,6 +215,57 @@ export class SessionManager {
   }
 
   /**
+   * Kill a running command in a session
+   */
+  async killCommand(sessionId: string, commandId: string): Promise<ServiceResult<void>> {
+    try {
+      const sessionResult = await this.getSession(sessionId);
+
+      if (!sessionResult.success) {
+        return sessionResult as ServiceResult<void>;
+      }
+
+      const session = sessionResult.data;
+
+      this.logger.info('Killing command in session', { sessionId, commandId });
+
+      const killed = await session.killCommand(commandId);
+
+      if (!killed) {
+        return {
+          success: false,
+          error: {
+            message: `Command '${commandId}' not found or already completed`,
+            code: 'COMMAND_NOT_FOUND',
+            details: { sessionId, commandId },
+          },
+        };
+      }
+
+      this.logger.info('Command killed successfully', { sessionId, commandId });
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to kill command', error instanceof Error ? error : undefined, {
+        sessionId,
+        commandId,
+      });
+
+      return {
+        success: false,
+        error: {
+          message: `Failed to kill command: ${errorMessage}`,
+          code: 'COMMAND_KILL_ERROR',
+          details: { sessionId, commandId, originalError: errorMessage },
+        },
+      };
+    }
+  }
+
+  /**
    * Set environment variables on an existing session
    */
   async setEnvVars(sessionId: string, envVars: Record<string, string>): Promise<ServiceResult<void>> {
