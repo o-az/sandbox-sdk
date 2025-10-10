@@ -74,7 +74,7 @@ console.log(JSON.stringify({"status": "pre-warmed"}));
   },
   typescript: {
     executor: "typescript",
-    minSize: 3,  
+    minSize: 3,
     maxProcesses: 10,
     idleTimeout: 5 * 60 * 1000,
     preWarmScript: `
@@ -93,20 +93,20 @@ export class ProcessPoolManager {
 
   constructor(customConfigs: Partial<Record<InterpreterLanguage, Partial<ExecutorPoolConfig>>> = {}) {
     const executorEntries = Object.entries(DEFAULT_EXECUTOR_CONFIGS) as [InterpreterLanguage, ExecutorPoolConfig][];
-    
+
     for (const [executor, defaultConfig] of executorEntries) {
       const userConfig = customConfigs[executor] || {};
       const envMinSize = process.env[`${executor.toUpperCase()}_POOL_MIN_SIZE`];
       const envMaxSize = process.env[`${executor.toUpperCase()}_POOL_MAX_SIZE`];
-      
-      const config: ExecutorPoolConfig = { 
-        ...defaultConfig, 
+
+      const config: ExecutorPoolConfig = {
+        ...defaultConfig,
         ...userConfig,
         // Environment variables override user config override defaults
         minSize: envMinSize ? parseInt(envMinSize, 10) : (userConfig.minSize || defaultConfig.minSize),
         maxProcesses: envMaxSize ? parseInt(envMaxSize, 10) : (userConfig.maxProcesses || defaultConfig.maxProcesses)
       };
-      
+
       this.poolConfigs.set(executor, config);
       this.pools.set(executor, []);
     }
@@ -133,7 +133,7 @@ export class ProcessPoolManager {
     const totalStartTime = Date.now();
     const process = await this.getProcess(language, sessionId);
     const processAcquireTime = Date.now() - totalStartTime;
-    
+
     const executionId = randomUUID();
 
     try {
@@ -141,7 +141,7 @@ export class ProcessPoolManager {
       const result = await this.executeCode(process, code, executionId, timeout);
       const execTime = Date.now() - execStartTime;
       const totalTime = Date.now() - totalStartTime;
-      
+
       console.log(`[ProcessPool] Execution complete - Process acquire: ${processAcquireTime}ms, Code exec: ${execTime}ms, Total: ${totalTime}ms`);
       return result;
     } finally {
@@ -222,7 +222,7 @@ export class ProcessPoolManager {
     }
 
     console.log(`[ProcessPool] Spawning ${language} process: ${command} ${args.join(' ')}`);
-    
+
     const childProcess = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
@@ -245,7 +245,7 @@ export class ProcessPoolManager {
     return new Promise((resolve, reject) => {
       let readyBuffer = "";
       let errorBuffer = "";
-      
+
       const timeout = setTimeout(() => {
         childProcess.kill();
         console.error(`[ProcessPool] ${language} executor timeout. stdout: "${readyBuffer}", stderr: "${errorBuffer}"`);
@@ -255,7 +255,7 @@ export class ProcessPoolManager {
       const readyHandler = (data: Buffer) => {
         readyBuffer += data.toString();
         console.log(`[ProcessPool] ${language} stdout:`, data.toString());
-        
+
         if (readyBuffer.includes('"ready"')) {
           clearTimeout(timeout);
           childProcess.stdout?.removeListener("data", readyHandler);
@@ -265,7 +265,7 @@ export class ProcessPoolManager {
           resolve(interpreterProcess);
         }
       };
-      
+
       const errorHandler = (data: Buffer) => {
         errorBuffer += data.toString();
         console.error(`[ProcessPool] ${language} stderr:`, data.toString());
@@ -273,13 +273,13 @@ export class ProcessPoolManager {
 
       childProcess.stdout?.on("data", readyHandler);
       childProcess.stderr?.on("data", errorHandler);
-      
+
       childProcess.once("error", (err) => {
         clearTimeout(timeout);
         console.error(`[ProcessPool] ${language} spawn error:`, err);
         reject(err);
       });
-      
+
       childProcess.once("exit", (code) => {
         if (code !== 0) {
           clearTimeout(timeout);
@@ -297,22 +297,22 @@ export class ProcessPoolManager {
     timeout: number
   ): Promise<ExecutionResult> {
     const request = JSON.stringify({ code, executionId });
-    
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("Execution timeout"));
       }, timeout);
 
       let responseBuffer = "";
-      
+
       const responseHandler = (data: Buffer) => {
         responseBuffer += data.toString();
-        
+
         try {
           const response = JSON.parse(responseBuffer);
           clearTimeout(timer);
           process.process.stdout?.removeListener("data", responseHandler);
-          
+
           resolve({
             stdout: response.stdout || "",
             stderr: response.stderr || "",
@@ -324,7 +324,7 @@ export class ProcessPoolManager {
         } catch (e) {
         }
       };
-      
+
       process.process.stdout?.on("data", responseHandler);
       process.process.stdin?.write(`${request}\n`);
     });
@@ -345,7 +345,7 @@ export class ProcessPoolManager {
   private async startPreWarming(): Promise<void> {
     console.log('[ProcessPool] Starting unified pre-warming for all executors...');
     const startTime = Date.now();
-    
+
     const warmupPromises = Array.from(this.poolConfigs.entries()).map(
       async ([executor, config]) => {
         if (config.minSize > 0) {
@@ -366,22 +366,22 @@ export class ProcessPoolManager {
   private async preWarmExecutor(executor: InterpreterLanguage, config: ExecutorPoolConfig): Promise<void> {
     const startTime = Date.now();
     console.log(`[ProcessPool] Pre-warming ${config.minSize} ${executor} processes...`);
-    
+
     const pool = this.pools.get(executor);
     if (!pool) {
       console.error(`[ProcessPool] No pool found for executor: ${executor}`);
       return;
     }
-    
+
     for (let i = 0; i < config.minSize; i++) {
       try {
         const sessionId = `pre-warm-${executor}-${i}-${Date.now()}`;
         const process = await this.createProcess(executor, sessionId);
-        
+
         if (config.preWarmScript) {
           await this.executePreWarmScript(process, config.preWarmScript, executor);
         }
-        
+
         process.isAvailable = true;
         process.sessionId = undefined;
         pool.push(process);
@@ -389,21 +389,21 @@ export class ProcessPoolManager {
         console.error(`[ProcessPool] Failed to pre-warm ${executor} process ${i}:`, error);
       }
     }
-    
+
     const warmupTime = Date.now() - startTime;
     const actualCount = pool.filter(p => p.isAvailable).length;
     console.log(`[ProcessPool] Pre-warmed ${actualCount}/${config.minSize} ${executor} processes in ${warmupTime}ms`);
   }
 
   private async executePreWarmScript(
-    process: InterpreterProcess, 
-    script: string, 
+    process: InterpreterProcess,
+    script: string,
     executor: InterpreterLanguage
   ): Promise<void> {
     try {
       const executionId = `pre-warm-${Date.now()}`;
       const result = await this.executeCode(process, script, executionId, 10000);
-      
+
       if (result.success) {
         console.log(`[ProcessPool] ${executor} pre-warm script executed successfully`);
       } else {
@@ -421,7 +421,7 @@ export class ProcessPoolManager {
     for (const executor of executors) {
       const pool = this.pools.get(executor);
       const config = this.poolConfigs.get(executor);
-      
+
       if (!pool || !config) {
         continue;
       }
@@ -431,8 +431,8 @@ export class ProcessPoolManager {
         const idleTime = now.getTime() - process.lastUsed.getTime();
 
         // Only clean up excess processes beyond minimum pool size
-        if (process.isAvailable && 
-            idleTime > config.idleTimeout && 
+        if (process.isAvailable &&
+            idleTime > config.idleTimeout &&
             pool.filter(p => p.isAvailable).length > config.minSize) {
           process.process.kill();
           pool.splice(i, 1);

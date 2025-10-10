@@ -727,7 +727,7 @@ export class Session {
         }
 
         // Set up file watcher (event-driven!)
-        const watcher = watch(dir, async (eventType, changedFile) => {
+        const watcher = watch(dir, async (_eventType, changedFile) => {
           if (changedFile === filename) {
             watcher.close();
             try {

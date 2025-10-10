@@ -188,7 +188,7 @@ export class InterpreterClient extends BaseHttpClient {
       } catch (error) {
         lastError = error as Error;
 
-        // Check if it's a retryable error (circuit breaker or interpreter not ready)
+        // Check if it's a retryable error (interpreter not ready)
         if (this.isRetryableError(error)) {
           // Don't retry on the last attempt
           if (attempt < this.maxRetries - 1) {
@@ -213,10 +213,8 @@ export class InterpreterClient extends BaseHttpClient {
       return true;
     }
 
-    // Check for circuit breaker errors
     if (error instanceof Error) {
       return (
-        error.message.includes("Circuit breaker") ||
         error.message.includes("not ready") ||
         error.message.includes("initializing")
       );
