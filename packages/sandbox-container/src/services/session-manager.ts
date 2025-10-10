@@ -160,13 +160,21 @@ export class SessionManager {
 
   /**
    * Execute a command with streaming output
+   *
+   * @param sessionId - The session identifier
+   * @param command - The command to execute
+   * @param onEvent - Callback for streaming events
+   * @param cwd - Optional working directory override
+   * @param commandId - Required command identifier for tracking and killing
+   * @returns A promise that resolves when first event is processed, with continueStreaming promise for background execution
    */
   async executeStreamInSession(
     sessionId: string,
     command: string,
     onEvent: (event: ExecEvent) => void,
-    cwd?: string
-  ): Promise<ServiceResult<void>> {
+    cwd: string | undefined,
+    commandId: string
+  ): Promise<ServiceResult<{ continueStreaming: Promise<void> }>> {
     try {
       // Get or create session on demand
       let sessionResult = await this.getSession(sessionId);
@@ -180,21 +188,54 @@ export class SessionManager {
       }
 
       if (!sessionResult.success) {
-        return sessionResult as ServiceResult<void>;
+        return sessionResult as ServiceResult<{ continueStreaming: Promise<void> }>;
       }
 
       const session = sessionResult.data;
 
-      this.logger.info('Executing streaming command in session', { sessionId, command, cwd });
+      this.logger.info('Executing streaming command in session', { sessionId, command, cwd, commandId });
 
-      for await (const event of session.execStream(command, cwd ? { cwd } : undefined)) {
-        onEvent(event);
+      // Get async generator
+      const generator = session.execStream(command, { commandId, cwd });
+
+      console.log(`[SessionManager] Awaiting first event for commandId: ${commandId}`);
+
+      // CRITICAL: Await first event to ensure command is tracked before returning
+      // This prevents race condition where killCommand() is called before trackCommand()
+      const firstResult = await generator.next();
+
+      console.log(`[SessionManager] First event received for commandId: ${commandId} | Event type: ${firstResult.done ? 'DONE' : firstResult.value.type}`);
+
+      if (!firstResult.done) {
+        onEvent(firstResult.value);
       }
 
-      this.logger.info('Streaming command completed', { sessionId });
+      console.log(`[SessionManager] Returning from executeStreamInSession (command is now tracked): ${commandId}`);
+
+      // Create background task for remaining events
+      const continueStreaming = (async () => {
+        try {
+          console.log(`[SessionManager] Background streaming starting for: ${commandId}`);
+          for await (const event of generator) {
+            onEvent(event);
+          }
+          this.logger.info('Streaming command completed', { sessionId, commandId });
+          console.log(`[SessionManager] Background streaming completed for: ${commandId}`);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          this.logger.error('Error during streaming', error instanceof Error ? error : undefined, {
+            sessionId,
+            commandId,
+            originalError: errorMessage
+          });
+          console.log(`[SessionManager] Background streaming ERROR for: ${commandId} | Error: ${errorMessage}`);
+          throw error;
+        }
+      })();
 
       return {
         success: true,
+        data: { continueStreaming },
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

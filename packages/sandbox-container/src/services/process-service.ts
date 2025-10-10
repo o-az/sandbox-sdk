@@ -188,7 +188,9 @@ export class ProcessService {
       await this.store.create(processRecord);
 
       // 5. Execute command via SessionManager with streaming
-      const streamResult = this.sessionManager.executeStreamInSession(
+      // Pass process ID as commandId for tracking and killing
+      // CRITICAL: Await the initial result to ensure command is tracked before returning
+      const streamResult = await this.sessionManager.executeStreamInSession(
         sessionId,
         command,
         (event) => {
@@ -240,11 +242,17 @@ export class ProcessService {
             this.logger.error('Streaming command error', new Error(event.error), { processId: processRecord.id });
           }
         },
-        options.cwd
+        options.cwd,
+        processRecordData.id  // Pass process ID as commandId for tracking and killing
       );
 
-      // Execute streaming in background (don't await)
-      streamResult.catch(error => {
+      if (!streamResult.success) {
+        return streamResult as ServiceResult<ProcessRecord>;
+      }
+
+      // Command is now tracked and first event processed - safe to return process record
+      // Continue streaming in background without blocking
+      streamResult.data.continueStreaming.catch(error => {
         this.logger.error('Failed to execute streaming command', error, {
           processId: processRecord.id,
           command

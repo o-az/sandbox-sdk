@@ -261,7 +261,7 @@ export default {
         }
         const pathParts = url.pathname.split('/');
         const port = parseInt(pathParts[3], 10);
-        if (!isNaN(port)) {
+        if (!Number.isNaN(port)) {
           await sandbox.unexposePort(port);
           return new Response(JSON.stringify({ success: true, port }), {
             headers: { 'Content-Type': 'application/json' },
