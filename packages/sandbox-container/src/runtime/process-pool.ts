@@ -50,9 +50,6 @@ const DEFAULT_EXECUTOR_CONFIGS: Record<InterpreterLanguage, ExecutorPoolConfig> 
     maxProcesses: 15,
     idleTimeout: 5 * 60 * 1000, // 5 minutes
     preWarmScript: `
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
 import json
 print(json.dumps({"status": "pre-warmed"}))
 `
