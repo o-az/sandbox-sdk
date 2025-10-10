@@ -42,6 +42,7 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
     if (body.background) {
       const processResult = await this.processService.startProcess(body.command, {
         sessionId,
+        timeoutMs: body.timeoutMs,
       });
 
       if (processResult.success) {
@@ -81,6 +82,7 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
     // For non-background commands, execute and return result
     const result = await this.processService.executeCommand(body.command, {
       sessionId,
+      timeoutMs: body.timeoutMs,
     });
 
     if (result.success) {

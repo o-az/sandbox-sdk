@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import * as util from 'node:util';
 import * as vm from 'node:vm';
 import { transformSync } from 'esbuild';
+import { CONFIG } from '../../../config';
 import type { RichOutput } from '../../process-pool';
 
 // Create CommonJS-like globals for the sandbox
@@ -43,29 +44,29 @@ console.log(JSON.stringify({ status: "ready" }));
 rl.on('line', async (line: string) => {
   try {
     const request = JSON.parse(line);
-    const { code, executionId } = request;
-    
+    const { code, executionId, timeout } = request;
+
     const originalStdoutWrite = process.stdout.write;
     const originalStderrWrite = process.stderr.write;
-    
+
     let stdout = '';
     let stderr = '';
-    
+
     (process.stdout.write as any) = (chunk: string | Buffer, encoding?: BufferEncoding, callback?: () => void) => {
       stdout += chunk.toString();
       if (callback) callback();
       return true;
     };
-    
+
     (process.stderr.write as any) = (chunk: string | Buffer, encoding?: BufferEncoding, callback?: () => void) => {
       stderr += chunk.toString();
       if (callback) callback();
       return true;
     };
-    
+
     let result: unknown;
     let success = true;
-    
+
     try {
       const transpileResult = transformSync(code, {
         loader: 'ts',
@@ -75,13 +76,22 @@ rl.on('line', async (line: string) => {
         treeShaking: false,
         minify: false,
       });
-      
+
       const jsCode = transpileResult.code;
-      result = vm.runInContext(jsCode, context, {
+
+      // Use provided timeout, or fall back to config (which may be undefined = unlimited)
+      const effectiveTimeout = timeout ?? CONFIG.VM_EXECUTION_TIMEOUT_MS;
+      const options: vm.RunningScriptOptions = {
         filename: `<execution-${executionId}>`,
-        timeout: 30000
-      });
-      
+      };
+
+      // Only add timeout if specified (undefined = unlimited)
+      if (effectiveTimeout !== undefined) {
+        options.timeout = effectiveTimeout;
+      }
+
+      result = vm.runInContext(jsCode, context, options);
+
     } catch (error: unknown) {
       const err = error as Error;
       if (err.message?.includes('Transform failed')) {

@@ -111,7 +111,8 @@ export class ProcessService {
       const result = await this.sessionManager.executeInSession(
         sessionId,
         command,
-        options.cwd
+        options.cwd,
+        options.timeoutMs
       );
 
       if (!result.success) {

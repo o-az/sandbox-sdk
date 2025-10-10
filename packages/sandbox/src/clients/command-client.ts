@@ -6,6 +6,7 @@ import type { BaseApiResponse, HttpClientOptions, SessionRequest } from './types
  */
 export interface ExecuteRequest extends SessionRequest {
   command: string;
+  timeoutMs?: number;
 }
 
 /**
@@ -30,13 +31,19 @@ export class CommandClient extends BaseHttpClient {
    * Execute a command and return the complete result
    * @param command - The command to execute
    * @param sessionId - The session ID for this command execution
+   * @param timeoutMs - Optional timeout in milliseconds (unlimited by default)
    */
   async execute(
     command: string,
-    sessionId: string
+    sessionId: string,
+    timeoutMs?: number
   ): Promise<ExecuteResponse> {
     try {
-      const data = { command, sessionId };
+      const data: ExecuteRequest = {
+        command,
+        sessionId,
+        ...(timeoutMs !== undefined && { timeoutMs })
+      };
 
       const response = await this.post<ExecuteResponse>(
         '/api/execute',

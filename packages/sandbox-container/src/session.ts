@@ -30,32 +30,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { watch } from 'node:fs';
-import { access, mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { ExecEvent } from '@repo/shared-types';
 import type { Subprocess } from 'bun';
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-const CONFIG = {
-  /** Command execution timeout in milliseconds */
-  COMMAND_TIMEOUT_MS: parseInt(process.env.COMMAND_TIMEOUT_MS || '30000', 10),
-
-  /** Maximum output size in bytes (prevents OOM attacks) */
-  MAX_OUTPUT_SIZE_BYTES: parseInt(
-    process.env.MAX_OUTPUT_SIZE_BYTES || String(10 * 1024 * 1024),
-    10
-  ), // 10MB default
-
-  /** Delay between chunks when streaming (debounce for fs.watch) */
-  STREAM_CHUNK_DELAY_MS: 100,
-
-  /** Default working directory */
-  DEFAULT_CWD: '/workspace',
-} as const;
+import { CONFIG } from './config';
 
 // Binary prefixes for output labeling (won't appear in normal text)
 // Using three bytes to minimize collision probability
@@ -135,7 +115,7 @@ export class Session {
   private sessionDir: string | null = null;
   private readonly id: string;
   private readonly options: SessionOptions;
-  private readonly commandTimeoutMs: number;
+  private readonly commandTimeoutMs: number | undefined;
   private readonly maxOutputSizeBytes: number;
   /** Map of running commands for tracking and killing */
   private runningCommands = new Map<string, CommandHandle>();
@@ -250,12 +230,12 @@ export class Session {
    */
   async *execStream(
     command: string,
-    options: ExecOptions & { commandId: string }
+    options?: ExecOptions & { commandId?: string }
   ): AsyncGenerator<ExecEvent> {
     this.ensureReady();
 
     const startTime = Date.now();
-    const commandId = options.commandId;
+    const commandId = options?.commandId || randomUUID();
     const logFile = join(this.sessionDir!, `${commandId}.log`);
     const exitCodeFile = join(this.sessionDir!, `${commandId}.exit`);
     const pidFile = join(this.sessionDir!, `${commandId}.pid`);
@@ -268,7 +248,7 @@ export class Session {
 
       // Build FIFO script for BACKGROUND execution
       // Command runs concurrently, shell continues immediately
-      const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options.cwd, true);
+      const bashScript = this.buildFIFOScript(command, commandId, logFile, exitCodeFile, options?.cwd, true);
 
       console.log(`[Session ${this.id}] execStream() writing script to shell stdin`);
 
@@ -739,11 +719,14 @@ export class Session {
           }
         });
 
-        // Set up timeout
-        setTimeout(() => {
-          watcher.close();
-          reject(new Error(`Command timeout after ${this.commandTimeoutMs}ms`));
-        }, this.commandTimeoutMs);
+        // Set up timeout ONLY if configured (undefined = unlimited)
+        if (this.commandTimeoutMs !== undefined) {
+          setTimeout(() => {
+            watcher.close();
+            reject(new Error(`Command timeout after ${this.commandTimeoutMs}ms`));
+          }, this.commandTimeoutMs);
+        }
+        // Otherwise, wait indefinitely for the command to complete
       }).catch(reject);
     });
   }
@@ -818,18 +801,6 @@ export class Session {
   private escapeShellPath(path: string): string {
     // Use single quotes to prevent any interpretation, escape existing single quotes
     return `'${path.replace(/'/g, "'\\''")}'`;
-  }
-
-  /**
-   * Check if a file exists
-   */
-  private async fileExists(path: string): Promise<boolean> {
-    try {
-      await access(path);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   /**

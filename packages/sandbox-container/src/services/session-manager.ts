@@ -107,7 +107,8 @@ export class SessionManager {
   async executeInSession(
     sessionId: string,
     command: string,
-    cwd?: string
+    cwd?: string,
+    timeoutMs?: number
   ): Promise<ServiceResult<RawExecResult>> {
     try {
       // Get or create session on demand
@@ -118,6 +119,7 @@ export class SessionManager {
         sessionResult = await this.createSession({
           id: sessionId,
           cwd: cwd || '/workspace',
+          commandTimeoutMs: timeoutMs, // Pass timeout to session
         });
       }
 
@@ -127,7 +129,7 @@ export class SessionManager {
 
       const session = sessionResult.data;
 
-      this.logger.info('Executing command in session', { sessionId, command, cwd });
+      this.logger.info('Executing command in session', { sessionId, command, cwd, timeoutMs });
 
       const result = await session.exec(command, cwd ? { cwd } : undefined);
 

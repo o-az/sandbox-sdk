@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Process options schema
 export const ProcessOptionsSchema = z.object({
   sessionId: z.string().optional(),
-  timeout: z.number().positive().optional(),
+  timeoutMs: z.number().positive().optional(),
   env: z.record(z.string()).optional(),
   cwd: z.string().optional(),
   encoding: z.string().optional(),
@@ -16,6 +16,7 @@ export const ExecuteRequestSchema = z.object({
   command: z.string().min(1, 'Command cannot be empty'),
   sessionId: z.string().optional(),
   background: z.boolean().optional(),
+  timeoutMs: z.number().positive().optional(),
 });
 
 // File operation schemas

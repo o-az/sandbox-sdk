@@ -91,7 +91,8 @@ describe('ProcessService', () => {
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'default',  // sessionId
         'echo "hello world"',
-        '/tmp'  // cwd
+        '/tmp',  // cwd
+        undefined  // timeoutMs (not provided in options)
       );
     });
 
@@ -134,10 +135,13 @@ describe('ProcessService', () => {
 
   describe('startProcess', () => {
     it('should start background process successfully', async () => {
-      // Mock SessionManager.executeStreamInSession to return a promise that doesn't resolve immediately
-      mocked(mockSessionManager.executeStreamInSession).mockReturnValue(
-        new Promise(() => {}) // Never resolves (background process)
-      );
+      // Mock SessionManager.executeStreamInSession to return ServiceResult with continueStreaming promise
+      mocked(mockSessionManager.executeStreamInSession).mockResolvedValue({
+        success: true,
+        data: {
+          continueStreaming: new Promise(() => {}) // Never resolves (background process)
+        }
+      } as ServiceResult<{ continueStreaming: Promise<void> }>);
 
       const result = await processService.startProcess('sleep 10', {
         cwd: '/tmp',
@@ -160,7 +164,8 @@ describe('ProcessService', () => {
         'session-123',
         'sleep 10',
         expect.any(Function),  // event handler callback
-        '/tmp'
+        '/tmp',
+        expect.any(String)  // commandId (generated dynamically)
       );
 
       // Verify process was stored

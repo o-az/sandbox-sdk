@@ -77,7 +77,8 @@ export class InterpreterService {
   async executeCode(
     contextId: string,
     code: string,
-    language?: string
+    language?: string,
+    timeoutMs?: number
   ): Promise<Response> {
     const context = this.contexts.get(contextId);
     if (!context) {
@@ -98,18 +99,19 @@ export class InterpreterService {
 
     // Store reference to this for use in async function
     const self = this;
-    
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
         const startTime = Date.now();
-        
+
         try {
+          // Pass through user-provided timeout (undefined = unlimited)
           const result = await processPool.execute(
             execLanguage,
             code,
             contextId,
-            30000
+            timeoutMs
           );
           
           const totalTime = Date.now() - startTime;

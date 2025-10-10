@@ -6,6 +6,7 @@ import * as readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import * as util from 'node:util';
 import * as vm from 'node:vm';
+import { CONFIG } from '../../../config';
 import type { RichOutput } from '../../process-pool';
 
 // Create CommonJS-like globals for the sandbox
@@ -42,35 +43,43 @@ console.log(JSON.stringify({ status: "ready" }));
 rl.on('line', async (line: string) => {
   try {
     const request = JSON.parse(line);
-    const { code, executionId } = request;
-    
+    const { code, executionId, timeout } = request;
+
     const originalStdoutWrite = process.stdout.write;
     const originalStderrWrite = process.stderr.write;
-    
+
     let stdout = '';
     let stderr = '';
-    
+
     (process.stdout.write as any) = (chunk: string | Buffer, encoding?: BufferEncoding, callback?: () => void) => {
       stdout += chunk.toString();
       if (callback) callback();
       return true;
     };
-    
+
     (process.stderr.write as any) = (chunk: string | Buffer, encoding?: BufferEncoding, callback?: () => void) => {
       stderr += chunk.toString();
       if (callback) callback();
       return true;
     };
-    
+
     let result: unknown;
     let success = true;
-    
+
     try {
-      result = vm.runInContext(code, context, {
+      // Use provided timeout, or fall back to config (which may be undefined = unlimited)
+      const effectiveTimeout = timeout ?? CONFIG.VM_EXECUTION_TIMEOUT_MS;
+      const options: vm.RunningScriptOptions = {
         filename: `<execution-${executionId}>`,
-        timeout: 30000
-      });
-      
+      };
+
+      // Only add timeout if specified (undefined = unlimited)
+      if (effectiveTimeout !== undefined) {
+        options.timeout = effectiveTimeout;
+      }
+
+      result = vm.runInContext(code, context, options);
+
     } catch (error: unknown) {
       const err = error as Error;
       stderr += err.stack || err.toString();

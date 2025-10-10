@@ -107,7 +107,8 @@ export class InterpreterClient extends BaseHttpClient {
     contextId: string | undefined,
     code: string,
     language: string | undefined,
-    callbacks: ExecutionCallbacks
+    callbacks: ExecutionCallbacks,
+    timeoutMs?: number
   ): Promise<void> {
     return this.executeWithRetry(async () => {
       const response = await this.doFetch("/api/execute/code", {
@@ -120,6 +121,7 @@ export class InterpreterClient extends BaseHttpClient {
           context_id: contextId,
           code,
           language,
+          ...(timeoutMs !== undefined && { timeout_ms: timeoutMs })
         }),
       });
 

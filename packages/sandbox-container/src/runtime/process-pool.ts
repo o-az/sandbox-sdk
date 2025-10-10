@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { CONFIG } from "../config";
 
 export type InterpreterLanguage = "python" | "javascript" | "typescript";
 
@@ -128,7 +129,7 @@ export class ProcessPoolManager {
     language: InterpreterLanguage,
     code: string,
     sessionId?: string,
-    timeout = 30000
+    timeout?: number
   ): Promise<ExecutionResult> {
     const totalStartTime = Date.now();
     const process = await this.getProcess(language, sessionId);
@@ -138,7 +139,9 @@ export class ProcessPoolManager {
 
     try {
       const execStartTime = Date.now();
-      const result = await this.executeCode(process, code, executionId, timeout);
+      // Use provided timeout, or fall back to config (which may be undefined = unlimited)
+      const effectiveTimeout = timeout ?? CONFIG.INTERPRETER_EXECUTION_TIMEOUT_MS;
+      const result = await this.executeCode(process, code, executionId, effectiveTimeout);
       const execTime = Date.now() - execStartTime;
       const totalTime = Date.now() - totalStartTime;
 
@@ -248,9 +251,9 @@ export class ProcessPoolManager {
 
       const timeout = setTimeout(() => {
         childProcess.kill();
-        console.error(`[ProcessPool] ${language} executor timeout. stdout: "${readyBuffer}", stderr: "${errorBuffer}"`);
-        reject(new Error(`${language} executor failed to start`));
-      }, 5000);
+        console.error(`[ProcessPool] ${language} executor timeout after ${CONFIG.INTERPRETER_SPAWN_TIMEOUT_MS}ms. stdout: "${readyBuffer}", stderr: "${errorBuffer}"`);
+        reject(new Error(`${language} executor failed to start within ${CONFIG.INTERPRETER_SPAWN_TIMEOUT_MS}ms`));
+      }, CONFIG.INTERPRETER_SPAWN_TIMEOUT_MS);
 
       const readyHandler = (data: Buffer) => {
         readyBuffer += data.toString();
@@ -294,24 +297,37 @@ export class ProcessPoolManager {
     process: InterpreterProcess,
     code: string,
     executionId: string,
-    timeout: number
+    timeout?: number
   ): Promise<ExecutionResult> {
-    const request = JSON.stringify({ code, executionId });
+    const request = JSON.stringify({ code, executionId, timeout });
 
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error("Execution timeout"));
-      }, timeout);
-
+      let timer: NodeJS.Timeout | undefined;
       let responseBuffer = "";
+
+      // Cleanup function to ensure listener is always removed
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        process.process.stdout?.removeListener("data", responseHandler);
+      };
+
+      // Set up timeout ONLY if specified (undefined = unlimited)
+      if (timeout !== undefined) {
+        timer = setTimeout(() => {
+          cleanup();
+          // NOTE: We don't kill the child process here because it's a pooled interpreter
+          // that may be reused. The timeout is enforced, but the interpreter continues.
+          // The executor itself also has its own timeout mechanism for VM execution.
+          reject(new Error("Execution timeout"));
+        }, timeout);
+      }
 
       const responseHandler = (data: Buffer) => {
         responseBuffer += data.toString();
 
         try {
           const response = JSON.parse(responseBuffer);
-          clearTimeout(timer);
-          process.process.stdout?.removeListener("data", responseHandler);
+          cleanup();
 
           resolve({
             stdout: response.stdout || "",
@@ -322,6 +338,7 @@ export class ProcessPoolManager {
             error: response.error || null,
           });
         } catch (e) {
+          // Incomplete JSON, keep buffering
         }
       };
 
@@ -402,7 +419,12 @@ export class ProcessPoolManager {
   ): Promise<void> {
     try {
       const executionId = `pre-warm-${Date.now()}`;
-      const result = await this.executeCode(process, script, executionId, 10000);
+      const result = await this.executeCode(
+        process,
+        script,
+        executionId,
+        CONFIG.INTERPRETER_PREWARM_TIMEOUT_MS
+      );
 
       if (result.success) {
         console.log(`[ProcessPool] ${executor} pre-warm script executed successfully`);
