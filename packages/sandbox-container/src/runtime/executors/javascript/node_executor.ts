@@ -6,7 +6,6 @@ import * as readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import * as util from 'node:util';
 import * as vm from 'node:vm';
-import { CONFIG } from '../../../config';
 import type { RichOutput } from '../../process-pool';
 
 // Create CommonJS-like globals for the sandbox
@@ -67,15 +66,13 @@ rl.on('line', async (line: string) => {
     let success = true;
 
     try {
-      // Use provided timeout, or fall back to config (which may be undefined = unlimited)
-      const effectiveTimeout = timeout ?? CONFIG.VM_EXECUTION_TIMEOUT_MS;
       const options: vm.RunningScriptOptions = {
         filename: `<execution-${executionId}>`,
       };
 
       // Only add timeout if specified (undefined = unlimited)
-      if (effectiveTimeout !== undefined) {
-        options.timeout = effectiveTimeout;
+      if (timeout !== undefined) {
+        options.timeout = timeout;
       }
 
       result = vm.runInContext(code, context, options);
@@ -88,9 +85,9 @@ rl.on('line', async (line: string) => {
       process.stdout.write = originalStdoutWrite;
       process.stderr.write = originalStderrWrite;
     }
-    
+
     const outputs: RichOutput[] = [];
-    
+
     if (result !== undefined) {
       if (typeof result === 'object' && result !== null) {
         outputs.push({
@@ -106,7 +103,7 @@ rl.on('line', async (line: string) => {
         });
       }
     }
-    
+
     const response = {
       stdout,
       stderr,
@@ -114,9 +111,9 @@ rl.on('line', async (line: string) => {
       executionId,
       outputs
     };
-    
+
     console.log(JSON.stringify(response));
-    
+
   } catch (error: unknown) {
     const err = error as Error;
     console.log(JSON.stringify({

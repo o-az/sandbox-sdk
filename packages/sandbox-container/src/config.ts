@@ -37,19 +37,6 @@ const INTERPRETER_EXECUTION_TIMEOUT_MS = (() => {
 })();
 
 /**
- * Timeout for VM execution in JavaScript/TypeScript executors (vm.runInContext).
- * This applies to code execution within the Node.js VM.
- *
- * Default: undefined (unlimited)
- * Set to 0 or omit the environment variable for unlimited execution.
- * Environment variable: VM_EXECUTION_TIMEOUT_MS
- */
-const VM_EXECUTION_TIMEOUT_MS = (() => {
-	const val = parseInt(process.env.VM_EXECUTION_TIMEOUT_MS || '0', 10);
-	return val === 0 ? undefined : val;
-})();
-
-/**
  * Timeout for foreground shell command execution.
  * Users might run long builds, installations, or processes.
  *
@@ -93,7 +80,6 @@ export const CONFIG = {
 	INTERPRETER_SPAWN_TIMEOUT_MS,
 	INTERPRETER_PREWARM_TIMEOUT_MS,
 	INTERPRETER_EXECUTION_TIMEOUT_MS,
-	VM_EXECUTION_TIMEOUT_MS,
 	COMMAND_TIMEOUT_MS,
 	MAX_OUTPUT_SIZE_BYTES,
 	STREAM_CHUNK_DELAY_MS,
