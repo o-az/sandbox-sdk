@@ -560,19 +560,27 @@ export class Session {
     // Setup trap only for foreground pattern
     if (!isBackground) {
       script += `  # Cleanup function (called on exit or signals)\n`;
-      script += `  cleanup() { rm -f "$sp" "$ep"; }\n`;
+      script += `  cleanup() {\n`;
+      script += `    echo "[DIAG] Cleanup called, removing FIFOs" >&2\n`;
+      script += `    rm -f "$sp" "$ep"\n`;
+      script += `    echo "[DIAG] FIFOs removed" >&2\n`;
+      script += `  }\n`;
       script += `  trap 'cleanup' EXIT HUP INT TERM\n`;
       script += `  \n`;
     }
 
     script += `  # Pre-cleanup and create FIFOs with error handling\n`;
+    script += `  echo "[DIAG] Cleaning up old FIFOs: $sp $ep" >&2\n`;
     script += `  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1\n`;
+    script += `  echo "[DIAG] FIFOs created successfully" >&2\n`;
     script += `  \n`;
     script += `  # Label stdout with binary prefix in background (capture PID)\n`;
     script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!\n`;
+    script += `  echo "[DIAG] Stdout labeler spawned: PID=$r1" >&2\n`;
     script += `  \n`;
     script += `  # Label stderr with binary prefix in background (capture PID)\n`;
     script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!\n`;
+    script += `  echo "[DIAG] Stderr labeler spawned: PID=$r2" >&2\n`;
     script += `  \n`;
     script += `\n`;
 
@@ -632,8 +640,10 @@ export class Session {
 
       // Open FIFOs on explicit file descriptors for clean closure
       script += `  # Open FIFOs on explicit file descriptors\n`;
+      script += `  echo "[DIAG] Opening FIFOs on FD 3 (stdout) and FD 4 (stderr)" >&2\n`;
       script += `  exec 3> "$sp"\n`;
       script += `  exec 4> "$ep"\n`;
+      script += `  echo "[DIAG] FDs opened successfully" >&2\n`;
       script += `  \n`;
 
       if (cwd) {
@@ -642,8 +652,10 @@ export class Session {
         script += `  PREV_DIR=$(pwd)\n`;
         script += `  if cd ${safeCwd}; then\n`;
         script += `    # Execute command in FOREGROUND (state persists!)\n`;
+        script += `    echo "[DIAG] Starting command execution" >&2\n`;
         script += `    { ${command}; } >&3 2>&4\n`;
         script += `    EXIT_CODE=$?\n`;
+        script += `    echo "[DIAG] Command completed with exit code: $EXIT_CODE" >&2\n`;
         script += `    # Restore directory\n`;
         script += `    cd "$PREV_DIR"\n`;
         script += `  else\n`;
@@ -653,23 +665,44 @@ export class Session {
         script += `  fi\n`;
       } else {
         script += `  # Execute command in FOREGROUND (state persists!)\n`;
+        script += `  echo "[DIAG] Starting command execution" >&2\n`;
         script += `  { ${command}; } >&3 2>&4\n`;
         script += `  EXIT_CODE=$?\n`;
+        script += `  echo "[DIAG] Command completed with exit code: $EXIT_CODE" >&2\n`;
       }
 
       // CRITICAL: Close FDs to signal EOF to labelers
       script += `  \n`;
       script += `  # Close FDs to signal EOF to labelers\n`;
+      script += `  echo "[DIAG] Closing FD 3 and FD 4 to signal EOF" >&2\n`;
       script += `  exec 3>&-\n`;
       script += `  exec 4>&-\n`;
+      script += `  echo "[DIAG] FDs closed" >&2\n`;
       script += `  \n`;
 
       // For foreground: wait for labelers and write exit code in main script
       script += `  # Wait for labeler processes to finish (they got EOF)\n`;
+      script += `  echo "[DIAG] Waiting for labelers (PIDs $r1 and $r2)..." >&2\n`;
       script += `  wait "$r1" "$r2" 2>/dev/null\n`;
+      script += `  WAIT_EXIT=$?\n`;
+      script += `  echo "[DIAG] Wait completed with status: $WAIT_EXIT" >&2\n`;
+      script += `  \n`;
+      script += `  # Check if labelers are actually dead\n`;
+      script += `  kill -0 $r1 2>/dev/null && echo "[DIAG] WARNING: Labeler $r1 still alive after wait!" >&2 || echo "[DIAG] Labeler $r1 confirmed dead" >&2\n`;
+      script += `  kill -0 $r2 2>/dev/null && echo "[DIAG] WARNING: Labeler $r2 still alive after wait!" >&2 || echo "[DIAG] Labeler $r2 confirmed dead" >&2\n`;
+      script += `  \n`;
+      script += `  # Check for zombie/orphaned processes\n`;
+      script += `  ZOMBIE_COUNT=$(ps aux | grep -E 'defunct|<defunct>' | wc -l)\n`;
+      script += `  echo "[DIAG] Zombie process count: $ZOMBIE_COUNT" >&2\n`;
+      script += `  \n`;
+      script += `  # Check file descriptor usage\n`;
+      script += `  FD_COUNT=$(ls /proc/$$/fd 2>/dev/null | wc -l)\n`;
+      script += `  echo "[DIAG] Open FDs in shell: $FD_COUNT" >&2\n`;
       script += `  \n`;
       script += `  # Write exit code\n`;
+      script += `  echo "[DIAG] Writing exit code $EXIT_CODE to ${safeExitCodeFile}" >&2\n`;
       script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
+      script += `  echo "[DIAG] Exit code written successfully" >&2\n`;
     }
 
     // Cleanup (only for foreground - background monitor handles it)
