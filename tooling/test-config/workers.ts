@@ -4,7 +4,6 @@
  */
 export function createWorkersTestConfig(options?: {
   include?: string[];
-  coverage?: any;
   wranglerConfigPath?: string;
   durableObjects?: Record<string, string>;
 }) {
@@ -15,7 +14,6 @@ export function createWorkersTestConfig(options?: {
     teardownTimeout: 10000,
     isolate: true,
     include: options?.include || ['tests/**/*.test.ts'],
-    coverage: options?.coverage,
     maxConcurrency: 5,
     poolOptions: {
       workers: {

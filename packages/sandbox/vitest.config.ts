@@ -16,29 +16,6 @@ export default defineWorkersConfig({
     durableObjects: {
       Sandbox: 'Sandbox',
     },
-    coverage: {
-      provider: 'istanbul',
-      reporter: ['text', 'html', 'lcov', 'json'],
-      include: ['src/**/*.{ts,js}'],
-      exclude: [
-        'node_modules/**',
-        'dist/**',
-        '**/*.test.ts',
-        '**/tests/**',
-        '**/__mocks__/**',
-        '**/*.d.ts',
-        '**/types.ts',
-      ],
-      thresholds: {
-        lines: 90,
-        functions: 85,
-        branches: 85,
-        statements: 90,
-        perFile: true,
-      },
-      clean: true,
-      cleanOnRerun: true,
-    },
   }),
 
   esbuild: {

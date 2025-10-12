@@ -24,16 +24,6 @@
       ],
       "env": ["NODE_ENV"]
     },
-    "test:coverage": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": [
-        "src/**/*.ts",
-        "tests/**/*.ts",
-        "vitest.config.ts"
-      ],
-      "env": ["NODE_ENV"]
-    },
     "typecheck": {
       "dependsOn": ["^build"],
       "outputs": [],

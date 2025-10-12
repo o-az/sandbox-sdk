@@ -26,8 +26,7 @@
     "docker:local": "npm run build -w @repo/sandbox-container && cd ../.. && docker build -f packages/sandbox/Dockerfile -t cloudflare/sandbox-test:$npm_package_version .",
     "docker:publish": "cd ../.. && docker buildx build --platform linux/amd64,linux/arm64 -f packages/sandbox/Dockerfile -t cloudflare/sandbox:$npm_package_version --push .",
     "docker:publish:beta": "cd ../.. && docker buildx build --platform linux/amd64,linux/arm64 -f packages/sandbox/Dockerfile -t cloudflare/sandbox:$npm_package_version-beta --push .",
-    "test": "vitest run --config vitest.config.ts",
-    "test:coverage": "vitest run --coverage --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts"
   },
   "exports": {
     ".": {
@@ -39,9 +38,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
-  "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.9.10",
-    "@vitest/coverage-istanbul": "^3.2.4"
-  }
+  "type": "module"
 }

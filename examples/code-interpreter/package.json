@@ -12,10 +12,6 @@
   },
   "author": "",
   "license": "MIT",
-  "devDependencies": {
-    "typescript": "^5.5.2",
-    "wrangler": "^4.26.0"
-  },
   "dependencies": {
     "@cloudflare/sandbox": "*",
     "openai": "^5.12.0"
