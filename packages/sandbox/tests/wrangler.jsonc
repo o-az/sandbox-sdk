@@ -8,11 +8,10 @@
     "enabled": true
   },
 
-
   "containers": [
     {
       "class_name": "Sandbox",
-      "image": "./Dockerfile",
+      "image": "../Dockerfile",
       "name": "sandbox",
       "max_instances": 1
     }
@@ -31,28 +30,6 @@
     {
       "new_sqlite_classes": ["Sandbox"],
       "tag": "v1"
-    }
-  ],
-
-  "kv_namespaces": [
-    {
-      "binding": "TEST_KV",
-      "id": "test_kv_namespace"
-    }
-  ],
-
-  "r2_buckets": [
-    {
-      "binding": "TEST_R2",
-      "bucket_name": "test-r2-bucket"
-    }
-  ],
-
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "test_database",
-      "database_id": "test_db_id"
     }
   ]
 }
