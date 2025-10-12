@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
-import { WranglerDevRunner } from './helpers/wrangler-runner';
+import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
 
 /**
@@ -21,14 +21,14 @@ import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/
  */
 describe('Session State Isolation Workflow', () => {
   describe('local', () => {
-    let runner: WranglerDevRunner;
+    let runner: WranglerDevRunner | null;
     let workerUrl: string;
 
     beforeAll(async () => {
-      runner = new WranglerDevRunner({
-        cwd: 'tests/e2e/test-worker',
-      });
-      workerUrl = await runner.getUrl();
+      // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
+      const result = await getTestWorkerUrl();
+      workerUrl = result.url;
+      runner = result.runner;
     });
 
     afterAll(async () => {

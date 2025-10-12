@@ -8,22 +8,23 @@ export interface WranglerDevOptions {
 }
 
 /**
- * Get the test worker URL for E2E tests
+ * Get the test worker URL and runner for E2E tests
  *
- * In CI: Uses the deployed worker URL from TEST_WORKER_URL env var
- * Locally: Spawns wrangler dev and returns the local URL
+ * In CI: Uses the deployed worker URL from TEST_WORKER_URL env var (runner is null)
+ * Locally: Spawns wrangler dev and returns both URL and runner for cleanup
  */
-export async function getTestWorkerUrl(): Promise<string> {
+export async function getTestWorkerUrl(): Promise<{ url: string; runner: WranglerDevRunner | null }> {
   // CI mode: use deployed worker URL
   if (process.env.TEST_WORKER_URL) {
     console.log('Using deployed test worker:', process.env.TEST_WORKER_URL);
-    return process.env.TEST_WORKER_URL;
+    return { url: process.env.TEST_WORKER_URL, runner: null };
   }
 
   // Local mode: spawn wrangler dev
   console.log('Spawning local wrangler dev...');
-  const runner = new WranglerDevRunner();
-  return runner.getUrl();
+  const runner = new WranglerDevRunner({ cwd: 'tests/e2e/test-worker' });
+  const url = await runner.getUrl();
+  return { url, runner };
 }
 
 /**

@@ -12,23 +12,24 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import { WranglerDevRunner } from './helpers/wrangler-runner';
+import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
 
 describe('File Operations Workflow (E2E)', () => {
-  let runner: WranglerDevRunner;
+  let runner: WranglerDevRunner | null;
   let workerUrl: string;
 
   beforeAll(async () => {
-    runner = new WranglerDevRunner({
-      cwd: 'tests/e2e/test-worker',
-    });
-
-    workerUrl = await runner.getUrl();
+    // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
+    const result = await getTestWorkerUrl();
+    workerUrl = result.url;
+    runner = result.runner;
   }, 120000); // 2 minute timeout for wrangler startup
 
   afterAll(async () => {
-    await runner.stop();
+    if (runner) {
+      await runner.stop();
+    }
   });
 
   test('should create nested directories', async () => {
