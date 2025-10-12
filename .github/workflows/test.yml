@@ -94,15 +94,11 @@ jobs:
           command: deploy --env ${{ github.ref_name }}
           workingDirectory: tests/e2e/test-worker
 
+      # Construct worker URL from worker name
       - name: Get deployment URL
         id: get-url
         run: |
-          URL=$(npx wrangler deployments list --env ${{ github.ref_name }} --format json | jq -r '.[0].url')
-          echo "worker_url=$URL" >> $GITHUB_OUTPUT
-        working-directory: tests/e2e/test-worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          echo "worker_url=https://sandbox-e2e-test-worker-${{ github.ref_name }}.agents-b8a.workers.dev" >> $GITHUB_OUTPUT
 
       # Run E2E tests against deployed worker
       - name: Run E2E tests
