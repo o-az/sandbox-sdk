@@ -36,10 +36,42 @@
 
   "env": {
     "main": {
-      "name": "sandbox-e2e-test-worker-main"
+      "name": "sandbox-e2e-test-worker-main",
+      "containers": [
+        {
+          "class_name": "Sandbox",
+          "image": "./Dockerfile",
+          "name": "sandbox",
+          "max_instances": 25
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "class_name": "Sandbox",
+            "name": "Sandbox"
+          }
+        ]
+      }
     },
     "refactor-with-tests": {
-      "name": "sandbox-e2e-test-worker-refactor-with-tests"
+      "name": "sandbox-e2e-test-worker-refactor-with-tests",
+      "containers": [
+        {
+          "class_name": "Sandbox",
+          "image": "./Dockerfile",
+          "name": "sandbox",
+          "max_instances": 25
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "class_name": "Sandbox",
+            "name": "Sandbox"
+          }
+        ]
+      }
     }
   }
 }
