@@ -3,7 +3,7 @@
   "main": "index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
-  "account_id": "8acffcc765d5baa91c873d1459ba1a19",
+  "account_id": "b8afc92c7a87f699592038b756153d22",
 
   "observability": {
     "enabled": true
