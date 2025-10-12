@@ -81,6 +81,10 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # Build Docker image for test worker (needed before deployment)
+      - name: Build test worker Docker image
+        run: turbo run docker:local --filter=@cloudflare/sandbox
+
       # Deploy to branch-specific environment
       - name: Deploy test worker
         uses: cloudflare/wrangler-action@v3

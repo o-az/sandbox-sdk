@@ -100,6 +100,10 @@ jobs:
       - name: Build packages
         run: npm run build
 
+      # Build Docker image for test worker (needed before deployment)
+      - name: Build test worker Docker image
+        run: turbo run docker:local --filter=@cloudflare/sandbox
+
       # Set environment name (pr-X for PRs, branch name for pushes)
       - name: Set environment name
         id: env-name
