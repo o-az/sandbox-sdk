@@ -83,7 +83,7 @@ jobs:
 
       # Build Docker image for test worker (needed before deployment)
       - name: Build test worker Docker image
-        run: turbo run docker:local --filter=@cloudflare/sandbox
+        run: npm run docker:local -w @cloudflare/sandbox
 
       # Deploy to branch-specific environment
       - name: Deploy test worker
@@ -104,8 +104,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # Run E2E tests against deployed worker
       - name: Run E2E tests
-        run: npm run test:e2e
+        run: npx vitest run --config vitest.e2e.config.ts
         env:
           TEST_WORKER_URL: ${{ steps.get-url.outputs.worker_url }}
           CI: true
