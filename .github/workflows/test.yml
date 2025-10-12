@@ -40,28 +40,26 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Run all unit tests
+      - name: Run sandbox unit tests
         run: |
-          # Run tests with timeout to work around vitest-pool-workers shutdown hang
-          # Tests complete in ~5s, but workerd shutdown can hang for 6+ minutes in CI
-          set +e  # Don't exit on error
-          timeout --preserve-status 45 npm test > test_output.log 2>&1
+          set +e
+          timeout --preserve-status 30 npm run test -w @cloudflare/sandbox > sandbox_test.log 2>&1
           EXIT_CODE=$?
-          cat test_output.log
+          cat sandbox_test.log
 
-          # Check if tests passed by looking for success indicators in output
-          if grep -q "Test Files.*passed" test_output.log && grep -q "Tests.*passed" test_output.log; then
-            echo "✅ Tests passed successfully"
-            # Exit code 124 means timeout, which is expected due to workerd shutdown hang
+          if grep -q "Test Files.*passed" sandbox_test.log && grep -q "Tests.*passed" sandbox_test.log; then
+            echo "Sandbox tests passed"
             if [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 143 ]; then
-              echo "::warning::Vitest was killed due to workerd shutdown hang (known issue), but tests passed"
-              exit 0
+              echo "::warning::Killed due to workerd shutdown hang (known vitest-pool-workers issue)"
             fi
             exit 0
           else
-            echo "❌ Tests failed or did not complete"
+            echo "Sandbox tests failed"
             exit 1
           fi
+
+      - name: Run container unit tests
+        run: npm run test -w @repo/sandbox-container
 
   e2e-tests:
     runs-on: ubuntu-latest
