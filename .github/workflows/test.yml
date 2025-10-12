@@ -4,140 +4,83 @@ permissions:
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
   quality-checks:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run check
 
-      - name: Build packages
-        run: npm run build
-
-      - name: Run type checking
-        run: npm run typecheck
-
-      - name: Run linting
-        run: npm run check
-
-  test:
+  unit-tests:
     runs-on: ubuntu-latest
     needs: quality-checks
-    strategy:
-      matrix:
-        test-suite: [unit, contracts, container]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
-      - name: Run ${{ matrix.test-suite }} tests
-        run: npm run test:${{ matrix.test-suite }}
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
 
-  coverage:
+  e2e-tests:
     runs-on: ubuntu-latest
-    needs: test
-
+    needs: unit-tests
+    timeout-minutes: 30
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate coverage report
-        run: npm run test:coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+      - uses: oven-sh/setup-bun@v2
         with:
-          file: ./packages/sandbox/coverage/lcov.info
-          fail_ci_if_error: true
+          bun-version: latest
 
-  build:
-    runs-on: ubuntu-latest
-    needs: coverage
+      - run: npm ci
+      - run: npm run build
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # Deploy to branch-specific environment
+      - name: Deploy test worker
+        uses: cloudflare/wrangler-action@v3
         with:
-          node-version: "20"
-          cache: "npm"
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env ${{ github.ref_name }}
+          workingDirectory: tests/e2e/test-worker
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build sandbox package
-        run: npm run build
-        working-directory: packages/sandbox
-
-      - name: Cache build artifacts
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            packages/sandbox/dist
-            packages/sandbox/node_modules
-          key: build-${{ github.sha }}-${{ hashFiles('**/package-lock.json') }}
-
-  example-test:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/sandbox/dist
-            packages/sandbox/node_modules
-          key: build-${{ github.sha }}-${{ hashFiles('**/package-lock.json') }}
-          fail-on-cache-miss: true
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Test example application
+      - name: Get deployment URL
+        id: get-url
         run: |
-          npm ci
-          npm run build
-        working-directory: examples/basic
+          URL=$(npx wrangler deployments list --env ${{ github.ref_name }} --format json | jq -r '.[0].url')
+          echo "worker_url=$URL" >> $GITHUB_OUTPUT
+        working-directory: tests/e2e/test-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          TEST_WORKER_URL: ${{ steps.get-url.outputs.worker_url }}
+          CI: true

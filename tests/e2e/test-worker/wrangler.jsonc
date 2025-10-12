@@ -1,5 +1,5 @@
 {
-  "name": "sandbox-integration-test-worker",
+  "name": "sandbox-e2e-test-worker",
   "main": "index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
@@ -32,5 +32,14 @@
       "new_sqlite_classes": ["Sandbox"],
       "tag": "v1"
     }
-  ]
+  ],
+
+  "env": {
+    "main": {
+      "name": "sandbox-e2e-test-worker-main"
+    },
+    "refactor-with-tests": {
+      "name": "sandbox-e2e-test-worker-refactor-with-tests"
+    }
+  }
 }

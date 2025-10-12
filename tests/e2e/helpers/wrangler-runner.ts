@@ -8,6 +8,25 @@ export interface WranglerDevOptions {
 }
 
 /**
+ * Get the test worker URL for E2E tests
+ *
+ * In CI: Uses the deployed worker URL from TEST_WORKER_URL env var
+ * Locally: Spawns wrangler dev and returns the local URL
+ */
+export async function getTestWorkerUrl(): Promise<string> {
+  // CI mode: use deployed worker URL
+  if (process.env.TEST_WORKER_URL) {
+    console.log('Using deployed test worker:', process.env.TEST_WORKER_URL);
+    return process.env.TEST_WORKER_URL;
+  }
+
+  // Local mode: spawn wrangler dev
+  console.log('Spawning local wrangler dev...');
+  const runner = new WranglerDevRunner();
+  return runner.getUrl();
+}
+
+/**
  * WranglerDevRunner - Manages wrangler dev lifecycle for integration tests
  *
  * Based on patterns from @cloudflare/containers test suite.
