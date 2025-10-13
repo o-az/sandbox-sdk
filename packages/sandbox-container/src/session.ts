@@ -126,22 +126,8 @@ export class Session {
       },
       stdin: 'pipe',
       stdout: 'ignore', // We'll read from log files instead
-      stderr: 'pipe', // TEMPORARY: Capture bash stderr for debugging CI hangs
+      stderr: 'ignore', // Ignore bash diagnostics
     });
-
-    // TEMPORARY: Log bash stderr for debugging CI hangs
-    if (this.shell.stderr && typeof this.shell.stderr !== 'number') {
-      (async () => {
-        try {
-          for await (const chunk of this.shell!.stderr as ReadableStream<Uint8Array>) {
-            const text = new TextDecoder().decode(chunk);
-            console.error(`[Session ${this.id}] BASH STDERR:`, text);
-          }
-        } catch (error) {
-          console.error(`[Session ${this.id}] Error reading bash stderr:`, error);
-        }
-      })();
-    }
 
     this.ready = true;
   }
@@ -555,15 +541,12 @@ export class Session {
     }
 
     script += `  # Pre-cleanup and create FIFOs with error handling\n`;
-    script += `  echo "[STEP 1/6] Creating FIFOs" >&2\n`;
     script += `  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1\n`;
     script += `  \n`;
     script += `  # Label stdout with binary prefix in background (capture PID)\n`;
-    script += `  echo "[STEP 2/6] Spawning stdout labeler" >&2\n`;
     script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!\n`;
     script += `  \n`;
     script += `  # Label stderr with binary prefix in background (capture PID)\n`;
-    script += `  echo "[STEP 3/6] Spawning stderr labeler" >&2\n`;
     script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!\n`;
     script += `  \n`;
     script += `\n`;
@@ -630,7 +613,6 @@ export class Session {
 
       // Open FIFOs on explicit file descriptors for clean closure
       script += `  # Open FIFOs on explicit file descriptors\n`;
-      script += `  echo "[STEP 4/6] Opening FIFOs for writing" >&2\n`;
       script += `  exec 3> "$sp"\n`;
       script += `  exec 4> "$ep"\n`;
       script += `  \n`;
@@ -641,7 +623,6 @@ export class Session {
         script += `  PREV_DIR=$(pwd)\n`;
         script += `  if cd ${safeCwd}; then\n`;
         script += `    # Execute command in FOREGROUND (state persists!)\n`;
-        script += `    echo "[STEP 5/6] Executing command" >&2\n`;
         script += `    { ${command}; } >&3 2>&4\n`;
         script += `    EXIT_CODE=$?\n`;
         script += `    # Restore directory\n`;
@@ -653,7 +634,6 @@ export class Session {
         script += `  fi\n`;
       } else {
         script += `  # Execute command in FOREGROUND (state persists!)\n`;
-        script += `  echo "[STEP 5/6] Executing command" >&2\n`;
         script += `  { ${command}; } >&3 2>&4\n`;
         script += `  EXIT_CODE=$?\n`;
       }
@@ -670,10 +650,8 @@ export class Session {
       script += `  wait "$r1" "$r2" 2>/dev/null\n`;
       script += `  \n`;
       script += `  # Write exit code\n`;
-      script += `  echo "[STEP 6/6] Writing exit code" >&2\n`;
       script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}.tmp\n`;
       script += `  mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
-      script += `  test -f ${safeExitCodeFile} && echo "[STEP 6 VERIFY] Exit code file exists" >&2 || echo "[STEP 6 ERROR] File missing after mv!" >&2\n`;
     }
 
     // Cleanup (only for foreground - background monitor handles it)
