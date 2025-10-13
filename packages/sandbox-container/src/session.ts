@@ -4,28 +4,6 @@
  * This implementation provides a persistent bash session that maintains state
  * (cwd, env vars, shell functions) across commands. It uses FIFO pipes with
  * binary prefixes to reliably separate stdout/stderr without markers or polling.
- *
- * Architecture:
- * - Single persistent bash process spawned via Bun.spawn()
- * - Commands written to bash stdin as FIFO scripts
- * - Binary prefixes (\x01\x01\x01 for stdout, \x02\x02\x02 for stderr) prevent collision
- * - Exit code file signals completion (watched via fs.watch)
- * - Session directory for temp files (cleaned up on destroy)
- *
- * State Persistence:
- * - Commands execute in the session's shell context (using {} grouping, not () subshells)
- * - Working directory changes (cd) persist across exec() calls
- * - Environment variables (export) persist across exec() calls
- * - Shell functions defined in one exec() are available in subsequent calls
- * - Like a terminal: running 'exit' will terminate the persistent shell
- *
- * Robustness Features:
- * - Trap-based cleanup ensures FIFO removal on signals (EXIT, HUP, INT, TERM)
- * - Pre-cleanup prevents "file exists" errors from previous failures
- * - Fail-fast error handling for mkfifo failures (permissions, disk space)
- * - Specific PID waiting prevents interference from unrelated background jobs
- *
- * Inspired by Daytona's approach: https://github.com/daytonaio/daytona
  */
 
 import { randomUUID } from 'node:crypto';
@@ -273,17 +251,12 @@ export class Session {
       let position = 0;
       let exitCodeContent = '';
 
-      // Wait until exit code file exists AND has content
-      // (File is created immediately by fd 3 redirection, but content written at end)
+      // Wait until exit code file exists
       while (true) {
-        // Check if exit code file has content
         const exitFile = Bun.file(exitCodeFile);
         if (await exitFile.exists()) {
           exitCodeContent = (await exitFile.text()).trim();
-          if (exitCodeContent) {
-            // Exit code has been written, break polling loop
-            break;
-          }
+          break;
         }
 
         // Stream any new log content while waiting
@@ -594,14 +567,16 @@ export class Session {
         script += `  PREV_DIR=$(pwd)\n`;
         script += `  if cd ${safeCwd}; then\n`;
         script += `    # Execute command in BACKGROUND (runs in subshell, enables concurrency)\n`;
-        script += `    # Command writes its own exit code to fd 3, which is redirected to exit file\n`;
         script += `    {\n`;
         script += `      ${command}\n`;
         script += `      CMD_EXIT=$?\n`;
-        script += `      echo "$CMD_EXIT" >&3\n`;
-        script += `    } > "$sp" 2> "$ep" 3> ${safeExitCodeFile} & CMD_PID=$!\n`;
-        script += `    # Write PID immediately (enables killing)\n`;
-        script += `    echo "$CMD_PID" > ${safePidFile}\n`;
+        script += `      # Write exit code\n`;
+        script += `      echo "$CMD_EXIT" > "${safeExitCodeFile}.$$"\n`;
+        script += `      mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
+        script += `    } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
+        script += `    # Write PID for process killing\n`;
+        script += `    echo "$CMD_PID" > "${safePidFile}.$$"\n`;
+        script += `    mv "${safePidFile}.$$" ${safePidFile}\n`;
         script += `    # Background monitor waits for labelers and handles FIFO cleanup\n`;
         script += `    # (PID file cleaned up by TypeScript when command completes)\n`;
         script += `    (\n`;
@@ -614,19 +589,23 @@ export class Session {
         script += `    echo "Failed to change directory to ${safeCwd}" > "$ep"\n`;
         script += `    : > "$sp"\n`;
         script += `    wait "$r1" "$r2" 2>/dev/null\n`;
-        script += `    echo "1" > ${safeExitCodeFile}\n`;
+        script += `    # Write error exit code\n`;
+        script += `    echo "1" > "${safeExitCodeFile}.$$"\n`;
+        script += `    mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
         script += `    rm -f "$sp" "$ep"\n`;
         script += `  fi\n`;
       } else {
         script += `  # Execute command in BACKGROUND (runs in subshell, enables concurrency)\n`;
-        script += `  # Command writes its own exit code to fd 3, which is redirected to exit file\n`;
         script += `  {\n`;
         script += `    ${command}\n`;
         script += `    CMD_EXIT=$?\n`;
-        script += `    echo "$CMD_EXIT" >&3\n`;
-        script += `  } > "$sp" 2> "$ep" 3> ${safeExitCodeFile} & CMD_PID=$!\n`;
-        script += `  # Write PID immediately (enables killing)\n`;
-        script += `  echo "$CMD_PID" > ${safePidFile}\n`;
+        script += `    # Write exit code\n`;
+        script += `    echo "$CMD_EXIT" > "${safeExitCodeFile}.$$"\n`;
+        script += `    mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
+        script += `  } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
+        script += `  # Write PID for process killing\n`;
+        script += `  echo "$CMD_PID" > "${safePidFile}.$$"\n`;
+        script += `  mv "${safePidFile}.$$" ${safePidFile}\n`;
         script += `  # Background monitor waits for labelers and handles FIFO cleanup\n`;
         script += `  # (PID file cleaned up by TypeScript when command completes)\n`;
         script += `  (\n`;
@@ -701,7 +680,8 @@ export class Session {
       script += `  \n`;
       script += `  # Write exit code\n`;
       script += `  echo "[DIAG] Writing exit code $EXIT_CODE to ${safeExitCodeFile}" >&2\n`;
-      script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}\n`;
+      script += `  echo "$EXIT_CODE" > "${safeExitCodeFile}.$$"\n`;
+      script += `  mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
       script += `  echo "[DIAG] Exit code written successfully" >&2\n`;
     }
 
@@ -765,7 +745,7 @@ export class Session {
 
       // STEP 3: Check if file already exists (after watcher is set up)
       // If the file was written before watcher setup, we catch it here
-      // If it's written during this check, the watcher will catch it
+      // If it's written after this check, the watcher will catch it
       Bun.file(exitCodeFile).exists().then(async (exists) => {
         if (exists && !resolved) {
           resolved = true;
