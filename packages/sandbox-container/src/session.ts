@@ -673,6 +673,7 @@ export class Session {
       script += `  echo "[STEP 6/6] Writing exit code" >&2\n`;
       script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}.tmp\n`;
       script += `  mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
+      script += `  test -f ${safeExitCodeFile} && echo "[STEP 6 VERIFY] Exit code file exists" >&2 || echo "[STEP 6 ERROR] File missing after mv!" >&2\n`;
     }
 
     // Cleanup (only for foreground - background monitor handles it)
