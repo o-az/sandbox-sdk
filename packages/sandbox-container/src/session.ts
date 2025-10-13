@@ -689,25 +689,25 @@ export class Session {
   }
 
   /**
-   * Wait for exit code file to appear using fs.watch (event-driven!)
+   * Wait for exit code file to appear using hybrid fs.watch + polling
    *
-   * IMPORTANT: Sets up watcher BEFORE checking file existence to avoid race condition
-   * where file is written between the existence check and watcher setup.
+   * Uses fs.watch for fast detection, with polling fallback for systems where
+   * fs.watch doesn't reliably detect rename() operations (common on tmpfs, overlayfs).
    */
   private async waitForExitCode(exitCodeFile: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const dir = dirname(exitCodeFile);
       const filename = basename(exitCodeFile);
-      let resolved = false; // Prevent double-resolution
+      let resolved = false;
 
-      // STEP 1: Set up watcher FIRST (before any existence checks)
-      // This ensures we don't miss events that occur during setup
+      // STEP 1: Set up fs.watch for fast detection
       const watcher = watch(dir, async (_eventType, changedFile) => {
-        if (resolved) return; // Already resolved
+        if (resolved) return;
 
         if (changedFile === filename) {
           resolved = true;
           watcher.close();
+          clearInterval(pollInterval);
           try {
             const exitCode = await Bun.file(exitCodeFile).text();
             resolve(parseInt(exitCode.trim(), 10));
@@ -717,24 +717,42 @@ export class Session {
         }
       });
 
-      // STEP 2: Set up timeout ONLY if configured (undefined = unlimited)
+      // STEP 2: Set up polling fallback (fs.watch can miss rename events on some filesystems)
+      const pollInterval = setInterval(async () => {
+        if (resolved) return;
+
+        try {
+          const exists = await Bun.file(exitCodeFile).exists();
+          if (exists) {
+            resolved = true;
+            watcher.close();
+            clearInterval(pollInterval);
+            const exitCode = await Bun.file(exitCodeFile).text();
+            resolve(parseInt(exitCode.trim(), 10));
+          }
+        } catch (error) {
+          // Ignore polling errors, watcher or next poll will catch it
+        }
+      }, 50); // Poll every 50ms as fallback
+
+      // STEP 3: Set up timeout if configured
       if (this.commandTimeoutMs !== undefined) {
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
             watcher.close();
+            clearInterval(pollInterval);
             reject(new Error(`Command timeout after ${this.commandTimeoutMs}ms`));
           }
         }, this.commandTimeoutMs);
       }
 
-      // STEP 3: Check if file already exists (after watcher is set up)
-      // If the file was written before watcher setup, we catch it here
-      // If it's written after this check, the watcher will catch it
+      // STEP 4: Check if file already exists
       Bun.file(exitCodeFile).exists().then(async (exists) => {
         if (exists && !resolved) {
           resolved = true;
           watcher.close();
+          clearInterval(pollInterval);
           try {
             const exitCode = await Bun.file(exitCodeFile).text();
             resolve(parseInt(exitCode.trim(), 10));
@@ -742,11 +760,11 @@ export class Session {
             reject(new Error(`Failed to read exit code: ${error}`));
           }
         }
-        // If file doesn't exist yet, watcher will catch it when created
       }).catch((error) => {
         if (!resolved) {
           resolved = true;
           watcher.close();
+          clearInterval(pollInterval);
           reject(error);
         }
       });
