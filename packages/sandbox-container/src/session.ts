@@ -571,12 +571,12 @@ export class Session {
         script += `      ${command}\n`;
         script += `      CMD_EXIT=$?\n`;
         script += `      # Write exit code\n`;
-        script += `      echo "$CMD_EXIT" > "${safeExitCodeFile}.$$"\n`;
-        script += `      mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
+        script += `      echo "$CMD_EXIT" > ${safeExitCodeFile}.tmp\n`;
+        script += `      mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
         script += `    } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
         script += `    # Write PID for process killing\n`;
-        script += `    echo "$CMD_PID" > "${safePidFile}.$$"\n`;
-        script += `    mv "${safePidFile}.$$" ${safePidFile}\n`;
+        script += `    echo "$CMD_PID" > ${safePidFile}.tmp\n`;
+        script += `    mv ${safePidFile}.tmp ${safePidFile}\n`;
         script += `    # Background monitor waits for labelers and handles FIFO cleanup\n`;
         script += `    # (PID file cleaned up by TypeScript when command completes)\n`;
         script += `    (\n`;
@@ -590,8 +590,8 @@ export class Session {
         script += `    : > "$sp"\n`;
         script += `    wait "$r1" "$r2" 2>/dev/null\n`;
         script += `    # Write error exit code\n`;
-        script += `    echo "1" > "${safeExitCodeFile}.$$"\n`;
-        script += `    mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
+        script += `    echo "1" > ${safeExitCodeFile}.tmp\n`;
+        script += `    mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
         script += `    rm -f "$sp" "$ep"\n`;
         script += `  fi\n`;
       } else {
@@ -600,12 +600,12 @@ export class Session {
         script += `    ${command}\n`;
         script += `    CMD_EXIT=$?\n`;
         script += `    # Write exit code\n`;
-        script += `    echo "$CMD_EXIT" > "${safeExitCodeFile}.$$"\n`;
-        script += `    mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
+        script += `    echo "$CMD_EXIT" > ${safeExitCodeFile}.tmp\n`;
+        script += `    mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
         script += `  } > "$sp" 2> "$ep" & CMD_PID=$!\n`;
         script += `  # Write PID for process killing\n`;
-        script += `  echo "$CMD_PID" > "${safePidFile}.$$"\n`;
-        script += `  mv "${safePidFile}.$$" ${safePidFile}\n`;
+        script += `  echo "$CMD_PID" > ${safePidFile}.tmp\n`;
+        script += `  mv ${safePidFile}.tmp ${safePidFile}\n`;
         script += `  # Background monitor waits for labelers and handles FIFO cleanup\n`;
         script += `  # (PID file cleaned up by TypeScript when command completes)\n`;
         script += `  (\n`;
@@ -680,8 +680,8 @@ export class Session {
       script += `  \n`;
       script += `  # Write exit code\n`;
       script += `  echo "[DIAG] Writing exit code $EXIT_CODE to ${safeExitCodeFile}" >&2\n`;
-      script += `  echo "$EXIT_CODE" > "${safeExitCodeFile}.$$"\n`;
-      script += `  mv "${safeExitCodeFile}.$$" ${safeExitCodeFile}\n`;
+      script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}.tmp\n`;
+      script += `  mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
       script += `  echo "[DIAG] Exit code written successfully" >&2\n`;
     }
 
