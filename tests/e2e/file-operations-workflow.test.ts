@@ -11,13 +11,14 @@
  * and file manipulation across directory structures.
  */
 
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
 describe('File Operations Workflow (E2E)', () => {
   let runner: WranglerDevRunner | null;
   let workerUrl: string;
+  let currentSandboxId: string | null = null;
 
   beforeAll(async () => {
     // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
@@ -26,6 +27,14 @@ describe('File Operations Workflow (E2E)', () => {
     runner = result.runner;
   }, 120000); // 2 minute timeout for wrangler startup
 
+  afterEach(async () => {
+    // Cleanup sandbox container after each test
+    if (currentSandboxId) {
+      await cleanupSandbox(workerUrl, currentSandboxId);
+      currentSandboxId = null;
+    }
+  });
+
   afterAll(async () => {
     if (runner) {
       await runner.stop();
@@ -33,8 +42,8 @@ describe('File Operations Workflow (E2E)', () => {
   });
 
   test('should create nested directories', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create nested directory structure
     const mkdirResponse = await vi.waitFor(
@@ -70,8 +79,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should write files in subdirectories and read them back', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create directory structure
     await vi.waitFor(
@@ -117,8 +126,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should rename files', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create directory and write file
     await vi.waitFor(
@@ -185,8 +194,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should move files between directories', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create two directories
     await vi.waitFor(
@@ -266,8 +275,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should delete files', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create directory and file
     await vi.waitFor(
@@ -331,8 +340,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should reject deleting directories with deleteFile', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create a directory
     await vi.waitFor(
@@ -391,8 +400,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should delete directories recursively using exec', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Create nested directory structure with files
     await vi.waitFor(
@@ -459,8 +468,8 @@ describe('File Operations Workflow (E2E)', () => {
   }, 60000);
 
   test('should handle complete project scaffolding workflow', async () => {
-    const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+    currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
     // Step 1: Create project directory structure
     await vi.waitFor(

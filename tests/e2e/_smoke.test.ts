@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId } from './helpers/test-fixtures';
+import { createSandboxId, cleanupSandbox } from './helpers/test-fixtures';
 
 /**
  * Smoke test to verify integration test infrastructure
@@ -17,11 +17,20 @@ describe('Integration Infrastructure Smoke Test', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null = null;
     let workerUrl: string;
+    let currentSandboxId: string | null = null;
 
     beforeAll(async () => {
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
+    });
+
+    afterEach(async () => {
+      // Cleanup sandbox container after each test
+      if (currentSandboxId) {
+        await cleanupSandbox(workerUrl, currentSandboxId);
+        currentSandboxId = null;
+      }
     });
 
     afterAll(async () => {

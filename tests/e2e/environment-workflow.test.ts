@@ -1,17 +1,26 @@
-import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
 describe('Environment Variables Workflow', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null;
     let workerUrl: string;
+    let currentSandboxId: string | null = null;
 
     beforeAll(async () => {
       // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
+    });
+
+    afterEach(async () => {
+      // Cleanup sandbox container after each test
+      if (currentSandboxId) {
+        await cleanupSandbox(workerUrl, currentSandboxId);
+        currentSandboxId = null;
+      }
     });
 
     afterAll(async () => {
@@ -21,8 +30,8 @@ describe('Environment Variables Workflow', () => {
     });
 
     test('should set a single environment variable and verify it', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Set environment variable
       const setEnvResponse = await vi.waitFor(
@@ -56,8 +65,8 @@ describe('Environment Variables Workflow', () => {
     }, 60000);
 
     test('should set multiple environment variables at once', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Set multiple environment variables
       const setEnvResponse = await vi.waitFor(
@@ -95,8 +104,8 @@ describe('Environment Variables Workflow', () => {
     }, 60000);
 
     test('should persist environment variables across multiple commands', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Set environment variable
       const setEnvResponse = await vi.waitFor(
@@ -156,8 +165,8 @@ describe('Environment Variables Workflow', () => {
     }, 60000);
 
     test('should make environment variables available to background processes', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Set environment variable
       const setEnvResponse = await vi.waitFor(

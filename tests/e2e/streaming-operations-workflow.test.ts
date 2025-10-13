@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 import { parseSSEStream } from '@sandbox-utils/sse-parser';
 
 /**
@@ -20,12 +20,21 @@ describe('Streaming Operations Workflow', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null;
     let workerUrl: string;
+    let currentSandboxId: string | null = null;
 
     beforeAll(async () => {
       // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
+    });
+
+    afterEach(async () => {
+      // Cleanup sandbox container after each test
+      if (currentSandboxId) {
+        await cleanupSandbox(workerUrl, currentSandboxId);
+        currentSandboxId = null;
+      }
     });
 
     afterAll(async () => {
@@ -75,8 +84,8 @@ describe('Streaming Operations Workflow', () => {
     }
 
     test('should stream stdout events in real-time', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Stream a command that outputs multiple lines
       const streamResponse = await vi.waitFor(
@@ -121,8 +130,8 @@ describe('Streaming Operations Workflow', () => {
     }, 60000);
 
     test('should stream stderr events separately', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Stream a command that outputs to both stdout and stderr (wrap in bash -c for >&2)
       const streamResponse = await vi.waitFor(
@@ -160,8 +169,8 @@ describe('Streaming Operations Workflow', () => {
     }, 60000);
 
     test('should include all event types: start, stdout, complete', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       const streamResponse = await vi.waitFor(
         async () => fetchWithStartup(`${workerUrl}/api/execStream`, {
@@ -195,8 +204,8 @@ describe('Streaming Operations Workflow', () => {
     }, 60000);
 
     test('should handle command failures with non-zero exit code', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Stream a command that fails
       const streamResponse = await vi.waitFor(
@@ -219,8 +228,8 @@ describe('Streaming Operations Workflow', () => {
     }, 60000);
 
     test('should handle nonexistent commands with proper exit code', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Initialize sandbox first
       await vi.waitFor(
@@ -265,8 +274,8 @@ describe('Streaming Operations Workflow', () => {
     }, 60000);
 
     test('should handle environment variables in streaming commands', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Stream a command that sets and uses a variable within the same bash invocation
       const streamResponse1 = await vi.waitFor(
@@ -291,8 +300,8 @@ describe('Streaming Operations Workflow', () => {
     }, 90000);
 
     test('should handle long-running streaming commands', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Stream a command that outputs over time (wrap in bash -c for loop)
       const streamResponse = await vi.waitFor(
@@ -325,8 +334,8 @@ describe('Streaming Operations Workflow', () => {
     }, 60000);
 
     test('should support concurrent streaming operations', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Initialize with first request
       await vi.waitFor(
@@ -389,13 +398,13 @@ describe('Streaming Operations Workflow', () => {
     }, 90000);
 
     test('should work with explicit sessions', async () => {
-      const sandboxId = createSandboxId();
+      currentSandboxId = createSandboxId();
 
       // Create a session with environment variables
       const sessionResponse = await vi.waitFor(
         async () => fetchWithStartup(`${workerUrl}/api/session/create`, {
           method: 'POST',
-          headers: createTestHeaders(sandboxId),
+          headers: createTestHeaders(currentSandboxId),
           body: JSON.stringify({
             env: {
               SESSION_ID: 'test-session-streaming',

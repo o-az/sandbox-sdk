@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
 /**
  * Build and Test Workflow Integration Tests
@@ -17,12 +17,21 @@ describe('Build and Test Workflow', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null;
     let workerUrl: string;
+    let currentSandboxId: string | null = null;
 
     beforeAll(async () => {
       // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
+    });
+
+    afterEach(async () => {
+      // Cleanup sandbox container after each test
+      if (currentSandboxId) {
+        await cleanupSandbox(workerUrl, currentSandboxId);
+        currentSandboxId = null;
+      }
     });
 
     afterAll(async () => {
@@ -33,8 +42,8 @@ describe('Build and Test Workflow', () => {
     });
 
     test('should execute basic commands and verify file operations', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Execute simple command
       // Use vi.waitFor to handle container startup time
@@ -100,8 +109,8 @@ describe('Build and Test Workflow', () => {
     });
 
     test('should handle command failures correctly', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Execute a command that will fail
       // Use vi.waitFor to handle container startup

@@ -97,6 +97,14 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     console.log(`[Sandbox] Updated environment variables`);
   }
 
+  /**
+   * Cleanup and destroy the sandbox container
+   */
+  override async destroy(): Promise<void> {
+    console.log(`[Sandbox] Cleanup requested, destroying container`);
+    await super.destroy();
+  }
+
   override onStart() {
     console.log("Sandbox successfully started");
   }

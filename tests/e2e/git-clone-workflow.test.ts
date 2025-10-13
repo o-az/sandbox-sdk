@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
 /**
  * Git Clone Workflow Integration Tests
@@ -22,12 +22,21 @@ describe('Git Clone Workflow', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null;
     let workerUrl: string;
+    let currentSandboxId: string | null = null;
 
     beforeAll(async () => {
       // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
+    });
+
+    afterEach(async () => {
+      // Cleanup sandbox container after each test
+      if (currentSandboxId) {
+        await cleanupSandbox(workerUrl, currentSandboxId);
+        currentSandboxId = null;
+      }
     });
 
     afterAll(async () => {
@@ -38,8 +47,8 @@ describe('Git Clone Workflow', () => {
     });
 
     test('should clone a public repository successfully', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Clone a very small public repository for testing
       // Using octocat/Hello-World - a minimal test repository
@@ -77,8 +86,8 @@ describe('Git Clone Workflow', () => {
     });
 
     test('should clone repository with specific branch', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Clone a repository with a specific branch (using master for Hello-World)
       const cloneResponse = await vi.waitFor(
@@ -115,8 +124,8 @@ describe('Git Clone Workflow', () => {
     });
 
     test('should execute complete workflow: clone → list files → verify structure', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Clone the Hello-World repository
       const cloneResponse = await vi.waitFor(
@@ -181,8 +190,8 @@ describe('Git Clone Workflow', () => {
     });
 
     test('should handle cloning to default directory when targetDir not specified', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Clone without specifying targetDir (should use repo name "Hello-World")
       const cloneResponse = await vi.waitFor(
@@ -218,8 +227,8 @@ describe('Git Clone Workflow', () => {
     });
 
     test('should handle git clone errors gracefully', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Try to clone a non-existent repository
       const cloneResponse = await vi.waitFor(
@@ -247,8 +256,8 @@ describe('Git Clone Workflow', () => {
     });
 
     test('should maintain session state across git clone and subsequent commands', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Clone a repository
       const cloneResponse = await vi.waitFor(

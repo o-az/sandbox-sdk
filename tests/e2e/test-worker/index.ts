@@ -277,6 +277,15 @@ export default {
         });
       }
 
+      // Cleanup endpoint - destroys the sandbox container
+      // This is used by E2E tests to explicitly clean up after each test
+      if (url.pathname === '/cleanup' && request.method === 'POST') {
+        await sandbox.destroy();
+        return new Response(JSON.stringify({ success: true, message: 'Sandbox destroyed' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       return new Response('Not found', { status: 404 });
     } catch (error) {
       return new Response(JSON.stringify({

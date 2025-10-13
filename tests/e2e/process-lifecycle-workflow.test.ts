@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, fetchWithStartup } from './helpers/test-fixtures';
+import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
 /**
  * Process Lifecycle Workflow Integration Tests
@@ -26,11 +26,20 @@ describe('Process Lifecycle Workflow', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null = null;
     let workerUrl: string;
+    let currentSandboxId: string | null = null;
 
     beforeAll(async () => {
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
+    });
+
+    afterEach(async () => {
+      // Cleanup sandbox container after each test
+      if (currentSandboxId) {
+        await cleanupSandbox(workerUrl, currentSandboxId);
+        currentSandboxId = null;
+      }
     });
 
     afterAll(async () => {
@@ -41,8 +50,8 @@ describe('Process Lifecycle Workflow', () => {
     });
 
     test('should start a server process and verify it runs', async () => {
-      const sandboxId = createSandboxId();
-      const headers = createTestHeaders(sandboxId);
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
 
       // Step 1: Start a simple sleep process (easier to test than a server)
       const startResponse = await vi.waitFor(

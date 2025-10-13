@@ -191,3 +191,42 @@ export async function fetchWithStartup(
   // This allows error-handling tests to verify error responses
   return res;
 }
+
+/**
+ * Cleanup a sandbox instance by calling its destroy() RPC method
+ *
+ * This destroys the container and triggers the onStop() lifecycle hook.
+ * Use in afterEach to ensure containers are cleaned up after each test.
+ *
+ * @param workerUrl - The base URL of the test worker
+ * @param sandboxId - The sandbox ID to cleanup
+ *
+ * @example
+ * ```typescript
+ * afterEach(async () => {
+ *   if (sandboxId) {
+ *     await cleanupSandbox(workerUrl, sandboxId);
+ *   }
+ * });
+ * ```
+ */
+export async function cleanupSandbox(workerUrl: string, sandboxId: string): Promise<void> {
+  try {
+    const headers = createTestHeaders(sandboxId);
+
+    // Call the cleanup RPC method via a special endpoint
+    const response = await fetch(`${workerUrl}/cleanup`, {
+      method: 'POST',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.warn(`Failed to cleanup sandbox ${sandboxId}: ${response.status}`);
+    } else {
+      console.log(`Cleaned up sandbox: ${sandboxId}`);
+    }
+  } catch (error) {
+    // Don't fail tests if cleanup fails
+    console.warn(`Error cleaning up sandbox ${sandboxId}:`, error);
+  }
+}

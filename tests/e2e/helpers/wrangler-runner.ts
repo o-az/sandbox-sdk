@@ -91,6 +91,17 @@ export class WranglerDevRunner {
         clearTimeout(timeoutId);
         reject(error);
       });
+
+      this.process.on('exit', (code, signal) => {
+        if (code !== 0 && code !== null) {
+          clearTimeout(timeoutId);
+          reject(new Error(`Wrangler dev exited with code ${code} before becoming ready`));
+        }
+        if (signal) {
+          clearTimeout(timeoutId);
+          reject(new Error(`Wrangler dev killed by signal ${signal} before becoming ready`));
+        }
+      });
     });
   }
 
@@ -116,44 +127,45 @@ export class WranglerDevRunner {
   }
 
   /**
-   * Stop wrangler dev and cleanup containers
+   * Stop wrangler dev process
    *
-   * @param containerIds - Optional array of container IDs to cleanup
+   * Note: Container cleanup is now handled by afterEach hooks calling cleanupSandbox()
+   * directly, so this method only needs to stop the wrangler process.
    *
    * Cleanup sequence:
-   * 1. Call cleanup endpoints for each container
-   * 2. Wait 2s for onStop hooks to complete
-   * 3. Kill wrangler process with SIGTERM
-   * 4. Wait for process to exit
+   * 1. Send SIGTERM to wrangler process
+   * 2. Wait up to 5 seconds for graceful shutdown
+   * 3. Send SIGKILL if still running
    */
-  async stop(containerIds?: string[]): Promise<void> {
-    // Step 1: Call cleanup endpoints
-    if (containerIds && containerIds.length > 0 && this.url) {
-      for (const id of containerIds) {
-        try {
-          // Try to call cleanup endpoint if your worker exposes one
-          // This is optional - adjust based on your worker implementation
-          await fetch(`${this.url}/cleanup?id=${id}`).catch(() => {
-            // Ignore errors - container might already be stopped
-          });
-        } catch (error) {
-          // Ignore cleanup errors
-        }
-      }
+  async stop(): Promise<void> {
+    if (!this.process || this.process.killed) {
+      console.log('Wrangler process already stopped');
+      return;
     }
 
-    // Step 2: Wait 2s for onStop hooks to complete
-    // This ensures lifecycle hooks have time to run before we kill the process
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('Stopping wrangler dev process...');
 
-    // Step 3: Kill wrangler process
+    // Send SIGTERM for graceful shutdown
     this.process.kill('SIGTERM');
 
-    // Step 4: Wait for process to exit
-    return new Promise<void>(resolve => {
-      this.process.on('close', () => resolve());
-      // Fallback timeout
-      setTimeout(resolve, 1000);
+    // Wait for process to exit (with timeout)
+    const exitPromise = new Promise<void>(resolve => {
+      this.process.on('close', () => {
+        console.log('Wrangler process stopped gracefully');
+        resolve();
+      });
     });
+
+    const timeoutPromise = new Promise<void>(resolve => {
+      setTimeout(() => {
+        if (!this.process.killed) {
+          console.warn('Wrangler process did not stop gracefully, sending SIGKILL');
+          this.process.kill('SIGKILL');
+        }
+        resolve();
+      }, 5000);
+    });
+
+    await Promise.race([exitPromise, timeoutPromise]);
   }
 }
