@@ -725,42 +725,66 @@ export class Session {
 
   /**
    * Wait for exit code file to appear using fs.watch (event-driven!)
+   *
+   * IMPORTANT: Sets up watcher BEFORE checking file existence to avoid race condition
+   * where file is written between the existence check and watcher setup.
    */
   private async waitForExitCode(exitCodeFile: string): Promise<number> {
     return new Promise((resolve, reject) => {
       const dir = dirname(exitCodeFile);
       const filename = basename(exitCodeFile);
+      let resolved = false; // Prevent double-resolution
 
-      // Check if already exists (race condition)
-      Bun.file(exitCodeFile).exists().then(async (exists) => {
-        if (exists) {
-          const exitCode = await Bun.file(exitCodeFile).text();
-          resolve(parseInt(exitCode.trim(), 10));
-          return;
-        }
+      // STEP 1: Set up watcher FIRST (before any existence checks)
+      // This ensures we don't miss events that occur during setup
+      const watcher = watch(dir, async (_eventType, changedFile) => {
+        if (resolved) return; // Already resolved
 
-        // Set up file watcher (event-driven!)
-        const watcher = watch(dir, async (_eventType, changedFile) => {
-          if (changedFile === filename) {
-            watcher.close();
-            try {
-              const exitCode = await Bun.file(exitCodeFile).text();
-              resolve(parseInt(exitCode.trim(), 10));
-            } catch (error) {
-              reject(new Error(`Failed to read exit code: ${error}`));
-            }
+        if (changedFile === filename) {
+          resolved = true;
+          watcher.close();
+          try {
+            const exitCode = await Bun.file(exitCodeFile).text();
+            resolve(parseInt(exitCode.trim(), 10));
+          } catch (error) {
+            reject(new Error(`Failed to read exit code: ${error}`));
           }
-        });
+        }
+      });
 
-        // Set up timeout ONLY if configured (undefined = unlimited)
-        if (this.commandTimeoutMs !== undefined) {
-          setTimeout(() => {
+      // STEP 2: Set up timeout ONLY if configured (undefined = unlimited)
+      if (this.commandTimeoutMs !== undefined) {
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
             watcher.close();
             reject(new Error(`Command timeout after ${this.commandTimeoutMs}ms`));
-          }, this.commandTimeoutMs);
+          }
+        }, this.commandTimeoutMs);
+      }
+
+      // STEP 3: Check if file already exists (after watcher is set up)
+      // If the file was written before watcher setup, we catch it here
+      // If it's written during this check, the watcher will catch it
+      Bun.file(exitCodeFile).exists().then(async (exists) => {
+        if (exists && !resolved) {
+          resolved = true;
+          watcher.close();
+          try {
+            const exitCode = await Bun.file(exitCodeFile).text();
+            resolve(parseInt(exitCode.trim(), 10));
+          } catch (error) {
+            reject(new Error(`Failed to read exit code: ${error}`));
+          }
         }
-        // Otherwise, wait indefinitely for the command to complete
-      }).catch(reject);
+        // If file doesn't exist yet, watcher will catch it when created
+      }).catch((error) => {
+        if (!resolved) {
+          resolved = true;
+          watcher.close();
+          reject(error);
+        }
+      });
     });
   }
 
