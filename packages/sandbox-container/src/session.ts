@@ -126,8 +126,22 @@ export class Session {
       },
       stdin: 'pipe',
       stdout: 'ignore', // We'll read from log files instead
-      stderr: 'ignore',
+      stderr: 'pipe', // TEMPORARY: Capture bash stderr for debugging CI hangs
     });
+
+    // TEMPORARY: Log bash stderr for debugging CI hangs
+    if (this.shell.stderr && typeof this.shell.stderr !== 'number') {
+      (async () => {
+        try {
+          for await (const chunk of this.shell!.stderr as ReadableStream<Uint8Array>) {
+            const text = new TextDecoder().decode(chunk);
+            console.error(`[Session ${this.id}] BASH STDERR:`, text);
+          }
+        } catch (error) {
+          console.error(`[Session ${this.id}] Error reading bash stderr:`, error);
+        }
+      })();
+    }
 
     this.ready = true;
   }
@@ -534,26 +548,23 @@ export class Session {
     if (!isBackground) {
       script += `  # Cleanup function (called on exit or signals)\n`;
       script += `  cleanup() {\n`;
-      script += `    echo "[DIAG] Cleanup called, removing FIFOs" >&2\n`;
       script += `    rm -f "$sp" "$ep"\n`;
-      script += `    echo "[DIAG] FIFOs removed" >&2\n`;
       script += `  }\n`;
       script += `  trap 'cleanup' EXIT HUP INT TERM\n`;
       script += `  \n`;
     }
 
     script += `  # Pre-cleanup and create FIFOs with error handling\n`;
-    script += `  echo "[DIAG] Cleaning up old FIFOs: $sp $ep" >&2\n`;
+    script += `  echo "[STEP 1/6] Creating FIFOs" >&2\n`;
     script += `  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1\n`;
-    script += `  echo "[DIAG] FIFOs created successfully" >&2\n`;
     script += `  \n`;
     script += `  # Label stdout with binary prefix in background (capture PID)\n`;
+    script += `  echo "[STEP 2/6] Spawning stdout labeler" >&2\n`;
     script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!\n`;
-    script += `  echo "[DIAG] Stdout labeler spawned: PID=$r1" >&2\n`;
     script += `  \n`;
     script += `  # Label stderr with binary prefix in background (capture PID)\n`;
+    script += `  echo "[STEP 3/6] Spawning stderr labeler" >&2\n`;
     script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!\n`;
-    script += `  echo "[DIAG] Stderr labeler spawned: PID=$r2" >&2\n`;
     script += `  \n`;
     script += `\n`;
 
@@ -619,10 +630,9 @@ export class Session {
 
       // Open FIFOs on explicit file descriptors for clean closure
       script += `  # Open FIFOs on explicit file descriptors\n`;
-      script += `  echo "[DIAG] Opening FIFOs on FD 3 (stdout) and FD 4 (stderr)" >&2\n`;
+      script += `  echo "[STEP 4/6] Opening FIFOs for writing" >&2\n`;
       script += `  exec 3> "$sp"\n`;
       script += `  exec 4> "$ep"\n`;
-      script += `  echo "[DIAG] FDs opened successfully" >&2\n`;
       script += `  \n`;
 
       if (cwd) {
@@ -631,10 +641,9 @@ export class Session {
         script += `  PREV_DIR=$(pwd)\n`;
         script += `  if cd ${safeCwd}; then\n`;
         script += `    # Execute command in FOREGROUND (state persists!)\n`;
-        script += `    echo "[DIAG] Starting command execution" >&2\n`;
+        script += `    echo "[STEP 5/6] Executing command" >&2\n`;
         script += `    { ${command}; } >&3 2>&4\n`;
         script += `    EXIT_CODE=$?\n`;
-        script += `    echo "[DIAG] Command completed with exit code: $EXIT_CODE" >&2\n`;
         script += `    # Restore directory\n`;
         script += `    cd "$PREV_DIR"\n`;
         script += `  else\n`;
@@ -644,45 +653,26 @@ export class Session {
         script += `  fi\n`;
       } else {
         script += `  # Execute command in FOREGROUND (state persists!)\n`;
-        script += `  echo "[DIAG] Starting command execution" >&2\n`;
+        script += `  echo "[STEP 5/6] Executing command" >&2\n`;
         script += `  { ${command}; } >&3 2>&4\n`;
         script += `  EXIT_CODE=$?\n`;
-        script += `  echo "[DIAG] Command completed with exit code: $EXIT_CODE" >&2\n`;
       }
 
       // CRITICAL: Close FDs to signal EOF to labelers
       script += `  \n`;
       script += `  # Close FDs to signal EOF to labelers\n`;
-      script += `  echo "[DIAG] Closing FD 3 and FD 4 to signal EOF" >&2\n`;
       script += `  exec 3>&-\n`;
       script += `  exec 4>&-\n`;
-      script += `  echo "[DIAG] FDs closed" >&2\n`;
       script += `  \n`;
 
       // For foreground: wait for labelers and write exit code in main script
       script += `  # Wait for labeler processes to finish (they got EOF)\n`;
-      script += `  echo "[DIAG] Waiting for labelers (PIDs $r1 and $r2)..." >&2\n`;
       script += `  wait "$r1" "$r2" 2>/dev/null\n`;
-      script += `  WAIT_EXIT=$?\n`;
-      script += `  echo "[DIAG] Wait completed with status: $WAIT_EXIT" >&2\n`;
-      script += `  \n`;
-      script += `  # Check if labelers are actually dead\n`;
-      script += `  kill -0 $r1 2>/dev/null && echo "[DIAG] WARNING: Labeler $r1 still alive after wait!" >&2 || echo "[DIAG] Labeler $r1 confirmed dead" >&2\n`;
-      script += `  kill -0 $r2 2>/dev/null && echo "[DIAG] WARNING: Labeler $r2 still alive after wait!" >&2 || echo "[DIAG] Labeler $r2 confirmed dead" >&2\n`;
-      script += `  \n`;
-      script += `  # Check for zombie/orphaned processes\n`;
-      script += `  ZOMBIE_COUNT=$(ps aux | grep -E 'defunct|<defunct>' | wc -l)\n`;
-      script += `  echo "[DIAG] Zombie process count: $ZOMBIE_COUNT" >&2\n`;
-      script += `  \n`;
-      script += `  # Check file descriptor usage\n`;
-      script += `  FD_COUNT=$(ls /proc/$$/fd 2>/dev/null | wc -l)\n`;
-      script += `  echo "[DIAG] Open FDs in shell: $FD_COUNT" >&2\n`;
       script += `  \n`;
       script += `  # Write exit code\n`;
-      script += `  echo "[DIAG] Writing exit code $EXIT_CODE to ${safeExitCodeFile}" >&2\n`;
+      script += `  echo "[STEP 6/6] Writing exit code" >&2\n`;
       script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}.tmp\n`;
       script += `  mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
-      script += `  echo "[DIAG] Exit code written successfully" >&2\n`;
     }
 
     // Cleanup (only for foreground - background monitor handles it)
@@ -693,12 +683,6 @@ export class Session {
     }
 
     script += `}`;
-
-    // Log the generated script for debugging
-    console.log(`[Session ${this.id}] Generated FIFO script (isBackground=${isBackground}):`);
-    console.log('--- SCRIPT START ---');
-    console.log(script);
-    console.log('--- SCRIPT END ---');
 
     return script;
   }
