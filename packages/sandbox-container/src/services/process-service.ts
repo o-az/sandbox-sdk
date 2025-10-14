@@ -1,6 +1,12 @@
 // Bun-optimized Process Management Service
 
 import type {
+  CommandErrorContext,
+  ProcessErrorContext,
+  ProcessNotFoundContext,
+} from '@repo/shared/errors';
+import { ErrorCode } from '@repo/shared/errors';
+import type {
   CommandResult,
   Logger,
   ProcessOptions,
@@ -10,12 +16,6 @@ import type {
 } from '../core/types';
 import { ProcessManager } from '../managers/process-manager';
 import type { SessionManager } from './session-manager';
-import { ErrorCode } from '@repo/shared/errors';
-import type {
-  ProcessNotFoundContext,
-  ProcessErrorContext,
-  CommandErrorContext,
-} from '@repo/shared/errors';
 
 export interface ProcessStore {
   create(process: ProcessRecord): Promise<void>;

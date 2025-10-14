@@ -1,6 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { CommandsResponse, HandlerErrorResponse, Logger, PingResponse, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { ErrorResponse } from '@repo/shared/errors';
 import { MiscHandler } from '@sandbox-container/handlers/misc-handler';
+
+// Response types matching new format
+interface SuccessResponse<T> {
+  success: true;
+  data: T;
+  timestamp: string;
+}
+
+interface PingData {
+  message: string;
+  timestamp: string;
+  requestId: string;
+}
+
+interface CommandsData {
+  availableCommands: string[];
+  timestamp: string;
+}
 
 // Mock the dependencies
 const mockLogger: Logger = {
@@ -84,14 +103,17 @@ describe('MiscHandler', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('Content-Type')).toBe('application/json');
 
-      const responseData = await response.json() as PingResponse;
-      expect(responseData.message).toBe('pong');
-      expect(responseData.requestId).toBe('req-123');
+      const responseData = await response.json() as SuccessResponse<PingData>;
+      expect(responseData.success).toBe(true);
+      expect(responseData.data.message).toBe('pong');
+      expect(responseData.data.requestId).toBe('req-123');
+      expect(responseData.data.timestamp).toBeDefined();
       expect(responseData.timestamp).toBeDefined();
 
       // Verify timestamp format
+      expect(responseData.data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(responseData.data.timestamp)).toBeInstanceOf(Date);
       expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(new Date(responseData.timestamp)).toBeInstanceOf(Date);
     });
 
     it('should include CORS headers in ping response', async () => {
@@ -108,10 +130,10 @@ describe('MiscHandler', () => {
 
     it('should handle ping requests with different HTTP methods', async () => {
       const methods = ['GET', 'POST', 'PUT'];
-      
+
       for (const method of methods) {
         vi.clearAllMocks(); // Clear mocks between iterations
-        
+
         const request = new Request('http://localhost:3000/api/ping', {
           method
         });
@@ -119,8 +141,9 @@ describe('MiscHandler', () => {
         const response = await miscHandler.handle(request, mockContext);
 
         expect(response.status).toBe(200);
-        const responseData = await response.json() as PingResponse;
-        expect(responseData.message).toBe('pong');
+        const responseData = await response.json() as SuccessResponse<PingData>;
+        expect(responseData.success).toBe(true);
+        expect(responseData.data.message).toBe('pong');
       }
     });
 
@@ -137,12 +160,12 @@ describe('MiscHandler', () => {
       await new Promise(resolve => setTimeout(resolve, 5));
       const response2 = await miscHandler.handle(request2, mockContext);
 
-      const responseData1 = await response1.json() as PingResponse;
-      const responseData2 = await response2.json() as PingResponse;
+      const responseData1 = await response1.json() as SuccessResponse<PingData>;
+      const responseData2 = await response2.json() as SuccessResponse<PingData>;
 
-      expect(responseData1.timestamp).not.toBe(responseData2.timestamp);
-      expect(new Date(responseData1.timestamp).getTime()).toBeLessThan(
-        new Date(responseData2.timestamp).getTime()
+      expect(responseData1.data.timestamp).not.toBe(responseData2.data.timestamp);
+      expect(new Date(responseData1.data.timestamp).getTime()).toBeLessThan(
+        new Date(responseData2.data.timestamp).getTime()
       );
     });
   });
@@ -158,10 +181,12 @@ describe('MiscHandler', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('Content-Type')).toBe('application/json');
 
-      const responseData = await response.json() as CommandsResponse;
-      expect(responseData.availableCommands).toBeDefined();
-      expect(Array.isArray(responseData.availableCommands)).toBe(true);
-      expect(responseData.availableCommands.length).toBeGreaterThan(0);
+      const responseData = await response.json() as SuccessResponse<CommandsData>;
+      expect(responseData.success).toBe(true);
+      expect(responseData.data.availableCommands).toBeDefined();
+      expect(Array.isArray(responseData.data.availableCommands)).toBe(true);
+      expect(responseData.data.availableCommands.length).toBeGreaterThan(0);
+      expect(responseData.data.timestamp).toBeDefined();
       expect(responseData.timestamp).toBeDefined();
     });
 
@@ -171,7 +196,7 @@ describe('MiscHandler', () => {
       });
 
       const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as CommandsResponse;
+      const responseData = await response.json() as SuccessResponse<CommandsData>;
 
       const expectedCommands = [
         'ls', 'pwd', 'echo', 'cat', 'grep', 'find',
@@ -181,11 +206,11 @@ describe('MiscHandler', () => {
       ];
 
       for (const command of expectedCommands) {
-        expect(responseData.availableCommands).toContain(command);
+        expect(responseData.data.availableCommands).toContain(command);
       }
 
       // Verify exact count matches implementation
-      expect(responseData.availableCommands).toHaveLength(19);
+      expect(responseData.data.availableCommands).toHaveLength(19);
     });
 
     it('should return consistent command list across requests', async () => {
@@ -199,11 +224,11 @@ describe('MiscHandler', () => {
       const response1 = await miscHandler.handle(request1, mockContext);
       const response2 = await miscHandler.handle(request2, mockContext);
 
-      const responseData1 = await response1.json() as CommandsResponse;
-      const responseData2 = await response2.json() as CommandsResponse;
+      const responseData1 = await response1.json() as SuccessResponse<CommandsData>;
+      const responseData2 = await response2.json() as SuccessResponse<CommandsData>;
 
-      expect(responseData1.availableCommands).toEqual(responseData2.availableCommands);
-      expect(responseData1.availableCommands.length).toBe(responseData2.availableCommands.length);
+      expect(responseData1.data.availableCommands).toEqual(responseData2.data.availableCommands);
+      expect(responseData1.data.availableCommands.length).toBe(responseData2.data.availableCommands.length);
     });
 
     it('should include CORS headers in commands response', async () => {
@@ -224,10 +249,11 @@ describe('MiscHandler', () => {
       });
 
       const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as CommandsResponse;
+      const responseData = await response.json() as SuccessResponse<CommandsData>;
 
+      expect(responseData.data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(responseData.data.timestamp)).toBeInstanceOf(Date);
       expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(new Date(responseData.timestamp)).toBeInstanceOf(Date);
     });
 
     it('should include essential system commands', async () => {
@@ -236,11 +262,11 @@ describe('MiscHandler', () => {
       });
 
       const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as CommandsResponse;
+      const responseData = await response.json() as SuccessResponse<CommandsData>;
 
       const essentialCommands = ['ls', 'cat', 'echo', 'pwd', 'whoami'];
       for (const command of essentialCommands) {
-        expect(responseData.availableCommands).toContain(command);
+        expect(responseData.data.availableCommands).toContain(command);
       }
     });
 
@@ -250,11 +276,11 @@ describe('MiscHandler', () => {
       });
 
       const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as CommandsResponse;
+      const responseData = await response.json() as SuccessResponse<CommandsData>;
 
       const devTools = ['node', 'npm', 'git'];
       for (const tool of devTools) {
-        expect(responseData.availableCommands).toContain(tool);
+        expect(responseData.data.availableCommands).toContain(tool);
       }
     });
 
@@ -264,48 +290,56 @@ describe('MiscHandler', () => {
       });
 
       const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as CommandsResponse;
+      const responseData = await response.json() as SuccessResponse<CommandsData>;
 
       const networkUtils = ['curl', 'wget'];
       for (const util of networkUtils) {
-        expect(responseData.availableCommands).toContain(util);
+        expect(responseData.data.availableCommands).toContain(util);
       }
     });
   });
 
   describe('route handling', () => {
-    it('should return 404 for invalid endpoints', async () => {
+    it('should return 500 for invalid endpoints', async () => {
       const request = new Request('http://localhost:3000/invalid-endpoint', {
         method: 'GET'
       });
 
       const response = await miscHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.error).toBe('Invalid endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.message).toBe('Invalid endpoint');
+      expect(responseData.code).toBeDefined();
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
+      expect(responseData.context).toBeDefined();
     });
 
-    it('should return 404 for non-existent API endpoints', async () => {
+    it('should return 500 for non-existent API endpoints', async () => {
       const request = new Request('http://localhost:3000/api/nonexistent', {
         method: 'GET'
       });
 
       const response = await miscHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.error).toBe('Invalid endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.message).toBe('Invalid endpoint');
+      expect(responseData.code).toBeDefined();
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
+      expect(responseData.context).toBeDefined();
     });
 
-    it('should include CORS headers in 404 responses', async () => {
+    it('should include CORS headers in error responses', async () => {
       const request = new Request('http://localhost:3000/invalid', {
         method: 'GET'
       });
 
       const response = await miscHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(500);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
   });
@@ -323,16 +357,22 @@ describe('MiscHandler', () => {
         });
 
         const response = await miscHandler.handle(request, mockContext);
-        const responseData = await response.json() as CommandsResponse;
+        const responseData = await response.json() as SuccessResponse<any>;
 
-        // Verify all expected fields are present
-        for (const field of endpoint.expectedFields) {
-          expect(responseData).toHaveProperty(field);
-        }
-
-        // Verify timestamp is always present and properly formatted
+        // Verify success wrapper structure
+        expect(responseData.success).toBe(true);
+        expect(responseData.data).toBeDefined();
         expect(responseData.timestamp).toBeDefined();
         expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+
+        // Verify all expected fields are present in data
+        for (const field of endpoint.expectedFields) {
+          expect(responseData.data).toHaveProperty(field);
+        }
+
+        // Verify data timestamp is properly formatted
+        expect(responseData.data.timestamp).toBeDefined();
+        expect(responseData.data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       }
     });
 
@@ -370,9 +410,10 @@ describe('MiscHandler', () => {
       });
 
       const response = await miscHandler.handle(request, alternativeContext);
-      const responseData = await response.json() as PingResponse;
+      const responseData = await response.json() as SuccessResponse<PingData>;
 
-      expect(responseData.requestId).toBe('req-alternative-456');
+      expect(responseData.success).toBe(true);
+      expect(responseData.data.requestId).toBe('req-alternative-456');
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://example.com');
       expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST');
       expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Authorization');
@@ -398,8 +439,9 @@ describe('MiscHandler', () => {
       const response = await independentHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as PingResponse;
-      expect(responseData.message).toBe('pong');
+      const responseData = await response.json() as SuccessResponse<PingData>;
+      expect(responseData.success).toBe(true);
+      expect(responseData.data.message).toBe('pong');
     });
   });
 });

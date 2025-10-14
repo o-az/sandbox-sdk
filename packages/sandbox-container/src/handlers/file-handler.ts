@@ -1,4 +1,5 @@
 // File Handler
+import { ErrorCode } from '@repo/shared/errors';
 
 import type { 
   DeleteFileRequest,
@@ -39,14 +40,20 @@ export class FileHandler extends BaseHandler<Request, Response> {
       case '/api/mkdir':
         return await this.handleMkdir(request, context);
       default:
-        return this.createErrorResponse('Invalid file endpoint', 404, context);
+        return this.createServiceResponse({
+          success: false,
+          error: {
+            message: 'Invalid file endpoint',
+            code: ErrorCode.UNKNOWN_ERROR,
+          }
+        }, context);
     }
   }
 
   private async handleRead(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<ReadFileRequest>(context);
-    
-    this.logger.info('Reading file', { 
+
+    this.logger.info('Reading file', {
       requestId: context.requestId,
       path: body.path,
       encoding: body.encoding
@@ -62,24 +69,6 @@ export class FileHandler extends BaseHandler<Request, Response> {
         path: body.path,
         sizeBytes: result.data!.length,
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          content: result.data!,
-          path: body.path,
-          exitCode: 0,
-          encoding: body.encoding || 'utf-8',
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('File read failed', undefined, {
         requestId: context.requestId,
@@ -87,14 +76,14 @@ export class FileHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+    return this.createServiceResponse(result, context);
   }
 
   private async handleWrite(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<WriteFileRequest>(context);
-    
-    this.logger.info('Writing file', { 
+
+    this.logger.info('Writing file', {
       requestId: context.requestId,
       path: body.path,
       sizeBytes: body.content.length,
@@ -111,22 +100,6 @@ export class FileHandler extends BaseHandler<Request, Response> {
         path: body.path,
         sizeBytes: body.content.length,
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          exitCode: 0,
-          path: body.path,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('File write failed', undefined, {
         requestId: context.requestId,
@@ -134,14 +107,14 @@ export class FileHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+    return this.createServiceResponse(result, context);
   }
 
   private async handleDelete(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<DeleteFileRequest>(context);
-    
-    this.logger.info('Deleting file', { 
+
+    this.logger.info('Deleting file', {
       requestId: context.requestId,
       path: body.path
     });
@@ -153,22 +126,6 @@ export class FileHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         path: body.path,
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          exitCode: 0,
-          path: body.path,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('File delete failed', undefined, {
         requestId: context.requestId,
@@ -176,14 +133,14 @@ export class FileHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+    return this.createServiceResponse(result, context);
   }
 
   private async handleRename(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<RenameFileRequest>(context);
-    
-    this.logger.info('Renaming file', { 
+
+    this.logger.info('Renaming file', {
       requestId: context.requestId,
       oldPath: body.oldPath,
       newPath: body.newPath
@@ -197,23 +154,6 @@ export class FileHandler extends BaseHandler<Request, Response> {
         oldPath: body.oldPath,
         newPath: body.newPath,
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          exitCode: 0,
-          path: body.oldPath,
-          newPath: body.newPath,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('File rename failed', undefined, {
         requestId: context.requestId,
@@ -222,14 +162,14 @@ export class FileHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+    return this.createServiceResponse(result, context);
   }
 
   private async handleMove(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<MoveFileRequest>(context);
-    
-    this.logger.info('Moving file', { 
+
+    this.logger.info('Moving file', {
       requestId: context.requestId,
       sourcePath: body.sourcePath,
       destinationPath: body.destinationPath
@@ -243,23 +183,6 @@ export class FileHandler extends BaseHandler<Request, Response> {
         sourcePath: body.sourcePath,
         destinationPath: body.destinationPath,
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          exitCode: 0,
-          path: body.sourcePath,
-          newPath: body.destinationPath,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('File move failed', undefined, {
         requestId: context.requestId,
@@ -268,14 +191,14 @@ export class FileHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+    return this.createServiceResponse(result, context);
   }
 
   private async handleMkdir(request: Request, context: RequestContext): Promise<Response> {
     const body = this.getValidatedData<MkdirRequest>(context);
-    
-    this.logger.info('Creating directory', { 
+
+    this.logger.info('Creating directory', {
       requestId: context.requestId,
       path: body.path,
       recursive: body.recursive
@@ -291,25 +214,6 @@ export class FileHandler extends BaseHandler<Request, Response> {
         path: body.path,
         recursive: body.recursive,
       });
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          stdout: '',
-          stderr: '',
-          exitCode: 0,
-          path: body.path,
-          recursive: body.recursive || false,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('Directory creation failed', undefined, {
         requestId: context.requestId,
@@ -318,7 +222,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+    return this.createServiceResponse(result, context);
   }
 }

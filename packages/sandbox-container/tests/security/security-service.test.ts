@@ -7,9 +7,9 @@
  * - No content restrictions (no path blocking, no command blocking, no URL allowlists)
  */
 
-import { describe, expect, test, beforeEach } from 'bun:test';
-import { SecurityService } from '@sandbox-container/security/security-service';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import type { Logger } from '@sandbox-container/core/types';
+import { SecurityService } from '@sandbox-container/security/security-service';
 
 // Mock logger
 const mockLogger: Logger = {
@@ -67,7 +67,7 @@ describe('SecurityService - Simplified Security Model', () => {
     });
 
     test('should reject paths over 4096 characters (format validation)', () => {
-      const longPath = '/workspace/' + 'a'.repeat(5000);
+      const longPath = `/workspace/${'a'.repeat(5000)}`;
       const result = service.validatePath(longPath);
       expect(result.isValid).toBe(false);
       expect(result.errors[0].message).toContain('too long');
@@ -147,7 +147,7 @@ describe('SecurityService - Simplified Security Model', () => {
     });
 
     test('should reject commands over 8192 characters (format validation)', () => {
-      const longCommand = 'echo ' + 'a'.repeat(9000);
+      const longCommand = `echo ${'a'.repeat(9000)}`;
       const result = service.validateCommand(longCommand);
       expect(result.isValid).toBe(false);
       expect(result.errors[0].message).toContain('too long');
@@ -194,7 +194,7 @@ describe('SecurityService - Simplified Security Model', () => {
     });
 
     test('should reject URLs over 2048 characters (format validation)', () => {
-      const longUrl = 'https://github.com/' + 'a'.repeat(3000);
+      const longUrl = `https://github.com/${'a'.repeat(3000)}`;
       const result = service.validateGitUrl(longUrl);
       expect(result.isValid).toBe(false);
       expect(result.errors[0].message).toContain('too long');

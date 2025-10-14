@@ -1,3 +1,4 @@
+import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, ProcessStatus, RequestContext, StartProcessRequest } from '../core/types';
 import type { ProcessService } from '../services/process-service';
 import { BaseHandler } from './base-handler';
@@ -39,7 +40,13 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
       }
     }
 
-    return this.createErrorResponse('Invalid process endpoint', 404, context);
+    return this.createServiceResponse({
+      success: false,
+      error: {
+        message: 'Invalid process endpoint',
+        code: ErrorCode.UNKNOWN_ERROR,
+      }
+    }, context);
   }
 
   private async handleStart(request: Request, context: RequestContext): Promise<Response> {
@@ -92,7 +99,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -144,7 +151,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -191,7 +198,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 404, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -230,7 +237,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 404, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -266,7 +273,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -304,7 +311,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 404, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -326,7 +333,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
           errorCode: processResult.error!.code,
           errorMessage: processResult.error!.message,
         });
-        return this.createErrorResponse(processResult.error!, 404, context);
+        return this.createServiceResponse(processResult, context);
       }
 
       const process = processResult.data!;
@@ -418,7 +425,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 404, context);
+      return this.createServiceResponse(result, context);
     }
   }
 }

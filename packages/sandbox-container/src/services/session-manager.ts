@@ -1,14 +1,14 @@
 // SessionManager Service - Manages persistent execution sessions
 
 import type { ExecEvent } from '@repo/shared';
-import type { Logger, ServiceResult } from '../core/types';
-import { type RawExecResult, Session, type SessionOptions } from '../session';
-import { ErrorCode } from '@repo/shared/errors';
 import type {
-  CommandNotFoundContext,
   CommandErrorContext,
+  CommandNotFoundContext,
   InternalErrorContext,
 } from '@repo/shared/errors';
+import { ErrorCode } from '@repo/shared/errors';
+import type { Logger, ServiceResult } from '../core/types';
+import { type RawExecResult, Session, type SessionOptions } from '../session';
 
 /**
  * SessionManager manages persistent execution sessions.

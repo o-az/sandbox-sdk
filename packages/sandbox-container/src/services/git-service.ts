@@ -1,13 +1,13 @@
 // Git Operations Service
 
-import type { CloneOptions, Logger, ServiceResult } from '../core/types';
-import { GitManager } from '../managers/git-manager';
-import type { SessionManager } from './session-manager';
-import { ErrorCode } from '@repo/shared/errors';
 import type {
   GitErrorContext,
   ValidationFailedContext,
 } from '@repo/shared/errors';
+import { ErrorCode } from '@repo/shared/errors';
+import type { CloneOptions, Logger, ServiceResult } from '../core/types';
+import { GitManager } from '../managers/git-manager';
+import type { SessionManager } from './session-manager';
 
 export interface SecurityService {
   validateGitUrl(url: string): { isValid: boolean; errors: string[] };

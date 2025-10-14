@@ -1,4 +1,5 @@
 // Execute Handler
+import { ErrorCode } from '@repo/shared/errors';
 
 import type { ExecuteRequest, Logger, RequestContext } from '../core/types';
 import type { ProcessService } from '../services/process-service';
@@ -22,7 +23,13 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
       case '/api/execute/stream':
         return await this.handleStreamingExecute(request, context);
       default:
-        return this.createErrorResponse('Invalid execute endpoint', 404, context);
+        return this.createServiceResponse({
+          success: false,
+          error: {
+            message: 'Invalid execute endpoint',
+            code: ErrorCode.UNKNOWN_ERROR,
+          }
+        }, context);
     }
   }
 
@@ -75,7 +82,7 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
           errorCode: processResult.error!.code,
           errorMessage: processResult.error!.message,
         });
-        return this.createErrorResponse(processResult.error!, 400, context);
+        return this.createServiceResponse(processResult, context);
       }
     }
 
@@ -120,7 +127,7 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 400, context);
+      return this.createServiceResponse(result, context);
     }
   }
 
@@ -148,7 +155,7 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
         errorCode: processResult.error!.code,
         errorMessage: processResult.error!.message,
       });
-      return this.createErrorResponse(processResult.error!, 400, context);
+      return this.createServiceResponse(processResult, context);
     }
 
     const process = processResult.data!;

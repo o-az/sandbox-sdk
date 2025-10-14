@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type { ExecuteRequest, ExecuteResponse, Logger, RequestContext, ServiceResult, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
 import { ExecuteHandler } from "@sandbox-container/handlers/execute-handler.js";
 import type { ProcessService } from '@sandbox-container/services/process-service.ts';
-import type { ContainerErrorResponse } from '@sandbox-container/utils/error-mapping.ts';
+import type { ErrorResponse } from '@repo/shared/errors';
 import { mocked } from '../test-utils';
 
 // Mock the service dependencies
@@ -137,7 +137,7 @@ describe('ExecuteHandler', () => {
         success: false,
         error: {
           message: 'Failed to spawn process',
-          code: 'SPAWN_ERROR'
+          code: 'PROCESS_ERROR'
         }
       } as ServiceResult<never>;
 
@@ -148,16 +148,18 @@ describe('ExecuteHandler', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'ls' })
       });
-      const validatedContext = createValidatedContext({ 
-        command: 'ls' 
+      const validatedContext = createValidatedContext({
+        command: 'ls'
       });
       const response = await executeHandler.handle(request, validatedContext);
 
-      // Verify error response for service failure
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as ContainerErrorResponse;
-      expect(responseData.code).toBe('SPAWN_ERROR');
-      expect(responseData.error).toContain('Failed to spawn process');
+      // Verify error response for service failure - NEW format: {code, message, context, httpStatus}
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('PROCESS_ERROR');
+      expect(responseData.message).toContain('Failed to spawn process');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.context).toBeDefined();
     });
 
     it('should handle missing validation data (middleware failure)', async () => {

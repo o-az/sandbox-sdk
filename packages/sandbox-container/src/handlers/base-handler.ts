@@ -45,56 +45,6 @@ export abstract class BaseHandler<TRequest, TResponse>
     );
   }
 
-  protected createErrorResponse(
-    error: ServiceError | Error | string,
-    statusCode: number = 500,
-    context: RequestContext
-  ): Response {
-    let errorObj: ServiceError;
-
-    if (typeof error === "string") {
-      errorObj = {
-        message: error,
-        code: "UNKNOWN_ERROR",
-      };
-    } else if (error instanceof Error) {
-      errorObj = {
-        message: error.message,
-        code: "INTERNAL_ERROR",
-        details: { stack: error.stack },
-      };
-    } else {
-      errorObj = error;
-    }
-
-    this.logger.error(
-      "Handler error",
-      error instanceof Error ? error : undefined,
-      {
-        requestId: context.requestId,
-        errorCode: errorObj.code,
-        statusCode,
-      }
-    );
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: errorObj.message,
-        code: errorObj.code,
-        details: errorObj.details,
-        timestamp: new Date().toISOString(),
-      }),
-      {
-        status: statusCode,
-        headers: {
-          "Content-Type": "application/json",
-          ...context.corsHeaders,
-        },
-      }
-    );
-  }
-
   /**
    * Enrich lightweight ServiceError into full ErrorResponse
    * Adds HTTP status, timestamp, suggestions, operation, etc.
@@ -115,8 +65,8 @@ export abstract class BaseHandler<TRequest, TResponse>
     };
   }
 
-  protected createServiceResponse<T>(
-    result: ServiceResult<T>,
+  protected createServiceResponse<T = unknown>(
+    result: ServiceResult<T> | ServiceResult<void>,
     context: RequestContext,
     successStatus: number = 200,
     operation?: OperationType

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { ExposePortResponse, HandlerErrorResponse, ListExposedPortsResponse, Logger, PortInfo, ProxiedErrorResponse, ProxiedSuccessResponse, RequestContext, UnexposePortResponse, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { Logger, PortInfo, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { ErrorResponse } from '@repo/shared/errors';
 import { PortHandler } from '@sandbox-container/handlers/port-handler';
 import type { PortService } from '@sandbox-container/services/port-service';
 
@@ -79,8 +80,9 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ExposePortResponse;
+      const responseData = await response.json();
       expect(responseData.success).toBe(true);
+      // Note: Custom success response format for expose port (not using data wrapper)
       expect(responseData.port).toBe(8080);
       expect(responseData.name).toBe('web-server');
       expect(responseData.exposedAt).toBe('2023-01-01T00:00:00.000Z');
@@ -116,7 +118,7 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ExposePortResponse;
+      const responseData = await response.json();
       expect(responseData.port).toBe(3000);
       expect(responseData.name).toBeUndefined();
 
@@ -145,9 +147,11 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('INVALID_PORT');
+      expect(responseData.message).toBe('Port 80 is reserved');
+      expect(responseData.httpStatus).toBe(400);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle port already exposed error', async () => {
@@ -170,10 +174,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, validatedContext);
 
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
+      expect(response.status).toBe(409);
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('PORT_ALREADY_EXPOSED');
+      expect(responseData.message).toBe('Port 8080 is already exposed');
+      expect(responseData.httpStatus).toBe(409);
+      expect(responseData.timestamp).toBeDefined();
     });
   });
 
@@ -190,8 +196,9 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as UnexposePortResponse;
+      const responseData = await response.json();
       expect(responseData.success).toBe(true);
+      // Note: Custom success response format for unexpose port (not using data wrapper)
       expect(responseData.message).toBe('Port unexposed successfully');
       expect(responseData.port).toBe(8080);
 
@@ -214,9 +221,11 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('PORT_NOT_EXPOSED');
+      expect(responseData.message).toBe('Port 8080 is not exposed');
+      expect(responseData.httpStatus).toBe(404);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle invalid port numbers in URL', async () => {
@@ -226,10 +235,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Invalid port endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Invalid port endpoint');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
 
       // Should not call service for invalid port
       expect(mockPortService.unexposePort).not.toHaveBeenCalled();
@@ -242,10 +253,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Invalid port endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Invalid port endpoint');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
   });
 
@@ -278,8 +291,9 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ListExposedPortsResponse;
+      const responseData = await response.json();
       expect(responseData.success).toBe(true);
+      // Note: Custom success response format for list ports (not using data wrapper)
       expect(responseData.count).toBe(2);
       expect(responseData.ports).toHaveLength(2);
       expect(responseData.ports[0].port).toBe(8080);
@@ -302,7 +316,7 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ListExposedPortsResponse;
+      const responseData = await response.json();
       expect(responseData.success).toBe(true);
       expect(responseData.count).toBe(0);
       expect(responseData.ports).toHaveLength(0);
@@ -324,9 +338,11 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(500);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('PORT_LIST_ERROR');
+      expect(responseData.message).toBe('Database error');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
   });
 
@@ -372,7 +388,7 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(201);
-      const responseData = await response.json() as ProxiedSuccessResponse;
+      const responseData = await response.json();
       expect(responseData.success).toBe(true);
 
       expect(mockPortService.proxyRequest).toHaveBeenCalledWith(3000, request);
@@ -393,7 +409,7 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(404);
-      const responseData = await response.json() as ProxiedErrorResponse;
+      const responseData = await response.json();
       expect(responseData.error).toBe('Port not found');
     });
 
@@ -404,10 +420,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Invalid port number in proxy URL');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Invalid port number in proxy URL');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
 
       // Should not call proxy service
       expect(mockPortService.proxyRequest).not.toHaveBeenCalled();
@@ -420,10 +438,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Invalid port number in proxy URL');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Invalid port number in proxy URL');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
 
       expect(mockPortService.proxyRequest).not.toHaveBeenCalled();
     });
@@ -438,10 +458,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(502);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Connection refused');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Connection refused');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle non-Error exceptions in proxy', async () => {
@@ -453,25 +475,29 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(502);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Proxy request failed');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Proxy request failed');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
   });
 
   describe('route handling', () => {
-    it('should return 404 for invalid endpoints', async () => {
+    it('should return 500 for invalid endpoints', async () => {
       const request = new Request('http://localhost:3000/api/invalid-endpoint', {
         method: 'GET'
       });
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Invalid port endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Invalid port endpoint');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle malformed exposed-ports URLs', async () => {
@@ -481,10 +507,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
-      expect(responseData.error).toBe('Invalid port endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.message).toBe('Invalid port endpoint');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle root proxy path', async () => {
@@ -528,9 +556,9 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
   });
@@ -562,9 +590,12 @@ describe('PortHandler', () => {
 
       const response = await portHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.success).toBe(false);
+      expect(response.status).toBe(400);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('INVALID_PORT');
+      expect(responseData.message).toBe('Invalid port range');
+      expect(responseData.httpStatus).toBe(400);
+      expect(responseData.timestamp).toBeDefined();
       expect(mockPortService.unexposePort).toHaveBeenCalledWith(999999);
     });
 

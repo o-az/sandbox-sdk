@@ -1,4 +1,12 @@
 // Wrapper service following init-testing's ServiceResult<T> pattern
+
+import type {
+  CodeExecutionContext,
+  ContextNotFoundContext,
+  InternalErrorContext,
+  InterpreterNotReadyContext,
+} from '@repo/shared/errors';
+import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, ServiceResult } from '../core/types';
 import {
   type Context,
@@ -7,13 +15,6 @@ import {
   type HealthStatus,
   InterpreterNotReadyError
 } from '../interpreter-service';
-import { ErrorCode } from '@repo/shared/errors';
-import type {
-  InterpreterNotReadyContext,
-  ContextNotFoundContext,
-  CodeExecutionContext,
-  InternalErrorContext,
-} from '@repo/shared/errors';
 
 /**
  * Interpreter service wrapper that follows the ServiceResult<T> pattern

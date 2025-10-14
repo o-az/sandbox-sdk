@@ -6,8 +6,8 @@ import {
   type Result,
   ResultImpl,
 } from '@repo/shared';
-import { InterpreterNotReadyError, createErrorFromResponse, ErrorCode } from '../errors';
 import type { ErrorResponse } from '../errors';
+import { createErrorFromResponse, ErrorCode, InterpreterNotReadyError } from '../errors';
 import { BaseHttpClient } from './base-client.js';
 import type { HttpClientOptions } from './types.js';
 

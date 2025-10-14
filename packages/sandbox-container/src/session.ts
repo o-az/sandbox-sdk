@@ -565,15 +565,15 @@ export class Session {
       // Command runs in subshell, shell continues immediately
       // Create FIFOs and start labelers (background mode)
       script += `  # Pre-cleanup and create FIFOs with error handling\n`;
-      script += `  rm -f \"$sp\" \"$ep\" && mkfifo \"$sp\" \"$ep\" || exit 1\n`;
+      script += `  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1\n`;
       script += `  \n`;
       script += `  # Label stdout with binary prefix in background (capture PID)\n`;
-      script += `  (while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x01\\x01\\x01%s\\n' \"$line\"; done < \"$sp\") >> \"$log\" & r1=$!\n`;
+      script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!\n`;
       script += `  \n`;
       script += `  # Label stderr with binary prefix in background (capture PID)\n`;
-      script += `  (while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done < \"$ep\") >> \"$log\" & r2=$!\n`;
+      script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!\n`;
       script += `  # EOF note: labelers stop when all writers to the FIFOs close.\n`;
-      script += `  # The subshell writing to >\"$sp\" 2>\"$ep\" controls EOF; after it exits,\n`;
+      script += `  # The subshell writing to >"$sp" 2>"$ep" controls EOF; after it exits,\n`;
       script += `  # we wait for labelers and then remove the FIFOs.\n`;
       script += `  \n`;
       if (cwd) {
@@ -601,7 +601,7 @@ export class Session {
         script += `    # Restore directory immediately\n`;
         script += `    cd "$PREV_DIR"\n`;
         script += `  else\n`;
-        script += `    printf '\\x02\\x02\\x02%s\\n' \"Failed to change directory to ${safeCwd}\" >> \"$log\"\n`;
+        script += `    printf '\\x02\\x02\\x02%s\\n' "Failed to change directory to ${safeCwd}" >> "$log"\n`;
         script += `    EXIT_CODE=1\n`;
         script += `  fi\n`;
       } else {
@@ -638,17 +638,17 @@ export class Session {
         script += `  PREV_DIR=$(pwd)\n`;
         script += `  if cd ${safeCwd}; then\n`;
         script += `    # Execute command with prefixed streaming via process substitution\n`;
-        script += `    { ${command}; } > >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x01\\x01\\x01%s\\n' \"$line\"; done >> \"$log\") 2> >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done >> \"$log\")\n`;
+        script += `    { ${command}; } > >(while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done >> "$log") 2> >(while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done >> "$log")\n`;
         script += `    EXIT_CODE=$?\n`;
         script += `    # Restore directory\n`;
         script += `    cd "$PREV_DIR"\n`;
         script += `  else\n`;
-        script += `    printf '\\x02\\x02\\x02%s\\n' \"Failed to change directory to ${safeCwd}\" >> \"$log\"\n`;
+        script += `    printf '\\x02\\x02\\x02%s\\n' "Failed to change directory to ${safeCwd}" >> "$log"\n`;
         script += `    EXIT_CODE=1\n`;
         script += `  fi\n`;
       } else {
         script += `  # Execute command with prefixed streaming via process substitution\n`;
-        script += `  { ${command}; } > >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x01\\x01\\x01%s\\n' \"$line\"; done >> \"$log\") 2> >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done >> \"$log\")\n`;
+        script += `  { ${command}; } > >(while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done >> "$log") 2> >(while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done >> "$log")\n`;
         script += `  EXIT_CODE=$?\n`;
       }
 
@@ -656,7 +656,7 @@ export class Session {
       script += `  wait 2>/dev/null\n`;
       script += `  \n`;
       script += `  # Write exit code\n`;
-      script += `  echo \"$EXIT_CODE\" > ${safeExitCodeFile}.tmp\n`;
+      script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}.tmp\n`;
       script += `  mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
     }
 

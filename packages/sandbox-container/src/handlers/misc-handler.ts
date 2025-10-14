@@ -1,4 +1,5 @@
 // Miscellaneous Handler for ping, commands, etc.
+import { ErrorCode } from '@repo/shared/errors';
 
 import type { Logger, RequestContext } from '../core/types';
 import { BaseHandler } from './base-handler';
@@ -17,7 +18,13 @@ export class MiscHandler extends BaseHandler<Request, Response> {
       case '/api/commands':
         return await this.handleCommands(request, context);
       default:
-        return this.createErrorResponse('Invalid endpoint', 404, context);
+        return this.createServiceResponse({
+          success: false,
+          error: {
+            message: 'Invalid endpoint',
+            code: ErrorCode.UNKNOWN_ERROR,
+          }
+        }, context);
     }
   }
 
@@ -33,26 +40,21 @@ export class MiscHandler extends BaseHandler<Request, Response> {
   private async handlePing(request: Request, context: RequestContext): Promise<Response> {
     this.logger.info('Ping request', { requestId: context.requestId });
 
-    return new Response(
-      JSON.stringify({
+    return this.createSuccessResponse(
+      {
         message: 'pong',
         timestamp: new Date().toISOString(),
         requestId: context.requestId,
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          ...context.corsHeaders,
-        },
-      }
+      },
+      context
     );
   }
 
   private async handleCommands(request: Request, context: RequestContext): Promise<Response> {
     this.logger.info('Commands request', { requestId: context.requestId });
 
-    return new Response(
-      JSON.stringify({
+    return this.createSuccessResponse(
+      {
         availableCommands: [
           'ls',
           'pwd',
@@ -75,13 +77,8 @@ export class MiscHandler extends BaseHandler<Request, Response> {
           'wget',
         ],
         timestamp: new Date().toISOString(),
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          ...context.corsHeaders,
-        },
-      }
+      },
+      context
     );
   }
 }

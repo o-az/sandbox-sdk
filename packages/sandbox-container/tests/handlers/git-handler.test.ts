@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { GitCheckoutResponse, HandlerErrorResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
+import type { Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
+import type { ErrorResponse } from '@repo/shared/errors';
 import { GitHandler } from '@sandbox-container/handlers/git-handler';
 import type { GitService } from '@sandbox-container/services/git-service';
+
+// Response types based on new format
+interface SuccessResponse<T> {
+  success: true;
+  data: T;
+  timestamp: string;
+}
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockGitService = {
@@ -75,14 +83,11 @@ describe('GitHandler', () => {
       const response = await gitHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as GitCheckoutResponse;
+      const responseData = await response.json() as SuccessResponse<{ path: string; branch: string }>;
       expect(responseData.success).toBe(true);
-      expect(responseData.repoUrl).toBe('https://github.com/user/awesome-repo.git');
-      expect(responseData.branch).toBe('develop');
-      expect(responseData.targetDir).toBe('/tmp/my-project');
-      expect(responseData.exitCode).toBe(0);
-      expect(responseData.stdout).toBe('');
-      expect(responseData.stderr).toBe('');
+      expect(responseData.data.path).toBe('/tmp/my-project');
+      expect(responseData.data.branch).toBe('develop');
+      expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called correctly
       expect(mockGitService.cloneRepository).toHaveBeenCalledWith(
@@ -121,11 +126,10 @@ describe('GitHandler', () => {
       const response = await gitHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as GitCheckoutResponse;
+      const responseData = await response.json() as SuccessResponse<{ path: string; branch: string }>;
       expect(responseData.success).toBe(true);
-      expect(responseData.repoUrl).toBe('https://github.com/user/simple-repo.git');
-      expect(responseData.branch).toBe('main'); // Service returned branch
-      expect(responseData.targetDir).toBe('/tmp/git-clone-simple-repo-1672531200-abc123'); // Generated path
+      expect(responseData.data.branch).toBe('main'); // Service returned branch
+      expect(responseData.data.path).toBe('/tmp/git-clone-simple-repo-1672531200-abc123'); // Generated path
 
       // Verify service was called with correct parameters
       expect(mockGitService.cloneRepository).toHaveBeenCalledWith(
@@ -163,9 +167,11 @@ describe('GitHandler', () => {
       const response = await gitHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('INVALID_GIT_URL');
-      expect(responseData.error).toContain('Invalid URL scheme');
+      expect(responseData.message).toContain('Invalid URL scheme');
+      expect(responseData.httpStatus).toBe(400);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle target directory validation errors', async () => {
@@ -179,7 +185,7 @@ describe('GitHandler', () => {
         success: false,
         error: {
           message: 'Target directory validation failed: Path outside sandbox',
-          code: 'INVALID_TARGET_PATH',
+          code: 'VALIDATION_FAILED',
           details: { targetDirectory: '/malicious/../path', errors: ['Path outside sandbox'] }
         }
       });
@@ -193,9 +199,11 @@ describe('GitHandler', () => {
       const response = await gitHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.code).toBe('INVALID_TARGET_PATH');
-      expect(responseData.error).toContain('Path outside sandbox');
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('VALIDATION_FAILED');
+      expect(responseData.message).toContain('Path outside sandbox');
+      expect(responseData.httpStatus).toBe(400);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle git clone command failures', async () => {
@@ -226,12 +234,14 @@ describe('GitHandler', () => {
 
       const response = await gitHandler.handle(request, validatedContext);
 
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('GIT_CLONE_FAILED');
-      expect(responseData.details.exitCode).toBe(128);
-      expect(responseData.details.stderr).toContain('repository');
-      expect(responseData.details.stderr).toContain('not found');
+      expect(responseData.context.exitCode).toBe(128);
+      expect(responseData.context.stderr).toContain('repository');
+      expect(responseData.context.stderr).toContain('not found');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle invalid branch names', async () => {
@@ -262,10 +272,12 @@ describe('GitHandler', () => {
 
       const response = await gitHandler.handle(request, validatedContext);
 
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
       expect(responseData.code).toBe('GIT_CLONE_FAILED');
-      expect(responseData.details.stderr).toContain('nonexistent-branch not found');
+      expect(responseData.context.stderr).toContain('nonexistent-branch not found');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle service exceptions', async () => {
@@ -278,7 +290,7 @@ describe('GitHandler', () => {
         success: false,
         error: {
           message: 'Failed to clone repository',
-          code: 'GIT_CLONE_ERROR',
+          code: 'GIT_OPERATION_FAILED',
           details: { repoUrl: 'https://github.com/user/repo.git', originalError: 'Command not found' }
         }
       });
@@ -291,10 +303,12 @@ describe('GitHandler', () => {
 
       const response = await gitHandler.handle(request, validatedContext);
 
-      expect(response.status).toBe(400);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.code).toBe('GIT_CLONE_ERROR');
-      expect(responseData.details.originalError).toBe('Command not found');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.code).toBe('GIT_OPERATION_FAILED');
+      expect(responseData.context.originalError).toBe('Command not found');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
   });
 
@@ -306,36 +320,45 @@ describe('GitHandler', () => {
 
       const response = await gitHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.error).toBe('Invalid git endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.message).toBe('Invalid git endpoint');
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
 
       // Should not call any service methods
       expect(mockGitService.cloneRepository).not.toHaveBeenCalled();
     });
 
-    it('should return 404 for root git path', async () => {
+    it('should return 500 for root git path', async () => {
       const request = new Request('http://localhost:3000/api/git/', {
         method: 'POST'
       });
 
       const response = await gitHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.error).toBe('Invalid git endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.message).toBe('Invalid git endpoint');
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
 
-    it('should return 404 for git endpoint without operation', async () => {
+    it('should return 500 for git endpoint without operation', async () => {
       const request = new Request('http://localhost:3000/api/git', {
         method: 'POST'
       });
 
       const response = await gitHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
-      const responseData = await response.json() as HandlerErrorResponse;
-      expect(responseData.error).toBe('Invalid git endpoint');
+      expect(response.status).toBe(500);
+      const responseData = await response.json() as ErrorResponse;
+      expect(responseData.message).toBe('Invalid git endpoint');
+      expect(responseData.code).toBe('UNKNOWN_ERROR');
+      expect(responseData.httpStatus).toBe(500);
+      expect(responseData.timestamp).toBeDefined();
     });
   });
 
@@ -372,7 +395,7 @@ describe('GitHandler', () => {
 
       const response = await gitHandler.handle(request, mockContext);
 
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(500);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     });
   });
@@ -400,19 +423,19 @@ describe('GitHandler', () => {
       const response = await gitHandler.handle(request, validatedContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as GitCheckoutResponse;
+      const responseData = await response.json() as SuccessResponse<{ path: string; branch: string }>;
 
       // Verify all expected fields are present
-      const expectedFields = ['success', 'stdout', 'stderr', 'exitCode', 'repoUrl', 'branch', 'targetDir', 'timestamp'];
+      const expectedFields = ['success', 'data', 'timestamp'];
       for (const field of expectedFields) {
         expect(responseData).toHaveProperty(field);
       }
 
       // Verify field values
       expect(responseData.success).toBe(true);
-      expect(responseData.stdout).toBe('');
-      expect(responseData.stderr).toBe('');
-      expect(responseData.exitCode).toBe(0);
+      expect(responseData.data).toBeDefined();
+      expect(responseData.data.path).toBe('/tmp/feature-work');
+      expect(responseData.data.branch).toBe('feature-branch');
       expect(responseData.timestamp).toBeDefined();
       expect(new Date(responseData.timestamp)).toBeInstanceOf(Date);
     });

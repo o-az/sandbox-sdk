@@ -16,6 +16,8 @@ import type {
   StreamOptions
 } from "@repo/shared";
 import { type ExecuteResponse, SandboxClient } from "./clients";
+import type { ErrorResponse } from './errors';
+import { CustomDomainRequiredError, ErrorCode } from './errors';
 import { CodeInterpreter } from "./interpreter";
 import { isLocalhostPattern } from "./request-handler";
 import {
@@ -25,8 +27,6 @@ import {
   validatePort
 } from "./security";
 import { parseSSEStream } from "./sse-parser";
-import { CustomDomainRequiredError, ErrorCode } from './errors';
-import type { ErrorResponse } from './errors';
 
 export function getSandbox(ns: DurableObjectNamespace<Sandbox>, id: string) {
   const stub = getContainer(ns, id);

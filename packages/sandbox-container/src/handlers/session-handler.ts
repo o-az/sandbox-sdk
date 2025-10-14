@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, RequestContext } from '../core/types';
 import type { SessionManager } from '../services/session-manager';
 import { BaseHandler } from './base-handler';
@@ -21,7 +22,13 @@ export class SessionHandler extends BaseHandler<Request, Response> {
       case '/api/session/list':
         return await this.handleList(request, context);
       default:
-        return this.createErrorResponse('Invalid session endpoint', 404, context);
+        return this.createServiceResponse({
+          success: false,
+          error: {
+            message: 'Invalid session endpoint',
+            code: ErrorCode.UNKNOWN_ERROR,
+          }
+        }, context);
     }
   }
 
@@ -56,29 +63,15 @@ export class SessionHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         sessionId: sessionId
       });
-
-      return new Response(
-        JSON.stringify({
-          message: 'Session created successfully',
-          sessionId: sessionId,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
     } else {
       this.logger.error('Session creation failed', undefined, {
         requestId: context.requestId,
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+
+    return this.createServiceResponse(result, context);
   }
 
   private async handleList(request: Request, context: RequestContext): Promise<Response> {
@@ -87,29 +80,19 @@ export class SessionHandler extends BaseHandler<Request, Response> {
     const result = await this.sessionManager.listSessions();
 
     if (result.success) {
-      const sessionList = result.data!.map(sessionId => ( {sessionId }));
-      return new Response(
-        JSON.stringify({
-          count: sessionList.length,
-          sessions: sessionList,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      this.logger.info('Sessions listed successfully', {
+        requestId: context.requestId,
+        count: result.data!.length
+      });
     } else {
       this.logger.error('Session listing failed', undefined, {
         requestId: context.requestId,
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createErrorResponse(result.error!, 500, context);
     }
+
+    return this.createServiceResponse(result, context);
   }
 
   private generateSessionId(): string {

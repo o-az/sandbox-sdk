@@ -1,11 +1,14 @@
 // Centralized Router for handling HTTP requests
-import type { 
-  HttpMethod, 
-  Middleware, 
-  NextFunction, 
-  RequestContext, 
-  RequestHandler, 
-  RouteDefinition 
+
+import type { ErrorResponse } from '@repo/shared/errors';
+import { ErrorCode } from '@repo/shared/errors';
+import type {
+  HttpMethod,
+  Middleware,
+  NextFunction,
+  RequestContext,
+  RequestHandler,
+  RouteDefinition
 } from './types';
 
 export class Router {
@@ -197,12 +200,16 @@ export class Router {
    * Create a 404 Not Found response
    */
   private createNotFoundResponse(): Response {
+    const errorResponse: ErrorResponse = {
+      code: ErrorCode.UNKNOWN_ERROR,
+      message: 'The requested endpoint was not found',
+      context: {},
+      httpStatus: 404,
+      timestamp: new Date().toISOString(),
+    };
+
     return new Response(
-      JSON.stringify({
-        error: 'Not Found',
-        message: 'The requested endpoint was not found',
-        timestamp: new Date().toISOString(),
-      }),
+      JSON.stringify(errorResponse),
       {
         status: 404,
         headers: {
@@ -217,12 +224,18 @@ export class Router {
    * Create an error response
    */
   private createErrorResponse(error: Error): Response {
+    const errorResponse: ErrorResponse = {
+      code: ErrorCode.INTERNAL_ERROR,
+      message: error.message,
+      context: {
+        stack: error.stack,
+      },
+      httpStatus: 500,
+      timestamp: new Date().toISOString(),
+    };
+
     return new Response(
-      JSON.stringify({
-        error: 'Internal Server Error',
-        message: error.message,
-        timestamp: new Date().toISOString(),
-      }),
+      JSON.stringify(errorResponse),
       {
         status: 500,
         headers: {

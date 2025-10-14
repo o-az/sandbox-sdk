@@ -1,13 +1,14 @@
 // Port Management Service
+
+import type {
+  InvalidPortContext,
+  PortAlreadyExposedContext,
+  PortErrorContext,
+  PortNotExposedContext,
+} from '@repo/shared/errors';
+import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, PortInfo, ServiceResult } from '../core/types';
 import { PortManager } from '../managers/port-manager';
-import { ErrorCode } from '@repo/shared/errors';
-import type {
-  PortAlreadyExposedContext,
-  PortNotExposedContext,
-  InvalidPortContext,
-  PortErrorContext,
-} from '@repo/shared/errors';
 
 export interface SecurityService {
   validatePort(port: number): { isValid: boolean; errors: string[] };
