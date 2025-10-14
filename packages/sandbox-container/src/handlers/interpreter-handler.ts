@@ -1,4 +1,10 @@
 // Interpreter Handler
+import type {
+  ContextCreateResult,
+  ContextDeleteResult,
+  ContextListResult,
+  InterpreterHealthResult,
+} from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, RequestContext } from '../core/types';
 import type { CreateContextRequest } from '../interpreter-service';
@@ -40,12 +46,9 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
       return await this.handleExecuteCode(request, context);
     }
 
-    return this.createServiceResponse({
-      success: false,
-      error: {
-        message: 'Invalid interpreter endpoint',
-        code: ErrorCode.UNKNOWN_ERROR,
-      }
+    return this.createErrorResponse({
+      message: 'Invalid interpreter endpoint',
+      code: ErrorCode.UNKNOWN_ERROR,
     }, context);
   }
 
@@ -58,15 +61,23 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
       this.logger.info('Health check successful', {
         requestId: context.requestId
       });
+
+      const response: InterpreterHealthResult = {
+        success: true,
+        status: result.data.ready ? 'healthy' : 'unhealthy',
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Health check failed', undefined, {
         requestId: context.requestId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-    }
 
-    return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
+    }
   }
 
   private async handleCreateContext(request: Request, context: RequestContext): Promise<Response> {
@@ -81,22 +92,32 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
     const result = await this.interpreterService.createContext(body);
 
     if (result.success) {
-      const contextData = result.data!;
+      const contextData = result.data;
 
       this.logger.info('Context created successfully', {
         requestId: context.requestId,
         contextId: contextData.id,
         language: contextData.language,
       });
+
+      const response: ContextCreateResult = {
+        success: true,
+        contextId: contextData.id,
+        language: contextData.language,
+        cwd: contextData.cwd,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Context creation failed', undefined, {
         requestId: context.requestId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
 
-      // Special handling for interpreter not ready
-      if (result.error!.code === 'INTERPRETER_NOT_READY') {
+      // Special handling for interpreter not ready - return 503 with Retry-After header
+      if (result.error.code === 'INTERPRETER_NOT_READY') {
         return new Response(
           JSON.stringify({
             success: false,
@@ -107,15 +128,15 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
             status: 503,
             headers: {
               'Content-Type': 'application/json',
-              'Retry-After': String(result.error!.details?.retryAfter || 5),
+              'Retry-After': String(result.error.details?.retryAfter || 5),
               ...context.corsHeaders,
             },
           }
         );
       }
-    }
 
-    return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
+    }
   }
 
   private async handleListContexts(request: Request, context: RequestContext): Promise<Response> {
@@ -126,17 +147,29 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
     if (result.success) {
       this.logger.info('Contexts listed successfully', {
         requestId: context.requestId,
-        count: result.data!.length
+        count: result.data.length
       });
+
+      const response: ContextListResult = {
+        success: true,
+        contexts: result.data.map(ctx => ({
+          id: ctx.id,
+          language: ctx.language,
+          cwd: ctx.cwd,
+        })),
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Context listing failed', undefined, {
         requestId: context.requestId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-    }
 
-    return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
+    }
   }
 
   private async handleDeleteContext(request: Request, context: RequestContext, contextId: string): Promise<Response> {
@@ -152,16 +185,24 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         contextId,
       });
+
+      const response: ContextDeleteResult = {
+        success: true,
+        contextId: contextId,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Context deletion failed', undefined, {
         requestId: context.requestId,
         contextId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-    }
 
-    return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
+    }
   }
 
   private async handleExecuteCode(request: Request, context: RequestContext): Promise<Response> {

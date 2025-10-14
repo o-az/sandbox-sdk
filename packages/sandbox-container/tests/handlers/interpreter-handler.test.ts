@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type {
+  ContextCreateResult,
+  ContextDeleteResult,
+  ContextListResult,
+  InterpreterHealthResult,
+} from '@repo/shared';
 import type { ErrorResponse } from '@repo/shared/errors';
-import type { Logger, RequestContext, ServiceResult, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
+import type { Logger, RequestContext, ServiceResult } from '@sandbox-container/core/types.ts';
 import { InterpreterHandler } from "@sandbox-container/handlers/interpreter-handler.js";
 import type { CreateContextRequest, InterpreterService } from '@sandbox-container/services/interpreter-service.ts';
 import { mocked } from '../test-utils';
@@ -36,12 +42,6 @@ const mockContext: RequestContext = {
 describe('InterpreterHandler', () => {
   let interpreterHandler: InterpreterHandler;
 
-  // Helper to create context with validated data
-  const createValidatedContext = <T>(data: T): ValidatedRequestContext<T> => ({
-    ...mockContext,
-    validatedData: data
-  });
-
   beforeEach(async () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
@@ -72,12 +72,11 @@ describe('InterpreterHandler', () => {
 
       const response = await interpreterHandler.handle(request, mockContext);
 
-      // Verify success response: {success: true, data: T, timestamp}
+      // Verify success response: {success: true, status, timestamp}
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as InterpreterHealthResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.data.status).toBe('healthy');
-      expect(responseData.data.ready).toBe(true);
+      expect(responseData.status).toBe('healthy');
       expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called
@@ -140,15 +139,15 @@ describe('InterpreterHandler', () => {
         body: JSON.stringify(contextRequest)
       });
 
-      const validatedContext = createValidatedContext(contextRequest);
-      const response = await interpreterHandler.handle(request, validatedContext);
+      const response = await interpreterHandler.handle(request, mockContext);
 
-      // Verify success response: {success: true, data: T, timestamp}
+      // Verify success response: {success: true, contextId, language, cwd, timestamp}
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as ContextCreateResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.data.id).toBe('ctx-123');
-      expect(responseData.data.language).toBe('python');
+      expect(responseData.contextId).toBe('ctx-123');
+      expect(responseData.language).toBe('python');
+      expect(responseData.cwd).toBe('/workspace');
       expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called correctly
@@ -179,8 +178,7 @@ describe('InterpreterHandler', () => {
         body: JSON.stringify(contextRequest)
       });
 
-      const validatedContext = createValidatedContext(contextRequest);
-      const response = await interpreterHandler.handle(request, validatedContext);
+      const response = await interpreterHandler.handle(request, mockContext);
 
       // Verify error response: {code, message, context, httpStatus, timestamp}
       expect(response.status).toBeGreaterThanOrEqual(400);
@@ -216,8 +214,7 @@ describe('InterpreterHandler', () => {
         body: JSON.stringify(contextRequest)
       });
 
-      const validatedContext = createValidatedContext(contextRequest);
-      const response = await interpreterHandler.handle(request, validatedContext);
+      const response = await interpreterHandler.handle(request, mockContext);
 
       // Verify 503 status with Retry-After header
       expect(response.status).toBe(503);
@@ -249,12 +246,14 @@ describe('InterpreterHandler', () => {
 
       const response = await interpreterHandler.handle(request, mockContext);
 
-      // Verify success response: {success: true, data: T, timestamp}
+      // Verify success response: {success: true, contexts, timestamp}
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as ContextListResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.data).toHaveLength(2);
-      expect(responseData.data[0].id).toBe('ctx-1');
+      expect(responseData.contexts).toHaveLength(2);
+      expect(responseData.contexts[0].id).toBe('ctx-1');
+      expect(responseData.contexts[0].language).toBe('python');
+      expect(responseData.contexts[0].cwd).toBe('/workspace1');
       expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called
@@ -306,10 +305,11 @@ describe('InterpreterHandler', () => {
 
       const response = await interpreterHandler.handle(request, mockContext);
 
-      // Verify success response: {success: true, data: undefined, timestamp}
+      // Verify success response: {success: true, contextId, timestamp}
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as ContextDeleteResult;
       expect(responseData.success).toBe(true);
+      expect(responseData.contextId).toBe('ctx-123');
       expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called with correct context ID
@@ -380,8 +380,7 @@ describe('InterpreterHandler', () => {
         body: JSON.stringify(executeRequest)
       });
 
-      const validatedContext = createValidatedContext(executeRequest);
-      const response = await interpreterHandler.handle(request, validatedContext);
+      const response = await interpreterHandler.handle(request, mockContext);
 
       // Verify streaming response
       expect(response.status).toBe(200);
@@ -427,8 +426,7 @@ describe('InterpreterHandler', () => {
         body: JSON.stringify(executeRequest)
       });
 
-      const validatedContext = createValidatedContext(executeRequest);
-      const response = await interpreterHandler.handle(request, validatedContext);
+      const response = await interpreterHandler.handle(request, mockContext);
 
       // Verify error response: {code, message, context, httpStatus, timestamp}
       expect(response.status).toBe(404);

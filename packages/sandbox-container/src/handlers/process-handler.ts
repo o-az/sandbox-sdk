@@ -1,3 +1,11 @@
+import type {
+  ProcessInfoResult,
+  ProcessKillResult,
+  ProcessListResult,
+  ProcessLogsResult,
+  ProcessStartResult,
+  ProcessCleanupResult
+} from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, ProcessStatus, RequestContext, StartProcessRequest } from '../core/types';
 import type { ProcessService } from '../services/process-service';
@@ -40,12 +48,9 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
       }
     }
 
-    return this.createServiceResponse({
-      success: false,
-      error: {
-        message: 'Invalid process endpoint',
-        code: ErrorCode.UNKNOWN_ERROR,
-      }
+    return this.createErrorResponse({
+      message: 'Invalid process endpoint',
+      code: ErrorCode.UNKNOWN_ERROR,
     }, context);
   }
 
@@ -61,8 +66,8 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
     const result = await this.processService.startProcess(body.command, body.options || {});
 
     if (result.success) {
-      const process = result.data!;
-      
+      const process = result.data;
+
       this.logger.info('Process started successfully', {
         requestId: context.requestId,
         processId: process.id,
@@ -70,36 +75,23 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         command: process.command,
       });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          process: {
-            id: process.id,
-            pid: process.pid,
-            command: process.command,
-            status: process.status,
-            startTime: process.startTime.toISOString(),
-            sessionId: process.sessionId,
-          },
-          message: 'Process started successfully',
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: ProcessStartResult = {
+        success: true,
+        processId: process.id,
+        pid: process.pid,
+        command: process.command,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Process start failed', undefined, {
         requestId: context.requestId,
         command: body.command,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
@@ -118,94 +110,72 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
     const result = await this.processService.listProcesses(filters);
 
     if (result.success) {
-      const processes = result.data!.map(process => ({
-        id: process.id,
-        pid: process.pid,
-        command: process.command,
-        status: process.status,
-        startTime: process.startTime.toISOString(),
-        endTime: process.endTime?.toISOString(),
-        exitCode: process.exitCode,
-        sessionId: process.sessionId,
-      }));
+      const response: ProcessListResult = {
+        success: true,
+        processes: result.data.map(process => ({
+          id: process.id,
+          pid: process.pid,
+          command: process.command,
+          status: process.status,
+          startTime: process.startTime.toISOString(),
+          exitCode: process.exitCode,
+        })),
+        timestamp: new Date().toISOString(),
+      };
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          count: processes.length,
-          processes,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Process listing failed', undefined, {
         requestId: context.requestId,
         filters,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
   private async handleGet(request: Request, context: RequestContext, processId: string): Promise<Response> {
-    this.logger.info('Getting process', { 
+    this.logger.info('Getting process', {
       requestId: context.requestId,
-      processId 
+      processId
     });
 
     const result = await this.processService.getProcess(processId);
 
     if (result.success) {
-      const process = result.data!;
+      const process = result.data;
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          process: {
-            id: process.id,
-            pid: process.pid,
-            command: process.command,
-            status: process.status,
-            startTime: process.startTime.toISOString(),
-            endTime: process.endTime?.toISOString(),
-            exitCode: process.exitCode,
-            sessionId: process.sessionId,
-            stdout: process.stdout,
-            stderr: process.stderr,
-          },
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: ProcessInfoResult = {
+        success: true,
+        process: {
+          id: process.id,
+          pid: process.pid,
+          command: process.command,
+          status: process.status,
+          startTime: process.startTime.toISOString(),
+          endTime: process.endTime?.toISOString(),
+          exitCode: process.exitCode,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Process get failed', undefined, {
         requestId: context.requestId,
         processId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
   private async handleKill(request: Request, context: RequestContext, processId: string): Promise<Response> {
-    this.logger.info('Killing process', { 
+    this.logger.info('Killing process', {
       requestId: context.requestId,
-      processId 
+      processId
     });
 
     const result = await this.processService.killProcess(processId);
@@ -216,28 +186,21 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         processId,
       });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'Process killed successfully',
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: ProcessKillResult = {
+        success: true,
+        processId,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Process kill failed', undefined, {
         requestId: context.requestId,
         processId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
@@ -249,76 +212,61 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
     if (result.success) {
       this.logger.info('All processes killed successfully', {
         requestId: context.requestId,
-        count: result.data!,
+        count: result.data,
       });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'All processes killed successfully',
-          killedCount: result.data!,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: ProcessCleanupResult = {
+        success: true,
+        cleanedCount: result.data,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Kill all processes failed', undefined, {
         requestId: context.requestId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
   private async handleLogs(request: Request, context: RequestContext, processId: string): Promise<Response> {
-    this.logger.info('Getting process logs', { 
+    this.logger.info('Getting process logs', {
       requestId: context.requestId,
-      processId 
+      processId
     });
 
     const result = await this.processService.getProcess(processId);
 
     if (result.success) {
-      const process = result.data!;
+      const process = result.data;
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          processId,
-          stdout: process.stdout,
-          stderr: process.stderr,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: ProcessLogsResult = {
+        success: true,
+        processId,
+        stdout: process.stdout,
+        stderr: process.stderr,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Process logs get failed', undefined, {
         requestId: context.requestId,
         processId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
   private async handleStream(request: Request, context: RequestContext, processId: string): Promise<Response> {
-    this.logger.info('Streaming process logs', { 
+    this.logger.info('Streaming process logs', {
       requestId: context.requestId,
-      processId 
+      processId
     });
 
     const result = await this.processService.streamProcessLogs(processId);
@@ -330,13 +278,13 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
         this.logger.error('Process stream setup failed - process not found', undefined, {
           requestId: context.requestId,
           processId,
-          errorCode: processResult.error!.code,
-          errorMessage: processResult.error!.message,
+          errorCode: processResult.error.code,
+          errorMessage: processResult.error.message,
         });
-        return this.createServiceResponse(processResult, context);
+        return this.createErrorResponse(processResult.error, context);
       }
 
-      const process = processResult.data!;
+      const process = processResult.data;
 
       const stream = new ReadableStream({
         start(controller) {
@@ -422,10 +370,10 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
       this.logger.error('Process stream failed', undefined, {
         requestId: context.requestId,
         processId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 }

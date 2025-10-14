@@ -1,4 +1,5 @@
 // Miscellaneous Handler for ping, commands, etc.
+import type { HealthCheckResult, ShutdownResult } from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 
 import type { Logger, RequestContext } from '../core/types';
@@ -13,17 +14,14 @@ export class MiscHandler extends BaseHandler<Request, Response> {
     switch (pathname) {
       case '/':
         return await this.handleRoot(request, context);
-      case '/api/ping':
-        return await this.handlePing(request, context);
-      case '/api/commands':
-        return await this.handleCommands(request, context);
+      case '/api/health':
+        return await this.handleHealth(request, context);
+      case '/api/shutdown':
+        return await this.handleShutdown(request, context);
       default:
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid endpoint',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid endpoint',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
     }
   }
@@ -37,48 +35,27 @@ export class MiscHandler extends BaseHandler<Request, Response> {
     });
   }
 
-  private async handlePing(request: Request, context: RequestContext): Promise<Response> {
-    this.logger.info('Ping request', { requestId: context.requestId });
+  private async handleHealth(request: Request, context: RequestContext): Promise<Response> {
+    this.logger.info('Health check request', { requestId: context.requestId });
 
-    return this.createSuccessResponse(
-      {
-        message: 'pong',
-        timestamp: new Date().toISOString(),
-        requestId: context.requestId,
-      },
-      context
-    );
+    const response: HealthCheckResult = {
+      success: true,
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+    };
+
+    return this.createTypedResponse(response, context);
   }
 
-  private async handleCommands(request: Request, context: RequestContext): Promise<Response> {
-    this.logger.info('Commands request', { requestId: context.requestId });
+  private async handleShutdown(request: Request, context: RequestContext): Promise<Response> {
+    this.logger.info('Shutdown request', { requestId: context.requestId });
 
-    return this.createSuccessResponse(
-      {
-        availableCommands: [
-          'ls',
-          'pwd',
-          'echo',
-          'cat',
-          'grep',
-          'find',
-          'whoami',
-          'date',
-          'uptime',
-          'ps',
-          'top',
-          'df',
-          'du',
-          'free',
-          'node',
-          'npm',
-          'git',
-          'curl',
-          'wget',
-        ],
-        timestamp: new Date().toISOString(),
-      },
-      context
-    );
+    const response: ShutdownResult = {
+      success: true,
+      message: 'Container shutdown initiated',
+      timestamp: new Date().toISOString(),
+    };
+
+    return this.createTypedResponse(response, context);
   }
 }

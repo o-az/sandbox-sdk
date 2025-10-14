@@ -315,6 +315,159 @@ export interface GitCheckoutResult {
   exitCode?: number;
 }
 
+// Process management result types
+export interface ProcessStartResult {
+  success: boolean;
+  processId: string;
+  pid?: number;
+  command: string;
+  timestamp: string;
+}
+
+export interface ProcessListResult {
+  success: boolean;
+  processes: Array<{
+    id: string;
+    pid?: number;
+    command: string;
+    status: ProcessStatus;
+    startTime: string;
+    exitCode?: number;
+  }>;
+  timestamp: string;
+}
+
+export interface ProcessInfoResult {
+  success: boolean;
+  process: {
+    id: string;
+    pid?: number;
+    command: string;
+    status: ProcessStatus;
+    startTime: string;
+    endTime?: string;
+    exitCode?: number;
+  };
+  timestamp: string;
+}
+
+export interface ProcessKillResult {
+  success: boolean;
+  processId: string;
+  signal?: string;
+  timestamp: string;
+}
+
+export interface ProcessLogsResult {
+  success: boolean;
+  processId: string;
+  stdout: string;
+  stderr: string;
+  timestamp: string;
+}
+
+export interface ProcessCleanupResult {
+  success: boolean;
+  cleanedCount: number;
+  timestamp: string;
+}
+
+// Session management result types
+export interface SessionCreateResult {
+  success: boolean;
+  sessionId: string;
+  name?: string;
+  cwd?: string;
+  timestamp: string;
+}
+
+export interface SessionDeleteResult {
+  success: boolean;
+  sessionId: string;
+  timestamp: string;
+}
+
+export interface EnvSetResult {
+  success: boolean;
+  timestamp: string;
+}
+
+// Port management result types
+export interface PortExposeResult {
+  success: boolean;
+  port: number;
+  url: string;
+  timestamp: string;
+}
+
+export interface PortStatusResult {
+  success: boolean;
+  port: number;
+  status: 'active' | 'inactive';
+  url?: string;
+  timestamp: string;
+}
+
+export interface PortListResult {
+  success: boolean;
+  ports: Array<{
+    port: number;
+    url: string;
+    status: 'active' | 'inactive';
+  }>;
+  timestamp: string;
+}
+
+export interface PortCloseResult {
+  success: boolean;
+  port: number;
+  timestamp: string;
+}
+
+// Code interpreter result types
+export interface InterpreterHealthResult {
+  success: boolean;
+  status: 'healthy' | 'unhealthy';
+  timestamp: string;
+}
+
+export interface ContextCreateResult {
+  success: boolean;
+  contextId: string;
+  language: string;
+  cwd?: string;
+  timestamp: string;
+}
+
+export interface ContextListResult {
+  success: boolean;
+  contexts: Array<{
+    id: string;
+    language: string;
+    cwd?: string;
+  }>;
+  timestamp: string;
+}
+
+export interface ContextDeleteResult {
+  success: boolean;
+  contextId: string;
+  timestamp: string;
+}
+
+// Miscellaneous result types
+export interface HealthCheckResult {
+  success: boolean;
+  status: 'healthy' | 'unhealthy';
+  timestamp: string;
+}
+
+export interface ShutdownResult {
+  success: boolean;
+  message: string;
+  timestamp: string;
+}
+
 export interface ExecutionSession {
   /** Unique session identifier */
   readonly id: string;

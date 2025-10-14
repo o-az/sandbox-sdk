@@ -1,4 +1,9 @@
 // Port Handler
+import type {
+  PortExposeResult,
+  PortListResult,
+  PortCloseResult,
+} from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 
 import type { ExposePortRequest, Logger, RequestContext } from '../core/types';
@@ -36,12 +41,9 @@ export class PortHandler extends BaseHandler<Request, Response> {
       return await this.handleProxy(request, context);
     }
 
-    return this.createServiceResponse({
-      success: false,
-      error: {
-        message: 'Invalid port endpoint',
-        code: ErrorCode.UNKNOWN_ERROR,
-      }
+    return this.createErrorResponse({
+      message: 'Invalid port endpoint',
+      code: ErrorCode.UNKNOWN_ERROR,
     }, context);
   }
 
@@ -58,29 +60,21 @@ export class PortHandler extends BaseHandler<Request, Response> {
 
     if (result.success) {
       const portInfo = result.data!;
-      
+
       this.logger.info('Port exposed successfully', {
         requestId: context.requestId,
         port: portInfo.port,
         name: portInfo.name,
       });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          port: portInfo.port,
-          name: portInfo.name,
-          exposedAt: portInfo.exposedAt.toISOString(),
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: PortExposeResult = {
+        success: true,
+        port: portInfo.port,
+        url: `http://localhost:${portInfo.port}`, // Generate URL from port
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Port expose failed', undefined, {
         requestId: context.requestId,
@@ -89,7 +83,7 @@ export class PortHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
@@ -107,21 +101,13 @@ export class PortHandler extends BaseHandler<Request, Response> {
         port,
       });
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          message: 'Port unexposed successfully',
-          port,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: PortCloseResult = {
+        success: true,
+        port,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Port unexpose failed', undefined, {
         requestId: context.requestId,
@@ -129,7 +115,7 @@ export class PortHandler extends BaseHandler<Request, Response> {
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
@@ -141,32 +127,24 @@ export class PortHandler extends BaseHandler<Request, Response> {
     if (result.success) {
       const ports = result.data!.map(portInfo => ({
         port: portInfo.port,
-        name: portInfo.name,
-        exposedAt: portInfo.exposedAt.toISOString(),
+        url: `http://localhost:${portInfo.port}`,
+        status: portInfo.status,
       }));
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          count: ports.length,
-          ports,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
+      const response: PortListResult = {
+        success: true,
+        ports,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Port listing failed', undefined, {
         requestId: context.requestId,
         errorCode: result.error!.code,
         errorMessage: result.error!.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
   }
 
@@ -177,12 +155,9 @@ export class PortHandler extends BaseHandler<Request, Response> {
       const pathSegments = url.pathname.split('/');
       
       if (pathSegments.length < 3) {
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid proxy URL format',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid proxy URL format',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
       }
 
@@ -190,12 +165,9 @@ export class PortHandler extends BaseHandler<Request, Response> {
       const port = parseInt(portStr, 10);
 
       if (Number.isNaN(port)) {
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid port number in proxy URL',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid port number in proxy URL',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
       }
 
@@ -222,12 +194,9 @@ export class PortHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
       });
 
-      return this.createServiceResponse({
-        success: false,
-        error: {
-          message: error instanceof Error ? error.message : 'Proxy request failed',
-          code: ErrorCode.UNKNOWN_ERROR,
-        }
+      return this.createErrorResponse({
+        message: error instanceof Error ? error.message : 'Proxy request failed',
+        code: ErrorCode.UNKNOWN_ERROR,
       }, context);
     }
   }

@@ -1,4 +1,5 @@
 // Git Handler
+import type { GitCheckoutResult } from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 
 import type { GitCheckoutRequest, Logger, RequestContext } from '../core/types';
@@ -21,12 +22,9 @@ export class GitHandler extends BaseHandler<Request, Response> {
       case '/api/git/checkout':
         return await this.handleCheckout(request, context);
       default:
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid git endpoint',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid git endpoint',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
     }
   }
@@ -34,8 +32,8 @@ export class GitHandler extends BaseHandler<Request, Response> {
   private async handleCheckout(request: Request, context: RequestContext): Promise<Response> {
     const body = await this.parseRequestBody<GitCheckoutRequest>(request);
     const sessionId = body.sessionId || context.sessionId;
-    
-    this.logger.info('Cloning git repository', { 
+
+    this.logger.info('Cloning git repository', {
       requestId: context.requestId,
       repoUrl: body.repoUrl,
       branch: body.branch,
@@ -49,12 +47,32 @@ export class GitHandler extends BaseHandler<Request, Response> {
       sessionId,
     });
 
-    this.logger.info('Repository clone result', {
-      requestId: context.requestId,
-      repoUrl: body.repoUrl,
-      success: result.success,
-    });
+    if (result.success) {
+      this.logger.info('Repository cloned successfully', {
+        requestId: context.requestId,
+        repoUrl: body.repoUrl,
+        branch: result.data.branch,
+        path: result.data.path,
+      });
 
-    return this.createServiceResponse(result, context);
+      const response: GitCheckoutResult = {
+        success: true,
+        repoUrl: body.repoUrl,
+        branch: result.data.branch,
+        targetDir: result.data.path,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
+    } else {
+      this.logger.error('Repository clone failed', undefined, {
+        requestId: context.requestId,
+        repoUrl: body.repoUrl,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
+      });
+
+      return this.createErrorResponse(result.error, context);
+    }
   }
 }

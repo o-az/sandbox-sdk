@@ -1,4 +1,5 @@
 // Execute Handler
+import type { ExecResult, ProcessStartResult } from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 
 import type { ExecuteRequest, Logger, RequestContext } from '../core/types';
@@ -23,12 +24,9 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
       case '/api/execute/stream':
         return await this.handleStreamingExecute(request, context);
       default:
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid execute endpoint',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid execute endpoint',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
     }
   }
@@ -52,38 +50,33 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
         timeoutMs: body.timeoutMs,
       });
 
-      if (processResult.success) {
-        this.logger.info('Background process started successfully', {
-          requestId: context.requestId,
-          processId: processResult.data!.id,
-          command: body.command,
-        });
-        
-        return new Response(
-          JSON.stringify({
-            success: true,
-            processId: processResult.data!.id,
-            message: 'Background process started successfully',
-            timestamp: new Date().toISOString(),
-          }),
-          {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              ...context.corsHeaders,
-            },
-          }
-        );
-      } else {
+      if (!processResult.success) {
         this.logger.error('Background process start failed', undefined, {
           requestId: context.requestId,
           command: body.command,
           sessionId,
-          errorCode: processResult.error!.code,
-          errorMessage: processResult.error!.message,
+          errorCode: processResult.error.code,
+          errorMessage: processResult.error.message,
         });
-        return this.createServiceResponse(processResult, context);
+        return this.createErrorResponse(processResult.error, context);
       }
+
+      const processData = processResult.data;
+      this.logger.info('Background process started successfully', {
+        requestId: context.requestId,
+        processId: processData.id,
+        command: body.command,
+      });
+
+      const response: ProcessStartResult = {
+        success: true,
+        processId: processData.id,
+        pid: processData.pid,
+        command: body.command,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     }
 
     // For non-background commands, execute and return result
@@ -92,43 +85,37 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
       timeoutMs: body.timeoutMs,
     });
 
-    if (result.success) {
-      const commandResult = result.data!;
-      
-      this.logger.info('Command executed successfully', {
-        requestId: context.requestId,
-        command: body.command,
-        exitCode: commandResult.exitCode,
-        success: commandResult.success,
-      });
-
-      return new Response(
-        JSON.stringify({
-          success: commandResult.success,
-          exitCode: commandResult.exitCode,
-          stdout: commandResult.stdout,
-          stderr: commandResult.stderr,
-          command: body.command,
-          timestamp: new Date().toISOString(),
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            ...context.corsHeaders,
-          },
-        }
-      );
-    } else {
+    if (!result.success) {
       this.logger.error('Command execution failed', undefined, {
         requestId: context.requestId,
         command: body.command,
         sessionId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-      return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
     }
+
+    const commandResult = result.data;
+    this.logger.info('Command executed successfully', {
+      requestId: context.requestId,
+      command: body.command,
+      exitCode: commandResult.exitCode,
+      success: commandResult.success,
+    });
+
+    const response: ExecResult = {
+      success: commandResult.success,
+      exitCode: commandResult.exitCode,
+      stdout: commandResult.stdout,
+      stderr: commandResult.stderr,
+      command: body.command,
+      duration: 0, // Duration not tracked at service level yet
+      timestamp: new Date().toISOString(),
+      sessionId: sessionId,
+    };
+
+    return this.createTypedResponse(response, context);
   }
 
   private async handleStreamingExecute(request: Request, context: RequestContext): Promise<Response> {
@@ -152,13 +139,13 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         command: body.command,
         sessionId,
-        errorCode: processResult.error!.code,
-        errorMessage: processResult.error!.message,
+        errorCode: processResult.error.code,
+        errorMessage: processResult.error.message,
       });
-      return this.createServiceResponse(processResult, context);
+      return this.createErrorResponse(processResult.error, context);
     }
 
-    const process = processResult.data!;
+    const process = processResult.data;
 
     this.logger.info('Streaming process started successfully', {
       requestId: context.requestId,

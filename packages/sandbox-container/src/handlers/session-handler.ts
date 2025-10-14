@@ -1,8 +1,16 @@
 import { randomBytes } from "node:crypto";
+import type { SessionCreateResult } from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, RequestContext } from '../core/types';
 import type { SessionManager } from '../services/session-manager';
 import { BaseHandler } from './base-handler';
+
+// SessionListResult type - matches actual handler return format
+interface SessionListResult {
+  success: boolean;
+  data: string[];
+  timestamp: string;
+}
 
 export class SessionHandler extends BaseHandler<Request, Response> {
   constructor(
@@ -22,12 +30,9 @@ export class SessionHandler extends BaseHandler<Request, Response> {
       case '/api/session/list':
         return await this.handleList(request, context);
       default:
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid session endpoint',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid session endpoint',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
     }
   }
@@ -63,15 +68,25 @@ export class SessionHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         sessionId: sessionId
       });
+
+      // Note: Returning the Session object directly for now
+      // This matches current test expectations
+      const response = {
+        success: true,
+        data: result.data,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Session creation failed', undefined, {
         requestId: context.requestId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-    }
 
-    return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
+    }
   }
 
   private async handleList(request: Request, context: RequestContext): Promise<Response> {
@@ -82,17 +97,25 @@ export class SessionHandler extends BaseHandler<Request, Response> {
     if (result.success) {
       this.logger.info('Sessions listed successfully', {
         requestId: context.requestId,
-        count: result.data!.length
+        count: result.data.length
       });
+
+      const response: SessionListResult = {
+        success: true,
+        data: result.data,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Session listing failed', undefined, {
         requestId: context.requestId,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
-    }
 
-    return this.createServiceResponse(result, context);
+      return this.createErrorResponse(result.error, context);
+    }
   }
 
   private generateSessionId(): string {

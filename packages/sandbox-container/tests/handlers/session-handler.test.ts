@@ -1,9 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type { ErrorResponse } from '@repo/shared/errors';
-import type { CreateSessionResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { Logger, RequestContext } from '@sandbox-container/core/types';
 import { SessionHandler } from '@sandbox-container/handlers/session-handler';
 import type { SessionManager } from '@sandbox-container/services/session-manager';
 import type { Session } from '@sandbox-container/session';
+
+// SessionListResult type - matches handler return format
+interface SessionListResult {
+  success: boolean;
+  data: string[];
+  timestamp: string;
+}
+
+// SessionCreateResultGeneric - matches handler return format (with Session object)
+interface SessionCreateResultGeneric {
+  success: boolean;
+  data: Session;
+  timestamp: string;
+}
 
 // Mock the dependencies - use partial mock to avoid private property issues
 const mockSessionManager = {
@@ -33,12 +47,6 @@ const mockContext: RequestContext = {
   sessionId: 'session-456',
 };
 
-// Helper to create validated context
-const createValidatedContext = <T>(data: T): ValidatedRequestContext<T> => ({
-  ...mockContext,
-  validatedData: data
-});
-
 describe('SessionHandler', () => {
   let sessionHandler: SessionHandler;
 
@@ -66,7 +74,7 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json() as { success: true; data: Session; timestamp: string };
+      const responseBody = await response.json() as SessionCreateResultGeneric;
       expect(responseBody.success).toBe(true);
       expect(responseBody.data).toEqual(mockSession);
       expect(responseBody.timestamp).toBeDefined();
@@ -120,8 +128,8 @@ describe('SessionHandler', () => {
       const response1 = await sessionHandler.handle(request1, mockContext);
       const response2 = await sessionHandler.handle(request2, mockContext);
 
-      const responseBody1 = await response1.json() as { success: true; data: Session; timestamp: string };
-      const responseBody2 = await response2.json() as { success: true; data: Session; timestamp: string };
+      const responseBody1 = await response1.json() as SessionCreateResultGeneric;
+      const responseBody2 = await response2.json() as SessionCreateResultGeneric;
 
       // Verify both responses are successful and contain session data
       expect(responseBody1.success).toBe(true);
@@ -152,7 +160,7 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json() as { success: true; data: string[]; timestamp: string };
+      const responseBody = await response.json() as SessionListResult;
       expect(responseBody.success).toBe(true);
       expect(responseBody.data).toEqual(mockSessionIds);
       expect(responseBody.data).toHaveLength(3);
@@ -176,7 +184,7 @@ describe('SessionHandler', () => {
       const response = await sessionHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseBody = await response.json() as { success: true; data: string[]; timestamp: string };
+      const responseBody = await response.json() as SessionListResult;
       expect(responseBody.success).toBe(true);
       expect(responseBody.data).toHaveLength(0);
       expect(responseBody.data).toEqual([]);
@@ -198,7 +206,7 @@ describe('SessionHandler', () => {
 
       const response = await sessionHandler.handle(request, mockContext);
 
-      const responseBody = await response.json() as { success: true; data: string[]; timestamp: string };
+      const responseBody = await response.json() as SessionListResult;
 
       // Handler returns array of session IDs
       expect(responseBody.success).toBe(true);
@@ -246,7 +254,7 @@ describe('SessionHandler', () => {
 
       const response = await sessionHandler.handle(request, mockContext);
 
-      const responseBody = await response.json() as { success: true; data: string[]; timestamp: string };
+      const responseBody = await response.json() as SessionListResult;
       // Handler returns array of session IDs
       expect(responseBody.success).toBe(true);
       expect(responseBody.data).toEqual(['session-1']);
@@ -398,7 +406,7 @@ describe('SessionHandler', () => {
       });
 
       const response = await sessionHandler.handle(request, mockContext);
-      const responseBody = await response.json() as { success: true; data: Session; timestamp: string };
+      const responseBody = await response.json() as SessionCreateResultGeneric;
 
       // Verify timestamp is valid ISO string
       expect(responseBody.timestamp).toBeDefined();
@@ -420,7 +428,7 @@ describe('SessionHandler', () => {
       });
 
       const response = await sessionHandler.handle(request, mockContext);
-      const responseBody = await response.json() as { success: true; data: string[]; timestamp: string };
+      const responseBody = await response.json() as SessionListResult;
 
       // Handler returns array of session IDs in data field
       expect(responseBody.success).toBe(true);
@@ -444,7 +452,7 @@ describe('SessionHandler', () => {
       });
 
       const response = await sessionHandler.handle(request, mockContext);
-      const responseBody = await response.json() as { success: true; data: string[]; timestamp: string };
+      const responseBody = await response.json() as SessionListResult;
 
       // Handler returns array of session IDs
       expect(responseBody.success).toBe(true);

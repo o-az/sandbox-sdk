@@ -25,7 +25,7 @@ export type {
   ExecResult,
   ExecutionSession,
   GitCheckoutResult,
-  ISandbox, 
+  ISandbox,
   LogEvent,
   MkdirResult,
   MoveFileResult,
@@ -36,7 +36,31 @@ export type {
   RenameFileResult,
   SessionOptions,
   StreamOptions,
-  WriteFileResult
+  WriteFileResult,
+  // Process management result types
+  ProcessStartResult,
+  ProcessListResult,
+  ProcessInfoResult,
+  ProcessKillResult,
+  ProcessLogsResult,
+  ProcessCleanupResult,
+  // Session management result types
+  SessionCreateResult,
+  SessionDeleteResult,
+  EnvSetResult,
+  // Port management result types
+  PortExposeResult,
+  PortStatusResult,
+  PortListResult,
+  PortCloseResult,
+  // Code interpreter result types
+  InterpreterHealthResult,
+  ContextCreateResult,
+  ContextListResult,
+  ContextDeleteResult,
+  // Miscellaneous result types
+  HealthCheckResult,
+  ShutdownResult
 } from './types.js';
 export {
   isExecResult,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { ExecResult, ProcessStartResult } from '@repo/shared';
 import type { ErrorResponse } from '@repo/shared/errors';
-import type { ExecuteRequest, ExecuteResponse, Logger, RequestContext, ServiceResult, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
+import type { ExecuteRequest, Logger, RequestContext, ServiceResult } from '@sandbox-container/core/types.ts';
 import { ExecuteHandler } from "@sandbox-container/handlers/execute-handler.js";
 import type { ProcessService } from '@sandbox-container/services/process-service.ts';
 import { mocked } from '../test-utils';
@@ -37,12 +38,6 @@ const mockContext: RequestContext = {
 describe('ExecuteHandler', () => {
   let executeHandler: ExecuteHandler;
 
-  // Helper to create context with validated data
-  const createValidatedContext = (data: ExecuteRequest): ValidatedRequestContext<ExecuteRequest> => ({
-    ...mockContext,
-    validatedData: data
-  });
-
   beforeEach(async () => {
     // Reset all mocks before each test
     vi.clearAllMocks();
@@ -55,8 +50,6 @@ describe('ExecuteHandler', () => {
 
   describe('handle - Regular Execution', () => {
     it('should execute command successfully and return response', async () => {
-      // Test assumes validation already occurred and data is in context
-
       // Mock successful command execution
       const mockCommandResult = {
         success: true,
@@ -64,31 +57,30 @@ describe('ExecuteHandler', () => {
           success: true,
           exitCode: 0,
           stdout: 'hello\\n',
-          stderr: ''
+          stderr: '',
+          duration: 100
         }
-      } as ServiceResult<{ success: boolean; exitCode: number; stdout: string; stderr: string; }>;
+      } as ServiceResult<{ success: boolean; exitCode: number; stdout: string; stderr: string; duration: number; }>;
 
       mocked(mockProcessService.executeCommand).mockResolvedValue(mockCommandResult);
 
-      // Execute the handler with properly validated context
       const request = new Request('http://localhost:3000/api/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'echo "hello"', sessionId: 'session-456' })
       });
-      const validatedContext = createValidatedContext({ 
-        command: 'echo "hello"', 
-        sessionId: 'session-456' 
-      });
-      
-      const response = await executeHandler.handle(request, validatedContext);
+
+      const response = await executeHandler.handle(request, mockContext);
 
       // Verify response
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ExecuteResponse;
+      const responseData = await response.json() as ExecResult;
       expect(responseData.success).toBe(true);
       expect(responseData.exitCode).toBe(0);
       expect(responseData.stdout).toBe('hello\\n');
+      expect(responseData.command).toBe('echo "hello"');
+      expect(responseData.duration).toBeDefined();
+      expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called correctly
       expect(mockProcessService.executeCommand).toHaveBeenCalledWith(
@@ -107,9 +99,10 @@ describe('ExecuteHandler', () => {
           success: false, // Command failed
           exitCode: 1,
           stdout: '',
-          stderr: 'command not found: nonexistent-command'
+          stderr: 'command not found: nonexistent-command',
+          duration: 50
         }
-      } as ServiceResult<{ success: boolean; exitCode: number; stdout: string; stderr: string; }>;
+      } as ServiceResult<{ success: boolean; exitCode: number; stdout: string; stderr: string; duration: number; }>;
 
       mocked(mockProcessService.executeCommand).mockResolvedValue(mockCommandResult);
 
@@ -118,17 +111,17 @@ describe('ExecuteHandler', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'nonexistent-command' })
       });
-      const validatedContext = createValidatedContext({ 
-        command: 'nonexistent-command' 
-      });
-      const response = await executeHandler.handle(request, validatedContext);
+
+      const response = await executeHandler.handle(request, mockContext);
 
       // Verify response - service succeeded, command failed
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ExecuteResponse;
+      const responseData = await response.json() as ExecResult;
       expect(responseData.success).toBe(false); // Command failed
       expect(responseData.exitCode).toBe(1);
       expect(responseData.stderr).toContain('command not found');
+      expect(responseData.command).toBe('nonexistent-command');
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle service failures (spawn errors)', async () => {
@@ -148,10 +141,8 @@ describe('ExecuteHandler', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'ls' })
       });
-      const validatedContext = createValidatedContext({
-        command: 'ls'
-      });
-      const response = await executeHandler.handle(request, validatedContext);
+
+      const response = await executeHandler.handle(request, mockContext);
 
       // Verify error response for service failure - NEW format: {code, message, context, httpStatus}
       expect(response.status).toBe(500);
@@ -189,19 +180,18 @@ describe('ExecuteHandler', () => {
       const request = new Request('http://localhost:3000/api/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'sleep 10', background: true })
+        body: JSON.stringify({ command: 'sleep 10', background: true, sessionId: 'session-456' })
       });
-      const validatedContext = createValidatedContext({ 
-        command: 'sleep 10', 
-        background: true,
-        sessionId: 'session-456'
-      });
-      const response = await executeHandler.handle(request, validatedContext);
+
+      const response = await executeHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as ExecuteResponse;
+      const responseData = await response.json() as ProcessStartResult;
       expect(responseData.success).toBe(true);
       expect(responseData.processId).toBe('proc-123');
+      expect(responseData.pid).toBe(12345);
+      expect(responseData.command).toBe('sleep 10');
+      expect(responseData.timestamp).toBeDefined();
 
       expect(mockProcessService.startProcess).toHaveBeenCalledWith(
         'sleep 10',
@@ -214,9 +204,6 @@ describe('ExecuteHandler', () => {
 
   describe('handleStream - Streaming Execution', () => {
     it('should return streaming response for valid command', async () => {
-      // Mock successful validation
-      // Test assumes validation already occurred and data is in context
-
       // Mock process service to return a readable stream
       new ReadableStream({
         start(controller) {
@@ -251,10 +238,8 @@ describe('ExecuteHandler', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: 'echo "streaming test"' })
       });
-      const validatedContext = createValidatedContext({ 
-        command: 'echo "streaming test"'
-      });
-      const response = await executeHandler.handle(request, validatedContext);
+
+      const response = await executeHandler.handle(request, mockContext);
 
       // Verify streaming response
       expect(response.status).toBe(200);

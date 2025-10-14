@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type {
+  PortExposeResult,
+  PortListResult,
+  PortCloseResult,
+} from '@repo/shared';
 import type { ErrorResponse } from '@repo/shared/errors';
-import type { Logger, PortInfo, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { Logger, PortInfo, RequestContext } from '@sandbox-container/core/types';
 import { PortHandler } from '@sandbox-container/handlers/port-handler';
 import type { PortService } from '@sandbox-container/services/port-service';
 
@@ -35,12 +40,6 @@ const mockContext: RequestContext = {
   sessionId: 'session-456',
 };
 
-// Helper to create validated context
-const createValidatedContext = <T>(data: T): ValidatedRequestContext<T> => ({
-  ...mockContext,
-  validatedData: data
-});
-
 describe('PortHandler', () => {
   let portHandler: PortHandler;
 
@@ -65,7 +64,6 @@ describe('PortHandler', () => {
         exposedAt: new Date('2023-01-01T00:00:00Z'),
       };
 
-      const validatedContext = createValidatedContext(exposePortData);
       (mockPortService.exposePort as any).mockResolvedValue({
         success: true,
         data: mockPortInfo
@@ -77,15 +75,14 @@ describe('PortHandler', () => {
         body: JSON.stringify(exposePortData)
       });
 
-      const response = await portHandler.handle(request, validatedContext);
+      const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as PortExposeResult;
       expect(responseData.success).toBe(true);
-      // Note: Custom success response format for expose port (not using data wrapper)
       expect(responseData.port).toBe(8080);
-      expect(responseData.name).toBe('web-server');
-      expect(responseData.exposedAt).toBe('2023-01-01T00:00:00.000Z');
+      expect(responseData.url).toBe('http://localhost:8080');
+      expect(responseData.timestamp).toBeDefined();
 
       // Verify service was called correctly
       expect(mockPortService.exposePort).toHaveBeenCalledWith(8080, 'web-server');
@@ -103,7 +100,6 @@ describe('PortHandler', () => {
         exposedAt: new Date('2023-01-01T00:00:00Z'),
       };
 
-      const validatedContext = createValidatedContext(exposePortData);
       (mockPortService.exposePort as any).mockResolvedValue({
         success: true,
         data: mockPortInfo
@@ -115,19 +111,19 @@ describe('PortHandler', () => {
         body: JSON.stringify(exposePortData)
       });
 
-      const response = await portHandler.handle(request, validatedContext);
+      const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as PortExposeResult;
       expect(responseData.port).toBe(3000);
-      expect(responseData.name).toBeUndefined();
+      expect(responseData.url).toBe('http://localhost:3000');
+      expect(responseData.timestamp).toBeDefined();
 
       expect(mockPortService.exposePort).toHaveBeenCalledWith(3000, undefined);
     });
 
     it('should handle port expose failures', async () => {
       const exposePortData = { port: 80 }; // Invalid port
-      const validatedContext = createValidatedContext(exposePortData);
 
       (mockPortService.exposePort as any).mockResolvedValue({
         success: false,
@@ -144,7 +140,7 @@ describe('PortHandler', () => {
         body: JSON.stringify(exposePortData)
       });
 
-      const response = await portHandler.handle(request, validatedContext);
+      const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(400);
       const responseData = await response.json() as ErrorResponse;
@@ -156,7 +152,6 @@ describe('PortHandler', () => {
 
     it('should handle port already exposed error', async () => {
       const exposePortData = { port: 8080 };
-      const validatedContext = createValidatedContext(exposePortData);
 
       (mockPortService.exposePort as any).mockResolvedValue({
         success: false,
@@ -172,7 +167,7 @@ describe('PortHandler', () => {
         body: JSON.stringify(exposePortData)
       });
 
-      const response = await portHandler.handle(request, validatedContext);
+      const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(409);
       const responseData = await response.json() as ErrorResponse;
@@ -196,11 +191,10 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as PortCloseResult;
       expect(responseData.success).toBe(true);
-      // Note: Custom success response format for unexpose port (not using data wrapper)
-      expect(responseData.message).toBe('Port unexposed successfully');
       expect(responseData.port).toBe(8080);
+      expect(responseData.timestamp).toBeDefined();
 
       expect(mockPortService.unexposePort).toHaveBeenCalledWith(8080);
     });
@@ -291,14 +285,15 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as PortListResult;
       expect(responseData.success).toBe(true);
-      // Note: Custom success response format for list ports (not using data wrapper)
-      expect(responseData.count).toBe(2);
       expect(responseData.ports).toHaveLength(2);
       expect(responseData.ports[0].port).toBe(8080);
-      expect(responseData.ports[0].name).toBe('web-server');
+      expect(responseData.ports[0].url).toBe('http://localhost:8080');
+      expect(responseData.ports[0].status).toBe('active');
       expect(responseData.ports[1].port).toBe(3000);
+      expect(responseData.ports[1].url).toBe('http://localhost:3000');
+      expect(responseData.timestamp).toBeDefined();
 
       expect(mockPortService.getExposedPorts).toHaveBeenCalled();
     });
@@ -316,10 +311,10 @@ describe('PortHandler', () => {
       const response = await portHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json();
+      const responseData = await response.json() as PortListResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.count).toBe(0);
       expect(responseData.ports).toHaveLength(0);
+      expect(responseData.timestamp).toBeDefined();
     });
 
     it('should handle port listing errors', async () => {

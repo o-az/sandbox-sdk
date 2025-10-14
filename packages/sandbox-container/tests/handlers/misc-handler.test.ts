@@ -1,25 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { HealthCheckResult, ShutdownResult } from '@repo/shared';
 import type { ErrorResponse } from '@repo/shared/errors';
-import type { Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
+import type { Logger, RequestContext } from '@sandbox-container/core/types';
 import { MiscHandler } from '@sandbox-container/handlers/misc-handler';
-
-// Response types matching new format
-interface SuccessResponse<T> {
-  success: true;
-  data: T;
-  timestamp: string;
-}
-
-interface PingData {
-  message: string;
-  timestamp: string;
-  requestId: string;
-}
-
-interface CommandsData {
-  availableCommands: string[];
-  timestamp: string;
-}
 
 // Mock the dependencies
 const mockLogger: Logger = {
@@ -78,7 +61,7 @@ describe('MiscHandler', () => {
 
     it('should handle different HTTP methods on root', async () => {
       const methods = ['GET', 'POST', 'PUT', 'DELETE'];
-      
+
       for (const method of methods) {
         const request = new Request('http://localhost:3000/', {
           method
@@ -92,9 +75,9 @@ describe('MiscHandler', () => {
     });
   });
 
-  describe('handlePing - GET /api/ping', () => {
-    it('should return pong response with JSON content type', async () => {
-      const request = new Request('http://localhost:3000/api/ping', {
+  describe('handleHealth - GET /api/health', () => {
+    it('should return health check response with JSON content type', async () => {
+      const request = new Request('http://localhost:3000/api/health', {
         method: 'GET'
       });
 
@@ -103,21 +86,18 @@ describe('MiscHandler', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('Content-Type')).toBe('application/json');
 
-      const responseData = await response.json() as SuccessResponse<PingData>;
+      const responseData = await response.json() as HealthCheckResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.data.message).toBe('pong');
-      expect(responseData.data.requestId).toBe('req-123');
-      expect(responseData.data.timestamp).toBeDefined();
+      expect(responseData.status).toBe('healthy');
       expect(responseData.timestamp).toBeDefined();
 
       // Verify timestamp format
-      expect(responseData.data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(new Date(responseData.data.timestamp)).toBeInstanceOf(Date);
       expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(responseData.timestamp)).toBeInstanceOf(Date);
     });
 
-    it('should include CORS headers in ping response', async () => {
-      const request = new Request('http://localhost:3000/api/ping', {
+    it('should include CORS headers in health response', async () => {
+      const request = new Request('http://localhost:3000/api/health', {
         method: 'GET'
       });
 
@@ -128,30 +108,30 @@ describe('MiscHandler', () => {
       expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type');
     });
 
-    it('should handle ping requests with different HTTP methods', async () => {
+    it('should handle health requests with different HTTP methods', async () => {
       const methods = ['GET', 'POST', 'PUT'];
 
       for (const method of methods) {
         vi.clearAllMocks(); // Clear mocks between iterations
 
-        const request = new Request('http://localhost:3000/api/ping', {
+        const request = new Request('http://localhost:3000/api/health', {
           method
         });
 
         const response = await miscHandler.handle(request, mockContext);
 
         expect(response.status).toBe(200);
-        const responseData = await response.json() as SuccessResponse<PingData>;
+        const responseData = await response.json() as HealthCheckResult;
         expect(responseData.success).toBe(true);
-        expect(responseData.data.message).toBe('pong');
+        expect(responseData.status).toBe('healthy');
       }
     });
 
-    it('should return unique timestamps for multiple ping requests', async () => {
-      const request1 = new Request('http://localhost:3000/api/ping', {
+    it('should return unique timestamps for multiple health requests', async () => {
+      const request1 = new Request('http://localhost:3000/api/health', {
         method: 'GET'
       });
-      const request2 = new Request('http://localhost:3000/api/ping', {
+      const request2 = new Request('http://localhost:3000/api/health', {
         method: 'GET'
       });
 
@@ -160,20 +140,32 @@ describe('MiscHandler', () => {
       await new Promise(resolve => setTimeout(resolve, 5));
       const response2 = await miscHandler.handle(request2, mockContext);
 
-      const responseData1 = await response1.json() as SuccessResponse<PingData>;
-      const responseData2 = await response2.json() as SuccessResponse<PingData>;
+      const responseData1 = await response1.json() as HealthCheckResult;
+      const responseData2 = await response2.json() as HealthCheckResult;
 
-      expect(responseData1.data.timestamp).not.toBe(responseData2.data.timestamp);
-      expect(new Date(responseData1.data.timestamp).getTime()).toBeLessThan(
-        new Date(responseData2.data.timestamp).getTime()
+      expect(responseData1.timestamp).not.toBe(responseData2.timestamp);
+      expect(new Date(responseData1.timestamp).getTime()).toBeLessThan(
+        new Date(responseData2.timestamp).getTime()
       );
+    });
+
+    it('should log health check request with requestId', async () => {
+      const request = new Request('http://localhost:3000/api/health', {
+        method: 'GET'
+      });
+
+      await miscHandler.handle(request, mockContext);
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Health check request', {
+        requestId: 'req-123'
+      });
     });
   });
 
-  describe('handleCommands - GET /api/commands', () => {
-    it('should return list of available commands', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
+  describe('handleShutdown - POST /api/shutdown', () => {
+    it('should return shutdown response with JSON content type', async () => {
+      const request = new Request('http://localhost:3000/api/shutdown', {
+        method: 'POST'
       });
 
       const response = await miscHandler.handle(request, mockContext);
@@ -181,59 +173,19 @@ describe('MiscHandler', () => {
       expect(response.status).toBe(200);
       expect(response.headers.get('Content-Type')).toBe('application/json');
 
-      const responseData = await response.json() as SuccessResponse<CommandsData>;
+      const responseData = await response.json() as ShutdownResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.data.availableCommands).toBeDefined();
-      expect(Array.isArray(responseData.data.availableCommands)).toBe(true);
-      expect(responseData.data.availableCommands.length).toBeGreaterThan(0);
-      expect(responseData.data.timestamp).toBeDefined();
+      expect(responseData.message).toBe('Container shutdown initiated');
       expect(responseData.timestamp).toBeDefined();
+
+      // Verify timestamp format
+      expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(responseData.timestamp)).toBeInstanceOf(Date);
     });
 
-    it('should include expected common commands', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
-      });
-
-      const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as SuccessResponse<CommandsData>;
-
-      const expectedCommands = [
-        'ls', 'pwd', 'echo', 'cat', 'grep', 'find',
-        'whoami', 'date', 'uptime', 'ps', 'top',
-        'df', 'du', 'free', 'node', 'npm', 'git',
-        'curl', 'wget'
-      ];
-
-      for (const command of expectedCommands) {
-        expect(responseData.data.availableCommands).toContain(command);
-      }
-
-      // Verify exact count matches implementation
-      expect(responseData.data.availableCommands).toHaveLength(19);
-    });
-
-    it('should return consistent command list across requests', async () => {
-      const request1 = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
-      });
-      const request2 = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
-      });
-
-      const response1 = await miscHandler.handle(request1, mockContext);
-      const response2 = await miscHandler.handle(request2, mockContext);
-
-      const responseData1 = await response1.json() as SuccessResponse<CommandsData>;
-      const responseData2 = await response2.json() as SuccessResponse<CommandsData>;
-
-      expect(responseData1.data.availableCommands).toEqual(responseData2.data.availableCommands);
-      expect(responseData1.data.availableCommands.length).toBe(responseData2.data.availableCommands.length);
-    });
-
-    it('should include CORS headers in commands response', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
+    it('should include CORS headers in shutdown response', async () => {
+      const request = new Request('http://localhost:3000/api/shutdown', {
+        method: 'POST'
       });
 
       const response = await miscHandler.handle(request, mockContext);
@@ -243,59 +195,51 @@ describe('MiscHandler', () => {
       expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type');
     });
 
-    it('should return proper timestamp format', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
+    it('should handle shutdown requests with GET method', async () => {
+      const request = new Request('http://localhost:3000/api/shutdown', {
         method: 'GET'
       });
 
       const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as SuccessResponse<CommandsData>;
 
-      expect(responseData.data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(new Date(responseData.data.timestamp)).toBeInstanceOf(Date);
-      expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(response.status).toBe(200);
+      const responseData = await response.json() as ShutdownResult;
+      expect(responseData.success).toBe(true);
+      expect(responseData.message).toBe('Container shutdown initiated');
     });
 
-    it('should include essential system commands', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
+    it('should return unique timestamps for multiple shutdown requests', async () => {
+      const request1 = new Request('http://localhost:3000/api/shutdown', {
+        method: 'POST'
+      });
+      const request2 = new Request('http://localhost:3000/api/shutdown', {
+        method: 'POST'
       });
 
-      const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as SuccessResponse<CommandsData>;
+      const response1 = await miscHandler.handle(request1, mockContext);
+      // Small delay to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 5));
+      const response2 = await miscHandler.handle(request2, mockContext);
 
-      const essentialCommands = ['ls', 'cat', 'echo', 'pwd', 'whoami'];
-      for (const command of essentialCommands) {
-        expect(responseData.data.availableCommands).toContain(command);
-      }
+      const responseData1 = await response1.json() as ShutdownResult;
+      const responseData2 = await response2.json() as ShutdownResult;
+
+      expect(responseData1.timestamp).not.toBe(responseData2.timestamp);
+      expect(new Date(responseData1.timestamp).getTime()).toBeLessThan(
+        new Date(responseData2.timestamp).getTime()
+      );
     });
 
-    it('should include development tools', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
+    it('should log shutdown request with requestId', async () => {
+      const request = new Request('http://localhost:3000/api/shutdown', {
+        method: 'POST'
       });
 
-      const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as SuccessResponse<CommandsData>;
+      await miscHandler.handle(request, mockContext);
 
-      const devTools = ['node', 'npm', 'git'];
-      for (const tool of devTools) {
-        expect(responseData.data.availableCommands).toContain(tool);
-      }
-    });
-
-    it('should include network utilities', async () => {
-      const request = new Request('http://localhost:3000/api/commands', {
-        method: 'GET'
+      expect(mockLogger.info).toHaveBeenCalledWith('Shutdown request', {
+        requestId: 'req-123'
       });
-
-      const response = await miscHandler.handle(request, mockContext);
-      const responseData = await response.json() as SuccessResponse<CommandsData>;
-
-      const networkUtils = ['curl', 'wget'];
-      for (const util of networkUtils) {
-        expect(responseData.data.availableCommands).toContain(util);
-      }
     });
   });
 
@@ -347,8 +291,8 @@ describe('MiscHandler', () => {
   describe('response format consistency', () => {
     it('should have consistent JSON response structure for API endpoints', async () => {
       const apiEndpoints = [
-        { path: '/api/ping', expectedFields: ['message', 'timestamp', 'requestId'] },
-        { path: '/api/commands', expectedFields: ['availableCommands', 'timestamp'] }
+        { path: '/api/health', expectedFields: ['success', 'status', 'timestamp'] },
+        { path: '/api/shutdown', expectedFields: ['success', 'message', 'timestamp'] }
       ];
 
       for (const endpoint of apiEndpoints) {
@@ -357,30 +301,25 @@ describe('MiscHandler', () => {
         });
 
         const response = await miscHandler.handle(request, mockContext);
-        const responseData = await response.json() as SuccessResponse<any>;
+        const responseData = await response.json() as HealthCheckResult | ShutdownResult;
 
-        // Verify success wrapper structure
+        // Verify all expected fields are present
         expect(responseData.success).toBe(true);
-        expect(responseData.data).toBeDefined();
         expect(responseData.timestamp).toBeDefined();
         expect(responseData.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 
-        // Verify all expected fields are present in data
+        // Verify all expected fields are present
         for (const field of endpoint.expectedFields) {
-          expect(responseData.data).toHaveProperty(field);
+          expect(responseData).toHaveProperty(field);
         }
-
-        // Verify data timestamp is properly formatted
-        expect(responseData.data.timestamp).toBeDefined();
-        expect(responseData.data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       }
     });
 
     it('should have proper Content-Type headers for different response types', async () => {
       const endpoints = [
         { path: '/', expectedContentType: 'text/plain; charset=utf-8' },
-        { path: '/api/ping', expectedContentType: 'application/json' },
-        { path: '/api/commands', expectedContentType: 'application/json' }
+        { path: '/api/health', expectedContentType: 'application/json' },
+        { path: '/api/shutdown', expectedContentType: 'application/json' }
       ];
 
       for (const endpoint of endpoints) {
@@ -405,15 +344,15 @@ describe('MiscHandler', () => {
         sessionId: 'session-alternative',
       };
 
-      const request = new Request('http://localhost:3000/api/ping', {
+      const request = new Request('http://localhost:3000/api/health', {
         method: 'GET'
       });
 
       const response = await miscHandler.handle(request, alternativeContext);
-      const responseData = await response.json() as SuccessResponse<PingData>;
+      const responseData = await response.json() as HealthCheckResult;
 
       expect(responseData.success).toBe(true);
-      expect(responseData.data.requestId).toBe('req-alternative-456');
+      expect(responseData.status).toBe('healthy');
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://example.com');
       expect(response.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST');
       expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Authorization');
@@ -432,16 +371,16 @@ describe('MiscHandler', () => {
 
       const independentHandler = new MiscHandler(simpleLogger);
 
-      const request = new Request('http://localhost:3000/api/ping', {
+      const request = new Request('http://localhost:3000/api/health', {
         method: 'GET'
       });
 
       const response = await independentHandler.handle(request, mockContext);
 
       expect(response.status).toBe(200);
-      const responseData = await response.json() as SuccessResponse<PingData>;
+      const responseData = await response.json() as HealthCheckResult;
       expect(responseData.success).toBe(true);
-      expect(responseData.data.message).toBe('pong');
+      expect(responseData.status).toBe('healthy');
     });
   });
 });
