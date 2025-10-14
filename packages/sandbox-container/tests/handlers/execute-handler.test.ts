@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
+import type { ErrorResponse } from '@repo/shared/errors';
 import type { ExecuteRequest, ExecuteResponse, Logger, RequestContext, ServiceResult, ValidatedRequestContext } from '@sandbox-container/core/types.ts';
 import { ExecuteHandler } from "@sandbox-container/handlers/execute-handler.js";
 import type { ProcessService } from '@sandbox-container/services/process-service.ts';
-import type { ErrorResponse } from '@repo/shared/errors';
 import { mocked } from '../test-utils';
 
 // Mock the service dependencies

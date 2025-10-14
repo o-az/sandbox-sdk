@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { CreateSessionResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
 import type { ErrorResponse } from '@repo/shared/errors';
+import type { CreateSessionResponse, ListSessionsResponse, Logger, RequestContext, ValidatedRequestContext } from '@sandbox-container/core/types';
 import { SessionHandler } from '@sandbox-container/handlers/session-handler';
 import type { SessionManager } from '@sandbox-container/services/session-manager';
 import type { Session } from '@sandbox-container/session';
