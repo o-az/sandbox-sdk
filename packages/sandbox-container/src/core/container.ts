@@ -8,7 +8,6 @@ import { ProcessHandler } from '../handlers/process-handler';
 import { SessionHandler } from '../handlers/session-handler';
 import { CorsMiddleware } from '../middleware/cors';
 import { LoggingMiddleware } from '../middleware/logging';
-import { ValidationMiddleware } from '../middleware/validation';
 import { SecurityServiceAdapter } from '../security/security-adapter';
 import { SecurityService } from '../security/security-service';
 import { FileService } from '../services/file-service';
@@ -46,7 +45,6 @@ export interface Dependencies {
 
   // Middleware
   corsMiddleware: CorsMiddleware;
-  validationMiddleware: ValidationMiddleware;
   loggingMiddleware: LoggingMiddleware;
 }
 
@@ -81,7 +79,7 @@ export class Container {
     const logger = new ConsoleLogger();
     const security = new SecurityService(logger);
     const securityAdapter = new SecurityServiceAdapter(security);
-    const validator = new RequestValidator(security);
+    const validator = new RequestValidator();
 
     // Initialize stores
     const processStore = new InMemoryProcessStore();
@@ -140,7 +138,6 @@ export class Container {
 
       // Middleware
       corsMiddleware,
-      validationMiddleware,
       loggingMiddleware,
     };
 
