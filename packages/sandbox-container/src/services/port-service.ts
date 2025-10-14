@@ -1,6 +1,13 @@
 // Port Management Service
 import type { Logger, PortInfo, ServiceResult } from '../core/types';
 import { PortManager } from '../managers/port-manager';
+import { ErrorCode } from '@repo/shared/errors';
+import type {
+  PortAlreadyExposedContext,
+  PortNotExposedContext,
+  InvalidPortContext,
+  PortErrorContext,
+} from '@repo/shared/errors';
 
 export interface SecurityService {
   validatePort(port: number): { isValid: boolean; errors: string[] };
@@ -80,9 +87,12 @@ export class PortService {
         return {
           success: false,
           error: {
-            message: `Port validation failed: ${validation.errors.join(', ')}`,
-            code: 'INVALID_PORT',
-            details: { port, errors: validation.errors },
+            message: `Invalid port number ${port}: ${validation.errors.join(', ')}`,
+            code: ErrorCode.INVALID_PORT_NUMBER,
+            details: {
+              port,
+              reason: validation.errors.join(', ')
+            } satisfies InvalidPortContext,
           },
         };
       }
@@ -93,9 +103,12 @@ export class PortService {
         return {
           success: false,
           error: {
-            message: `Port ${port} is already exposed`,
-            code: 'PORT_ALREADY_EXPOSED',
-            details: { port, existing },
+            message: `Port ${port}${existing.name ? ` (${existing.name})` : ''} is already exposed`,
+            code: ErrorCode.PORT_ALREADY_EXPOSED,
+            details: {
+              port,
+              portName: existing.name
+            } satisfies PortAlreadyExposedContext,
           },
         };
       }
@@ -117,9 +130,13 @@ export class PortService {
       return {
         success: false,
         error: {
-          message: 'Failed to expose port',
-          code: 'PORT_EXPOSE_ERROR',
-          details: { port, name, originalError: errorMessage },
+          message: `Failed to expose port ${port}${name ? ` (${name})` : ''}: ${errorMessage}`,
+          code: ErrorCode.PORT_OPERATION_ERROR,
+          details: {
+            port,
+            portName: name,
+            stderr: errorMessage
+          } satisfies PortErrorContext,
         },
       };
     }
@@ -134,8 +151,10 @@ export class PortService {
           success: false,
           error: {
             message: `Port ${port} is not exposed`,
-            code: 'PORT_NOT_EXPOSED',
-            details: { port },
+            code: ErrorCode.PORT_NOT_EXPOSED,
+            details: {
+              port
+            } satisfies PortNotExposedContext,
           },
         };
       }
@@ -154,9 +173,12 @@ export class PortService {
       return {
         success: false,
         error: {
-          message: 'Failed to unexpose port',
-          code: 'PORT_UNEXPOSE_ERROR',
-          details: { port, originalError: errorMessage },
+          message: `Failed to unexpose port ${port}: ${errorMessage}`,
+          code: ErrorCode.PORT_OPERATION_ERROR,
+          details: {
+            port,
+            stderr: errorMessage
+          } satisfies PortErrorContext,
         },
       };
     }
@@ -178,9 +200,12 @@ export class PortService {
       return {
         success: false,
         error: {
-          message: 'Failed to list exposed ports',
-          code: 'PORT_LIST_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to list exposed ports: ${errorMessage}`,
+          code: ErrorCode.PORT_OPERATION_ERROR,
+          details: {
+            port: 0,  // No specific port for list operation
+            stderr: errorMessage
+          } satisfies PortErrorContext,
         },
       };
     }
@@ -195,8 +220,10 @@ export class PortService {
           success: false,
           error: {
             message: `Port ${port} is not exposed`,
-            code: 'PORT_NOT_FOUND',
-            details: { port },
+            code: ErrorCode.PORT_NOT_EXPOSED,
+            details: {
+              port
+            } satisfies PortNotExposedContext,
           },
         };
       }
@@ -212,9 +239,12 @@ export class PortService {
       return {
         success: false,
         error: {
-          message: 'Failed to get port info',
-          code: 'PORT_GET_ERROR',
-          details: { port, originalError: errorMessage },
+          message: `Failed to get info for port ${port}: ${errorMessage}`,
+          code: ErrorCode.PORT_OPERATION_ERROR,
+          details: {
+            port,
+            stderr: errorMessage
+          } satisfies PortErrorContext,
         },
       };
     }
@@ -294,8 +324,10 @@ export class PortService {
           success: false,
           error: {
             message: `Port ${port} is not exposed`,
-            code: 'PORT_NOT_FOUND',
-            details: { port },
+            code: ErrorCode.PORT_NOT_EXPOSED,
+            details: {
+              port
+            } satisfies PortNotExposedContext,
           },
         };
       }
@@ -316,9 +348,12 @@ export class PortService {
       return {
         success: false,
         error: {
-          message: 'Failed to mark port as inactive',
-          code: 'PORT_UPDATE_ERROR',
-          details: { port, originalError: errorMessage },
+          message: `Failed to mark port ${port} as inactive: ${errorMessage}`,
+          code: ErrorCode.PORT_OPERATION_ERROR,
+          details: {
+            port,
+            stderr: errorMessage
+          } satisfies PortErrorContext,
         },
       };
     }
@@ -344,9 +379,12 @@ export class PortService {
       return {
         success: false,
         error: {
-          message: 'Failed to cleanup ports',
-          code: 'PORT_CLEANUP_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to cleanup inactive ports: ${errorMessage}`,
+          code: ErrorCode.PORT_OPERATION_ERROR,
+          details: {
+            port: 0,  // No specific port for cleanup operation
+            stderr: errorMessage
+          } satisfies PortErrorContext,
         },
       };
     }

@@ -7,6 +7,13 @@ import {
   type HealthStatus,
   InterpreterNotReadyError
 } from '../interpreter-service';
+import { ErrorCode } from '@repo/shared/errors';
+import type {
+  InterpreterNotReadyContext,
+  ContextNotFoundContext,
+  CodeExecutionContext,
+  InternalErrorContext,
+} from '@repo/shared/errors';
 
 /**
  * Interpreter service wrapper that follows the ServiceResult<T> pattern
@@ -38,9 +45,11 @@ export class InterpreterService {
       return {
         success: false,
         error: {
-          message: 'Failed to get interpreter health status',
-          code: 'HEALTH_CHECK_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to get interpreter health status: ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            originalError: errorMessage
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -70,11 +79,11 @@ export class InterpreterService {
           success: false,
           error: {
             message: error.message,
-            code: 'INTERPRETER_NOT_READY',
+            code: ErrorCode.INTERPRETER_NOT_READY,
             details: {
               progress: error.progress,
-              retryAfter: error.retryAfter,
-            },
+              retryAfter: error.retryAfter
+            } satisfies InterpreterNotReadyContext,
           },
         };
       }
@@ -82,9 +91,11 @@ export class InterpreterService {
       return {
         success: false,
         error: {
-          message: 'Failed to create code context',
-          code: 'CONTEXT_CREATE_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to create code context: ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            originalError: errorMessage
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -108,9 +119,11 @@ export class InterpreterService {
       return {
         success: false,
         error: {
-          message: 'Failed to list code contexts',
-          code: 'CONTEXT_LIST_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to list code contexts: ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            originalError: errorMessage
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -139,9 +152,11 @@ export class InterpreterService {
         return {
           success: false,
           error: {
-            message: `Context ${contextId} not found`,
-            code: 'CONTEXT_NOT_FOUND',
-            details: { contextId },
+            message: `Code context '${contextId}' not found`,
+            code: ErrorCode.CONTEXT_NOT_FOUND,
+            details: {
+              contextId
+            } satisfies ContextNotFoundContext,
           },
         };
       }
@@ -149,9 +164,12 @@ export class InterpreterService {
       return {
         success: false,
         error: {
-          message: 'Failed to delete code context',
-          code: 'CONTEXT_DELETE_ERROR',
-          details: { contextId, originalError: errorMessage },
+          message: `Failed to delete code context '${contextId}': ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            contextId,
+            originalError: errorMessage
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -185,9 +203,12 @@ export class InterpreterService {
       return new Response(
         JSON.stringify({
           error: {
-            message: 'Failed to execute code',
-            code: 'CODE_EXECUTION_ERROR',
-            details: { contextId, originalError: errorMessage },
+            message: `Failed to execute code in context '${contextId}': ${errorMessage}`,
+            code: ErrorCode.CODE_EXECUTION_ERROR,
+            details: {
+              contextId,
+              evalue: errorMessage
+            } satisfies CodeExecutionContext,
           },
         }),
         {

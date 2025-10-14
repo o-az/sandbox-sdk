@@ -1,4 +1,10 @@
-// Base Handler Implementation
+import {
+  type ErrorCode,
+  type ErrorResponse,
+  getHttpStatus,
+  getSuggestion,
+  type OperationType,
+} from "@repo/shared/errors";
 import type {
   Handler,
   Logger,
@@ -89,42 +95,52 @@ export abstract class BaseHandler<TRequest, TResponse>
     );
   }
 
+  /**
+   * Enrich lightweight ServiceError into full ErrorResponse
+   * Adds HTTP status, timestamp, suggestions, operation, etc.
+   */
+  protected enrichServiceError(
+    serviceError: ServiceError,
+    operation?: OperationType
+  ): ErrorResponse {
+    const errorCode = serviceError.code as ErrorCode;
+    return {
+      code: errorCode,
+      message: serviceError.message,
+      context: serviceError.details || {},
+      operation: operation || (serviceError.details?.operation as OperationType | undefined),
+      httpStatus: getHttpStatus(errorCode),
+      timestamp: new Date().toISOString(),
+      suggestion: getSuggestion(errorCode, serviceError.details || {}),
+    };
+  }
+
   protected createServiceResponse<T>(
     result: ServiceResult<T>,
     context: RequestContext,
-    successStatus: number = 200
+    successStatus: number = 200,
+    operation?: OperationType
   ): Response {
     if (result.success) {
       const data = "data" in result ? result.data : undefined;
       return this.createSuccessResponse(data, context, successStatus);
     } else {
-      const statusCode = this.getStatusCodeForError(result.error.code);
-      return this.createErrorResponse(result.error, statusCode, context);
+      // Enrich ServiceError to ErrorResponse
+      const errorResponse = this.enrichServiceError(result.error, operation);
+
+      return new Response(
+        JSON.stringify({
+          ...errorResponse,
+        }),
+        {
+          status: errorResponse.httpStatus,
+          headers: {
+            "Content-Type": "application/json",
+            ...context.corsHeaders,
+          },
+        }
+      );
     }
-  }
-
-  private getStatusCodeForError(errorCode: string): number {
-    const statusCodeMap: Record<string, number> = {
-      NOT_FOUND: 404,
-      PROCESS_NOT_FOUND: 404,
-      SESSION_NOT_FOUND: 404,
-      PORT_NOT_FOUND: 404,
-      FILE_NOT_FOUND: 404,
-      INVALID_REQUEST: 400,
-      VALIDATION_ERROR: 400,
-      INVALID_PATH: 400,
-      INVALID_PORT: 400,
-      INVALID_COMMAND: 400,
-      SECURITY_VIOLATION: 403,
-      PATH_SECURITY_VIOLATION: 403,
-      COMMAND_SECURITY_VIOLATION: 403,
-      PORT_ALREADY_EXPOSED: 409,
-      SESSION_EXPIRED: 401,
-      UNAUTHORIZED: 401,
-      TIMEOUT: 408,
-    };
-
-    return statusCodeMap[errorCode] || 500;
   }
 
   protected getValidatedData<T>(context: RequestContext): T {

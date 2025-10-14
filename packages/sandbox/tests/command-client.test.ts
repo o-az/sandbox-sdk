@@ -86,8 +86,11 @@ describe('CommandClient', () => {
 
     it('should handle container-level errors with proper error mapping', async () => {
       const errorResponse = {
-        error: 'Command not found: invalidcmd',
-        code: 'COMMAND_NOT_FOUND'
+        code: 'COMMAND_NOT_FOUND',
+        message: 'Command not found: invalidcmd',
+        context: { command: 'invalidcmd' },
+        httpStatus: 404,
+        timestamp: new Date().toISOString()
       };
 
       mockFetch.mockResolvedValue(new Response(
@@ -119,7 +122,13 @@ describe('CommandClient', () => {
 
       for (const scenario of scenarios) {
         mockFetch.mockResolvedValueOnce(new Response(
-          JSON.stringify({ error: 'Test error', code: scenario.code }),
+          JSON.stringify({
+            code: scenario.code,
+            message: 'Test error',
+            context: {},
+            httpStatus: scenario.status,
+            timestamp: new Date().toISOString()
+          }),
           { status: scenario.status }
         ));
         await expect(client.execute('test-command', 'session-err'))
@@ -195,8 +204,11 @@ describe('CommandClient', () => {
 
     it('should handle empty command input', async () => {
       const errorResponse = {
-        error: 'Invalid command: empty command provided',
-        code: 'INVALID_COMMAND'
+        code: 'INVALID_COMMAND',
+        message: 'Invalid command: empty command provided',
+        context: {},
+        httpStatus: 400,
+        timestamp: new Date().toISOString()
       };
 
       mockFetch.mockResolvedValue(new Response(
@@ -254,8 +266,11 @@ describe('CommandClient', () => {
 
     it('should handle streaming errors gracefully', async () => {
       const errorResponse = {
-        error: 'Command failed to start streaming',
-        code: 'STREAM_START_ERROR'
+        code: 'STREAM_START_ERROR',
+        message: 'Command failed to start streaming',
+        context: { command: 'invalid-stream-command' },
+        httpStatus: 400,
+        timestamp: new Date().toISOString()
       };
 
       mockFetch.mockResolvedValue(new Response(

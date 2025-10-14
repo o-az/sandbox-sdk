@@ -154,10 +154,8 @@ describe('GitService', () => {
       if (!result.success) {
         expect(result.error.code).toBe('INVALID_GIT_URL');
         expect(result.error.message).toContain('Invalid URL scheme');
-        expect(result.error.details?.errors).toEqual([
-          'Invalid URL scheme',
-          'URL not in allowlist'
-        ]);
+        expect(result.error.details?.validationErrors).toBeDefined();
+        expect(result.error.details?.validationErrors?.[0]?.message).toContain('Invalid URL scheme');
       }
 
       // Should not attempt git clone
@@ -177,8 +175,9 @@ describe('GitService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('INVALID_TARGET_PATH');
-        expect(result.error.details?.errors).toContain('Path outside sandbox');
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.details?.validationErrors).toBeDefined();
+        expect(result.error.details?.validationErrors?.[0]?.message).toContain('Path outside sandbox');
       }
 
       // Should not attempt git clone
@@ -251,8 +250,8 @@ describe('GitService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('INVALID_BRANCH_NAME');
-        expect(result.error.message).toBe('Branch name cannot be empty');
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(result.error.message).toContain('Invalid branch name');
       }
 
       expect(mockSessionManager.executeInSession).not.toHaveBeenCalled();

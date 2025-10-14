@@ -3,6 +3,12 @@
 import type { ExecEvent } from '@repo/shared';
 import type { Logger, ServiceResult } from '../core/types';
 import { type RawExecResult, Session, type SessionOptions } from '../session';
+import { ErrorCode } from '@repo/shared/errors';
+import type {
+  CommandNotFoundContext,
+  CommandErrorContext,
+  InternalErrorContext,
+} from '@repo/shared/errors';
 
 /**
  * SessionManager manages persistent execution sessions.
@@ -28,8 +34,11 @@ export class SessionManager {
           success: false,
           error: {
             message: `Session '${options.id}' already exists`,
-            code: 'SESSION_EXISTS',
-            details: { sessionId: options.id },
+            code: ErrorCode.INTERNAL_ERROR,
+            details: {
+              sessionId: options.id,
+              originalError: 'Session already exists'
+            } satisfies InternalErrorContext,
           },
         };
       }
@@ -70,9 +79,13 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: `Failed to create session: ${errorMessage}`,
-          code: 'SESSION_CREATE_ERROR',
-          details: { sessionId: options.id, originalError: errorMessage, stack: errorStack },
+          message: `Failed to create session '${options.id}': ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            sessionId: options.id,
+            originalError: errorMessage,
+            stack: errorStack
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -89,8 +102,11 @@ export class SessionManager {
         success: false,
         error: {
           message: `Session '${sessionId}' not found`,
-          code: 'SESSION_NOT_FOUND',
-          details: { sessionId },
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            sessionId,
+            originalError: 'Session not found'
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -115,7 +131,7 @@ export class SessionManager {
       let sessionResult = await this.getSession(sessionId);
 
       // If session doesn't exist, create it automatically
-      if (!sessionResult.success && sessionResult.error!.code === 'SESSION_NOT_FOUND') {
+      if (!sessionResult.success && (sessionResult.error!.details as InternalErrorContext)?.originalError === 'Session not found') {
         sessionResult = await this.createSession({
           id: sessionId,
           cwd: cwd || '/workspace',
@@ -152,9 +168,12 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: 'Failed to execute command in session',
-          code: 'SESSION_EXEC_ERROR',
-          details: { sessionId, command, originalError: errorMessage },
+          message: `Failed to execute command '${command}' in session '${sessionId}': ${errorMessage}`,
+          code: ErrorCode.COMMAND_EXECUTION_ERROR,
+          details: {
+            command,
+            stderr: errorMessage
+          } satisfies CommandErrorContext,
         },
       };
     }
@@ -182,7 +201,7 @@ export class SessionManager {
       let sessionResult = await this.getSession(sessionId);
 
       // If session doesn't exist, create it automatically
-      if (!sessionResult.success && sessionResult.error!.code === 'SESSION_NOT_FOUND') {
+      if (!sessionResult.success && (sessionResult.error!.details as InternalErrorContext)?.originalError === 'Session not found') {
         sessionResult = await this.createSession({
           id: sessionId,
           cwd: cwd || '/workspace',
@@ -249,9 +268,12 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: 'Failed to execute streaming command in session',
-          code: 'SESSION_EXEC_STREAM_ERROR',
-          details: { sessionId, command, originalError: errorMessage },
+          message: `Failed to execute streaming command '${command}' in session '${sessionId}': ${errorMessage}`,
+          code: ErrorCode.STREAM_START_ERROR,
+          details: {
+            command,
+            stderr: errorMessage
+          } satisfies CommandErrorContext,
         },
       };
     }
@@ -278,9 +300,11 @@ export class SessionManager {
         return {
           success: false,
           error: {
-            message: `Command '${commandId}' not found or already completed`,
-            code: 'COMMAND_NOT_FOUND',
-            details: { sessionId, commandId },
+            message: `Command '${commandId}' not found or already completed in session '${sessionId}'`,
+            code: ErrorCode.COMMAND_NOT_FOUND,
+            details: {
+              command: commandId
+            } satisfies CommandNotFoundContext,
           },
         };
       }
@@ -300,9 +324,12 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: `Failed to kill command: ${errorMessage}`,
-          code: 'COMMAND_KILL_ERROR',
-          details: { sessionId, commandId, originalError: errorMessage },
+          message: `Failed to kill command '${commandId}' in session '${sessionId}': ${errorMessage}`,
+          code: ErrorCode.PROCESS_ERROR,
+          details: {
+            processId: commandId,
+            stderr: errorMessage
+          },
         },
       };
     }
@@ -320,8 +347,11 @@ export class SessionManager {
           success: false,
           error: {
             message: `Session '${sessionId}' not found`,
-            code: 'SESSION_NOT_FOUND',
-            details: { sessionId },
+            code: ErrorCode.INTERNAL_ERROR,
+            details: {
+              sessionId,
+              originalError: 'Session not found'
+            } satisfies InternalErrorContext,
           },
         };
       }
@@ -340,9 +370,13 @@ export class SessionManager {
           return {
             success: false,
             error: {
-              message: `Failed to set environment variable ${key}: ${result.stderr}`,
-              code: 'ENV_SET_ERROR',
-              details: { sessionId, key, stderr: result.stderr },
+              message: `Failed to set environment variable '${key}' in session '${sessionId}': ${result.stderr}`,
+              code: ErrorCode.COMMAND_EXECUTION_ERROR,
+              details: {
+                command: `export ${key}='...'`,
+                exitCode: result.exitCode,
+                stderr: result.stderr
+              } satisfies CommandErrorContext,
             },
           };
         }
@@ -360,9 +394,12 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: `Failed to set environment variables: ${errorMessage}`,
-          code: 'ENV_SET_ERROR',
-          details: { sessionId, originalError: errorMessage },
+          message: `Failed to set environment variables in session '${sessionId}': ${errorMessage}`,
+          code: ErrorCode.COMMAND_EXECUTION_ERROR,
+          details: {
+            command: 'export',
+            stderr: errorMessage
+          } satisfies CommandErrorContext,
         },
       };
     }
@@ -380,8 +417,11 @@ export class SessionManager {
           success: false,
           error: {
             message: `Session '${sessionId}' not found`,
-            code: 'SESSION_NOT_FOUND',
-            details: { sessionId },
+            code: ErrorCode.INTERNAL_ERROR,
+            details: {
+              sessionId,
+              originalError: 'Session not found'
+            } satisfies InternalErrorContext,
           },
         };
       }
@@ -405,9 +445,12 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: 'Failed to delete session',
-          code: 'SESSION_DELETE_ERROR',
-          details: { sessionId, originalError: errorMessage },
+          message: `Failed to delete session '${sessionId}': ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            sessionId,
+            originalError: errorMessage
+          } satisfies InternalErrorContext,
         },
       };
     }
@@ -431,9 +474,11 @@ export class SessionManager {
       return {
         success: false,
         error: {
-          message: 'Failed to list sessions',
-          code: 'SESSION_LIST_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to list sessions: ${errorMessage}`,
+          code: ErrorCode.INTERNAL_ERROR,
+          details: {
+            originalError: errorMessage
+          } satisfies InternalErrorContext,
         },
       };
     }

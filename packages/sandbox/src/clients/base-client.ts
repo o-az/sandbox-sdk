@@ -1,7 +1,6 @@
-import type { SandboxOperationType } from '../errors';
-import { mapContainerError } from '../utils/error-mapping';
+import type { ErrorResponse as NewErrorResponse } from '../errors';
+import { createErrorFromResponse, ErrorCode } from '../errors';
 import type {
-  ErrorResponse,
   HttpClientOptions,
   ResponseHandler
 } from './types';
@@ -145,10 +144,14 @@ export abstract class BaseHttpClient {
       return await response.json();
     } catch (error) {
       // Handle malformed JSON responses gracefully
-      throw mapContainerError({
-        error: `Invalid JSON response: ${error instanceof Error ? error.message : 'Unknown parsing error'}`,
-        code: 'INVALID_JSON_RESPONSE'
-      });
+      const errorResponse: NewErrorResponse = {
+        code: ErrorCode.INVALID_JSON_RESPONSE,
+        message: `Invalid JSON response: ${error instanceof Error ? error.message : 'Unknown parsing error'}`,
+        context: {},
+        httpStatus: response.status,
+        timestamp: new Date().toISOString()
+      };
+      throw createErrorFromResponse(errorResponse);
     }
   }
 
@@ -156,22 +159,26 @@ export abstract class BaseHttpClient {
    * Handle error responses with consistent error throwing
    */
   protected async handleErrorResponse(response: Response): Promise<never> {
-    let errorData: ErrorResponse & { code?: string; operation?: SandboxOperationType; path?: string };
+    let errorData: NewErrorResponse;
 
     try {
       errorData = await response.json();
     } catch {
+      // Fallback if response isn't JSON or parsing fails
       errorData = {
-        error: `HTTP error! status: ${response.status}`,
-        details: response.statusText
+        code: ErrorCode.INTERNAL_ERROR,
+        message: `HTTP error! status: ${response.status}`,
+        context: { statusText: response.statusText },
+        httpStatus: response.status,
+        timestamp: new Date().toISOString()
       };
     }
 
-    // Map to specific error types if possible
-    const error = mapContainerError(errorData);
+    // Convert ErrorResponse to appropriate Error class
+    const error = createErrorFromResponse(errorData);
 
     // Call error callback if provided
-    this.options.onError?.(errorData.error, undefined);
+    this.options.onError?.(errorData.message, undefined);
 
     throw error;
   }

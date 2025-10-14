@@ -87,13 +87,10 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('INVALID_PORT');
+        expect(result.error.code).toBe('INVALID_PORT_NUMBER');
         expect(result.error.message).toContain('Port must be between 1024-65535');
         expect(result.error.details?.port).toBe(80);
-        expect(result.error.details?.errors).toEqual([
-          'Port must be between 1024-65535',
-          'Port 80 is reserved'
-        ]);
+        expect(result.error.details?.reason).toContain('Port must be between 1024-65535');
       }
 
       // Should not attempt to store port
@@ -114,8 +111,8 @@ describe('PortService', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('PORT_ALREADY_EXPOSED');
-        expect(result.error.message).toBe('Port 8080 is already exposed');
-        expect(result.error.details?.existing).toEqual(existingPortInfo);
+        expect(result.error.message).toContain('Port 8080');
+        expect(result.error.details?.portName).toBe('existing-service');
       }
 
       // Should not attempt to expose again
@@ -131,8 +128,8 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PORT_EXPOSE_ERROR');
-        expect(result.error.details?.originalError).toBe('Store connection failed');
+        expect(result.error.code).toBe('PORT_OPERATION_ERROR');
+        expect(result.error.details?.stderr).toBe('Store connection failed');
       }
     });
   });
@@ -183,7 +180,7 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PORT_UNEXPOSE_ERROR');
+        expect(result.error.code).toBe('PORT_OPERATION_ERROR');
       }
     });
   });
@@ -220,7 +217,7 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PORT_LIST_ERROR');
+        expect(result.error.code).toBe('PORT_OPERATION_ERROR');
       }
     });
   });
@@ -250,7 +247,7 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PORT_NOT_FOUND');
+        expect(result.error.code).toBe('PORT_NOT_EXPOSED');
         expect(result.error.message).toBe('Port 8080 is not exposed');
       }
     });
@@ -350,7 +347,7 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PORT_NOT_FOUND');
+        expect(result.error.code).toBe('PORT_NOT_EXPOSED');
       }
 
       // Should not attempt to update
@@ -383,7 +380,7 @@ describe('PortService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('PORT_CLEANUP_ERROR');
+        expect(result.error.code).toBe('PORT_OPERATION_ERROR');
       }
     });
   });

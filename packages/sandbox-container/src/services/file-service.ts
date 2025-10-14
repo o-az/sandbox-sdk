@@ -1,4 +1,10 @@
 import type {
+  FileNotFoundContext,
+  FileSystemContext,
+  ValidationFailedContext,
+} from '@repo/shared/errors';
+import { ErrorCode, Operation } from '@repo/shared/errors';
+import type {
   FileStats,
   Logger,
   MkdirOptions,
@@ -55,9 +61,11 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Security validation failed: ${validation.errors.join(', ')}`,
-            code: 'SECURITY_VALIDATION_FAILED',
-            details: { path, errors: validation.errors }
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
           }
         };
       }
@@ -75,8 +83,11 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `File not found: ${path}`,
-            code: 'FILE_NOT_FOUND',
-            details: { path }
+            code: ErrorCode.FILE_NOT_FOUND,
+            details: {
+              path,
+              operation: Operation.FILE_READ
+            } satisfies FileNotFoundContext
           }
         };
       }
@@ -98,9 +109,14 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Read operation failed with exit code ${result.exitCode}`,
-            code: 'FILE_READ_ERROR',
-            details: { path, exitCode: result.exitCode, stderr: result.stderr }
+            message: `Failed to read file '${path}': ${result.stderr || `exit code ${result.exitCode}`}`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_READ,
+              exitCode: result.exitCode,
+              stderr: result.stderr
+            } satisfies FileSystemContext
           }
         };
       }
@@ -119,16 +135,19 @@ export class FileService implements FileSystemOperations {
         data: content
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('read', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to read file', error instanceof Error ? error : undefined, { path });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('read', path, errorMessage),
-          code: errorCode,
-          details: { path, originalError: errorMessage }
+          message: `Failed to read file '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.FILE_READ,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -142,9 +161,11 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Security validation failed: ${validation.errors.join(', ')}`,
-            code: 'SECURITY_VALIDATION_FAILED',
-            details: { path, errors: validation.errors }
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
           }
         };
       }
@@ -174,9 +195,14 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Write operation failed with exit code ${result.exitCode}`,
-            code: 'FILE_WRITE_ERROR',
-            details: { path, exitCode: result.exitCode, stderr: result.stderr }
+            message: `Failed to write file '${path}': ${result.stderr || `exit code ${result.exitCode}`}`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_WRITE,
+              exitCode: result.exitCode,
+              stderr: result.stderr
+            } satisfies FileSystemContext
           }
         };
       }
@@ -190,16 +216,19 @@ export class FileService implements FileSystemOperations {
         success: true
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('write', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to write file', error instanceof Error ? error : undefined, { path });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('write', path, errorMessage),
-          code: errorCode,
-          details: { path, originalError: errorMessage }
+          message: `Failed to write file '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.FILE_WRITE,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -213,9 +242,11 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Security validation failed: ${validation.errors.join(', ')}`,
-            code: 'SECURITY_VALIDATION_FAILED',
-            details: { path, errors: validation.errors }
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
           }
         };
       }
@@ -233,8 +264,11 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `File not found: ${path}`,
-            code: 'FILE_NOT_FOUND',
-            details: { path }
+            code: ErrorCode.FILE_NOT_FOUND,
+            details: {
+              path,
+              operation: Operation.FILE_DELETE
+            } satisfies FileNotFoundContext
           }
         };
       }
@@ -245,9 +279,12 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Cannot delete directory with deleteFile(): ${path}. Use exec('rm -rf <path>') instead.`,
-            code: 'IS_DIRECTORY',
-            details: { path, isDirectory: true }
+            message: `Cannot delete directory with deleteFile() at '${path}'. Use exec('rm -rf <path>') instead.`,
+            code: ErrorCode.IS_DIRECTORY,
+            details: {
+              path,
+              operation: Operation.FILE_DELETE
+            } satisfies FileSystemContext
           }
         };
       }
@@ -268,9 +305,14 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Delete operation failed with exit code ${result.exitCode}`,
-            code: 'FILE_DELETE_ERROR',
-            details: { path, exitCode: result.exitCode, stderr: result.stderr }
+            message: `Failed to delete file '${path}': ${result.stderr || `exit code ${result.exitCode}`}`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_DELETE,
+              exitCode: result.exitCode,
+              stderr: result.stderr
+            } satisfies FileSystemContext
           }
         };
       }
@@ -281,16 +323,19 @@ export class FileService implements FileSystemOperations {
         success: true
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('delete', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to delete file', error instanceof Error ? error : undefined, { path });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('delete', path, errorMessage),
-          code: errorCode,
-          details: { path, originalError: errorMessage }
+          message: `Failed to delete file '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.FILE_DELETE,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -327,8 +372,11 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `Source file not found: ${oldPath}`,
-            code: 'FILE_NOT_FOUND',
-            details: { oldPath, newPath }
+            code: ErrorCode.FILE_NOT_FOUND,
+            details: {
+              path: oldPath,
+              operation: Operation.FILE_RENAME
+            } satisfies FileNotFoundContext
           }
         };
       }
@@ -351,7 +399,7 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `Rename operation failed with exit code ${result.exitCode}`,
-            code: 'RENAME_ERROR',
+            code: ErrorCode.FILESYSTEM_ERROR,
             details: { oldPath, newPath, exitCode: result.exitCode, stderr: result.stderr }
           }
         };
@@ -363,16 +411,19 @@ export class FileService implements FileSystemOperations {
         success: true
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('rename', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to rename file', error instanceof Error ? error : undefined, { oldPath, newPath });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('rename', oldPath, errorMessage),
-          code: errorCode,
-          details: { oldPath, newPath, originalError: errorMessage }
+          message: `Failed to rename file from '${oldPath}' to '${newPath}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path: oldPath,
+            operation: Operation.FILE_RENAME,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -409,8 +460,11 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `Source file not found: ${sourcePath}`,
-            code: 'FILE_NOT_FOUND',
-            details: { sourcePath, destinationPath }
+            code: ErrorCode.FILE_NOT_FOUND,
+            details: {
+              path: sourcePath,
+              operation: Operation.FILE_MOVE
+            } satisfies FileNotFoundContext
           }
         };
       }
@@ -434,7 +488,7 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `Move operation failed with exit code ${result.exitCode}`,
-            code: 'FILE_MOVE_ERROR',
+            code: ErrorCode.FILESYSTEM_ERROR,
             details: { sourcePath, destinationPath, exitCode: result.exitCode, stderr: result.stderr }
           }
         };
@@ -446,16 +500,19 @@ export class FileService implements FileSystemOperations {
         success: true
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('move', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to move file', error instanceof Error ? error : undefined, { sourcePath, destinationPath });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('move', sourcePath, errorMessage),
-          code: errorCode,
-          details: { sourcePath, destinationPath, originalError: errorMessage }
+          message: `Failed to move file from '${sourcePath}' to '${destinationPath}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path: sourcePath,
+            operation: Operation.FILE_MOVE,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -469,9 +526,11 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Security validation failed: ${validation.errors.join(', ')}`,
-            code: 'SECURITY_VALIDATION_FAILED',
-            details: { path, errors: validation.errors }
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
           }
         };
       }
@@ -503,7 +562,7 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `mkdir operation failed with exit code ${result.exitCode}`,
-            code: 'MKDIR_ERROR',
+            code: ErrorCode.FILESYSTEM_ERROR,
             details: { path, options, exitCode: result.exitCode, stderr: result.stderr }
           }
         };
@@ -515,16 +574,19 @@ export class FileService implements FileSystemOperations {
         success: true
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('mkdir', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to create directory', error instanceof Error ? error : undefined, { path });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('mkdir', path, errorMessage),
-          code: errorCode,
-          details: { path, options, originalError: errorMessage }
+          message: `Failed to create directory '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.DIRECTORY_CREATE,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -538,9 +600,11 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Security validation failed: ${validation.errors.join(', ')}`,
-            code: 'SECURITY_VALIDATION_FAILED',
-            details: { path, errors: validation.errors }
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
           }
         };
       }
@@ -567,16 +631,19 @@ export class FileService implements FileSystemOperations {
         data: exists
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('exists', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.warn('Error checking file existence', { path, error: errorMessage });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('exists', path, errorMessage),
-          code: errorCode,
-          details: { path, originalError: errorMessage }
+          message: `Failed to check file existence for '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.FILE_STAT,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }
@@ -590,9 +657,11 @@ export class FileService implements FileSystemOperations {
         return {
           success: false,
           error: {
-            message: `Security validation failed: ${validation.errors.join(', ')}`,
-            code: 'SECURITY_VALIDATION_FAILED',
-            details: { path, errors: validation.errors }
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
           }
         };
       }
@@ -608,8 +677,11 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `Path not found: ${path}`,
-            code: 'FILE_NOT_FOUND',
-            details: { path }
+            code: ErrorCode.FILE_NOT_FOUND,
+            details: {
+              path,
+              operation: Operation.FILE_STAT
+            } satisfies FileNotFoundContext
           }
         };
       }
@@ -635,7 +707,7 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `stat operation failed with exit code ${result.exitCode}`,
-            code: 'STAT_ERROR',
+            code: ErrorCode.FILESYSTEM_ERROR,
             details: { path, exitCode: result.exitCode, stderr: result.stderr }
           }
         };
@@ -655,16 +727,19 @@ export class FileService implements FileSystemOperations {
         data: stats
       };
     } catch (error) {
-      const errorCode = this.manager.determineErrorCode('stat', error as Error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to get file stats', error instanceof Error ? error : undefined, { path });
 
       return {
         success: false,
         error: {
-          message: this.manager.createErrorMessage('stat', path, errorMessage),
-          code: errorCode,
-          details: { path, originalError: errorMessage }
+          message: `Failed to get file stats for '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.FILE_STAT,
+            stderr: errorMessage
+          } satisfies FileSystemContext
         }
       };
     }

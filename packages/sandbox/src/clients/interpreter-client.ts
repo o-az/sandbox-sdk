@@ -6,8 +6,8 @@ import {
   type Result,
   ResultImpl,
 } from '@repo/shared';
-import { InterpreterNotReadyError } from '../errors.js';
-import { mapContainerError } from '../utils/error-mapping.js';
+import { InterpreterNotReadyError, createErrorFromResponse, ErrorCode } from '../errors';
+import type { ErrorResponse } from '../errors';
 import { BaseHttpClient } from './base-client.js';
 import type { HttpClientOptions } from './types.js';
 
@@ -227,10 +227,18 @@ export class InterpreterClient extends BaseHttpClient {
 
   private async parseErrorResponse(response: Response): Promise<Error> {
     try {
-      const errorData = await response.json();
-      return mapContainerError(errorData as any);
+      const errorData = await response.json() as ErrorResponse;
+      return createErrorFromResponse(errorData);
     } catch {
-      return new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Fallback if response isn't JSON
+      const errorResponse: ErrorResponse = {
+        code: ErrorCode.INTERNAL_ERROR,
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        context: {},
+        httpStatus: response.status,
+        timestamp: new Date().toISOString()
+      };
+      return createErrorFromResponse(errorResponse);
     }
   }
 

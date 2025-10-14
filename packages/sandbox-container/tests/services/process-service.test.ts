@@ -203,8 +203,8 @@ describe('ProcessService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('COMMAND_STREAM_ERROR');
-        expect(result.error.message).toBe('Failed to start streaming command');
+        expect(result.error.code).toBe('STREAM_START_ERROR');
+        expect(result.error.message).toContain('Failed to start streaming command');
       }
     });
   });

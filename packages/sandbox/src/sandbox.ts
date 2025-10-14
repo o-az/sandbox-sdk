@@ -16,11 +16,6 @@ import type {
   StreamOptions
 } from "@repo/shared";
 import { type ExecuteResponse, SandboxClient } from "./clients";
-import {
-  CustomDomainRequiredError,
-  ProcessNotFoundError,
-  SandboxError
-} from "./errors";
 import { CodeInterpreter } from "./interpreter";
 import { isLocalhostPattern } from "./request-handler";
 import {
@@ -30,6 +25,8 @@ import {
   validatePort
 } from "./security";
 import { parseSSEStream } from "./sse-parser";
+import { CustomDomainRequiredError, ErrorCode } from './errors';
+import type { ErrorResponse } from './errors';
 
 export function getSandbox(ns: DurableObjectNamespace<Sandbox>, id: string) {
   const stub = getContainer(ns, id);
@@ -430,19 +427,10 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   }
 
   async killProcess(id: string, _signal?: string): Promise<void> {
-    try {
-      const sessionId = await this.ensureDefaultSession();
-      // Note: signal parameter is not currently supported by the HttpClient implementation
-      await this.client.processes.killProcess(id, sessionId);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Process not found')) {
-        throw new ProcessNotFoundError(id);
-      }
-      throw new SandboxError(
-        `Failed to kill process ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'KILL_PROCESS_FAILED'
-      );
-    }
+    const sessionId = await this.ensureDefaultSession();
+    // Note: signal parameter is not currently supported by the HttpClient implementation
+    // The HTTP client already throws properly typed errors, so we just let them propagate
+    await this.client.processes.killProcess(id, sessionId);
   }
 
   async killAllProcesses(): Promise<number> {
@@ -459,20 +447,14 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   }
 
   async getProcessLogs(id: string): Promise<{ stdout: string; stderr: string; processId: string }> {
-    try {
-      const sessionId = await this.ensureDefaultSession();
-      const response = await this.client.processes.getProcessLogs(id, sessionId);
-      return {
-        stdout: response.stdout,
-        stderr: response.stderr,
-        processId: response.processId
-      };
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Process not found')) {
-        throw new ProcessNotFoundError(id);
-      }
-      throw error;
-    }
+    const sessionId = await this.ensureDefaultSession();
+    // The HTTP client already throws properly typed errors, so we just let them propagate
+    const response = await this.client.processes.getProcessLogs(id, sessionId);
+    return {
+      stdout: response.stdout,
+      stderr: response.stderr,
+      processId: response.processId
+    };
   }
 
 
@@ -559,7 +541,14 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   async exposePort(port: number, options: { name?: string; hostname: string }) {
     // Check if hostname is workers.dev domain (doesn't support wildcard subdomains)
     if (options.hostname.endsWith('.workers.dev')) {
-      throw new CustomDomainRequiredError(options.hostname);
+      const errorResponse: ErrorResponse = {
+        code: ErrorCode.CUSTOM_DOMAIN_REQUIRED,
+        message: `Port exposure requires a custom domain. .workers.dev domains do not support wildcard subdomains required for port proxying.`,
+        context: { originalError: options.hostname },
+        httpStatus: 400,
+        timestamp: new Date().toISOString()
+      };
+      throw new CustomDomainRequiredError(errorResponse);
     }
 
     const sessionId = await this.ensureDefaultSession();

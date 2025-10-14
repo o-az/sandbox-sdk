@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BaseApiResponse, ErrorResponse, HttpClientOptions } from '../src/clients';
+import type { BaseApiResponse, HttpClientOptions } from '../src/clients';
 import { BaseHttpClient } from '../src/clients/base-client';
+import type { ErrorResponse } from '../src/errors';
 import {
   CommandError,
   FileNotFoundError,
@@ -46,10 +47,10 @@ class TestHttpClient extends BaseHttpClient {
     return this.handleStreamResponse(response);
   }
 
-  public async testErrorHandling(errorResponse: ErrorResponse & { code?: string }) {
+  public async testErrorHandling(errorResponse: ErrorResponse) {
     const response = new Response(
       JSON.stringify(errorResponse),
-      { status: errorResponse.code === 'FILE_NOT_FOUND' ? 404 : 400 }
+      { status: errorResponse.httpStatus || 400 }
     );
     return this.handleErrorResponse(response);
   }
@@ -115,32 +116,62 @@ describe('BaseHttpClient', () => {
     it('should map container errors to client errors', async () => {
       const errorMappingTests = [
         {
-          containerError: { error: 'File not found: /test.txt', code: 'FILE_NOT_FOUND', path: '/test.txt' },
+          containerError: {
+            code: 'FILE_NOT_FOUND',
+            message: 'File not found: /test.txt',
+            context: { path: '/test.txt' },
+            httpStatus: 404,
+            timestamp: new Date().toISOString()
+          },
           expectedError: FileNotFoundError,
         },
         {
-          containerError: { error: 'Permission denied', code: 'PERMISSION_DENIED', path: '/secure.txt' },
+          containerError: {
+            code: 'PERMISSION_DENIED',
+            message: 'Permission denied',
+            context: { path: '/secure.txt' },
+            httpStatus: 403,
+            timestamp: new Date().toISOString()
+          },
           expectedError: PermissionDeniedError,
         },
         {
-          containerError: { error: 'Command failed: badcmd', code: 'COMMAND_EXECUTION_ERROR' },
+          containerError: {
+            code: 'COMMAND_EXECUTION_ERROR',
+            message: 'Command failed: badcmd',
+            context: { command: 'badcmd' },
+            httpStatus: 400,
+            timestamp: new Date().toISOString()
+          },
           expectedError: CommandError,
         },
         {
-          containerError: { error: 'Filesystem error', code: 'FILESYSTEM_ERROR', path: '/test' },
+          containerError: {
+            code: 'FILESYSTEM_ERROR',
+            message: 'Filesystem error',
+            context: { path: '/test' },
+            httpStatus: 500,
+            timestamp: new Date().toISOString()
+          },
           expectedError: FileSystemError,
         },
         {
-          containerError: { error: 'Unknown error', code: 'UNKNOWN_ERROR' },
+          containerError: {
+            code: 'UNKNOWN_ERROR',
+            message: 'Unknown error',
+            context: {},
+            httpStatus: 500,
+            timestamp: new Date().toISOString()
+          },
           expectedError: SandboxError,
         }
       ];
 
       for (const test of errorMappingTests) {
-        await expect(client.testErrorHandling(test.containerError))
+        await expect(client.testErrorHandling(test.containerError as ErrorResponse))
           .rejects.toThrow(test.expectedError);
 
-        expect(onError).toHaveBeenCalledWith(test.containerError.error, undefined);
+        expect(onError).toHaveBeenCalledWith(test.containerError.message, undefined);
       }
     });
 

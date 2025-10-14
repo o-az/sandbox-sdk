@@ -417,8 +417,8 @@ describe('Sandbox - Automatic Session Management', () => {
         } catch (error: any) {
           expect(error.name).toBe('CustomDomainRequiredError');
           expect(error.code).toBe('CUSTOM_DOMAIN_REQUIRED');
-          expect(error.details).toContain('workers.dev');
-          expect(error.details).toContain('Setup guide');
+          expect(error.message).toContain('workers.dev');
+          expect(error.message).toContain('custom domain');
         }
       }
 

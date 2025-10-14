@@ -110,7 +110,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('SECURITY_VALIDATION_FAILED');
+        expect(result.error.code).toBe('VALIDATION_FAILED');
         expect(result.error.message).toContain('Path contains invalid characters');
       }
 
@@ -162,7 +162,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('FILE_READ_ERROR');
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
   });
@@ -207,7 +207,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('FILE_WRITE_ERROR');
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
   });
@@ -297,7 +297,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('FILE_DELETE_ERROR');
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
   });
@@ -353,7 +353,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('RENAME_ERROR');
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
   });
@@ -453,7 +453,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('MKDIR_ERROR');
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
   });
@@ -571,7 +571,7 @@ describe('FileService', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.code).toBe('STAT_ERROR');
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
   });

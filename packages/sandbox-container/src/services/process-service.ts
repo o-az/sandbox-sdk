@@ -10,6 +10,12 @@ import type {
 } from '../core/types';
 import { ProcessManager } from '../managers/process-manager';
 import type { SessionManager } from './session-manager';
+import { ErrorCode } from '@repo/shared/errors';
+import type {
+  ProcessNotFoundContext,
+  ProcessErrorContext,
+  CommandErrorContext,
+} from '@repo/shared/errors';
 
 export interface ProcessStore {
   create(process: ProcessRecord): Promise<void>;
@@ -144,9 +150,12 @@ export class ProcessService {
       return {
         success: false,
         error: {
-          message: 'Failed to execute command',
-          code: 'COMMAND_EXEC_ERROR',
-          details: { command, originalError: errorMessage },
+          message: `Failed to execute command '${command}': ${errorMessage}`,
+          code: ErrorCode.COMMAND_EXECUTION_ERROR,
+          details: {
+            command,
+            stderr: errorMessage,
+          } satisfies CommandErrorContext,
         },
       };
     }
@@ -275,9 +284,12 @@ export class ProcessService {
       return {
         success: false,
         error: {
-          message: 'Failed to start streaming command',
-          code: 'COMMAND_STREAM_ERROR',
-          details: { command, originalError: errorMessage },
+          message: `Failed to start streaming command '${command}': ${errorMessage}`,
+          code: ErrorCode.STREAM_START_ERROR,
+          details: {
+            command,
+            stderr: errorMessage,
+          } satisfies CommandErrorContext,
         },
       };
     }
@@ -286,13 +298,16 @@ export class ProcessService {
   async getProcess(id: string): Promise<ServiceResult<ProcessRecord>> {
     try {
       const process = await this.store.get(id);
-      
+
       if (!process) {
         return {
           success: false,
           error: {
             message: `Process ${id} not found`,
-            code: 'PROCESS_NOT_FOUND',
+            code: ErrorCode.PROCESS_NOT_FOUND,
+            details: {
+              processId: id,
+            } satisfies ProcessNotFoundContext,
           },
         };
       }
@@ -304,13 +319,16 @@ export class ProcessService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to get process', error instanceof Error ? error : undefined, { processId: id });
-      
+
       return {
         success: false,
         error: {
-          message: 'Failed to get process',
-          code: 'PROCESS_GET_ERROR',
-          details: { processId: id, originalError: errorMessage },
+          message: `Failed to get process '${id}': ${errorMessage}`,
+          code: ErrorCode.PROCESS_ERROR,
+          details: {
+            processId: id,
+            stderr: errorMessage,
+          } satisfies ProcessErrorContext,
         },
       };
     }
@@ -325,7 +343,10 @@ export class ProcessService {
           success: false,
           error: {
             message: `Process ${id} not found`,
-            code: 'PROCESS_NOT_FOUND',
+            code: ErrorCode.PROCESS_NOT_FOUND,
+            details: {
+              processId: id,
+            } satisfies ProcessNotFoundContext,
           },
         };
       }
@@ -360,9 +381,12 @@ export class ProcessService {
       return {
         success: false,
         error: {
-          message: 'Failed to kill process',
-          code: 'PROCESS_KILL_ERROR',
-          details: { processId: id, originalError: errorMessage },
+          message: `Failed to kill process '${id}': ${errorMessage}`,
+          code: ErrorCode.PROCESS_ERROR,
+          details: {
+            processId: id,
+            stderr: errorMessage,
+          } satisfies ProcessErrorContext,
         },
       };
     }
@@ -379,13 +403,16 @@ export class ProcessService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to list processes', error instanceof Error ? error : undefined, { filters });
-      
+
       return {
         success: false,
         error: {
-          message: 'Failed to list processes',
-          code: 'PROCESS_LIST_ERROR',
-          details: { filters, originalError: errorMessage },
+          message: `Failed to list processes: ${errorMessage}`,
+          code: ErrorCode.PROCESS_ERROR,
+          details: {
+            processId: 'list',  // Meta operation
+            stderr: errorMessage,
+          } satisfies ProcessErrorContext,
         },
       };
     }
@@ -412,13 +439,16 @@ export class ProcessService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Failed to kill all processes', error instanceof Error ? error : undefined);
-      
+
       return {
         success: false,
         error: {
-          message: 'Failed to kill all processes',
-          code: 'PROCESS_KILL_ALL_ERROR',
-          details: { originalError: errorMessage },
+          message: `Failed to kill all processes: ${errorMessage}`,
+          code: ErrorCode.PROCESS_ERROR,
+          details: {
+            processId: 'killAll',  // Meta operation
+            stderr: errorMessage,
+          } satisfies ProcessErrorContext,
         },
       };
     }
@@ -433,7 +463,10 @@ export class ProcessService {
           success: false,
           error: {
             message: `Process ${id} not found`,
-            code: 'PROCESS_NOT_FOUND',
+            code: ErrorCode.PROCESS_NOT_FOUND,
+            details: {
+              processId: id,
+            } satisfies ProcessNotFoundContext,
           },
         };
       }
@@ -483,9 +516,12 @@ export class ProcessService {
       return {
         success: false,
         error: {
-          message: 'Failed to stream process logs',
-          code: 'PROCESS_STREAM_ERROR',
-          details: { processId: id, originalError: errorMessage },
+          message: `Failed to stream logs for process '${id}': ${errorMessage}`,
+          code: ErrorCode.PROCESS_ERROR,
+          details: {
+            processId: id,
+            stderr: errorMessage,
+          } satisfies ProcessErrorContext,
         },
       };
     }
