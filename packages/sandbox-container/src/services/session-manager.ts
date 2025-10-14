@@ -1,6 +1,6 @@
 // SessionManager Service - Manages persistent execution sessions
 
-import type { ExecEvent } from '@repo/shared-types';
+import type { ExecEvent } from '@repo/shared';
 import type { Logger, ServiceResult } from '../core/types';
 import { type RawExecResult, Session, type SessionOptions } from '../session';
 

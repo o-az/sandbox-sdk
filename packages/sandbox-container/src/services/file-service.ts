@@ -11,7 +11,6 @@ import type { SessionManager } from './session-manager';
 
 export interface SecurityService {
   validatePath(path: string): { isValid: boolean; errors: string[] };
-  sanitizePath(path: string): string;
 }
 
 // File system operations interface with session support

@@ -24,14 +24,14 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/execute',
     handler: async (req, ctx) => container.get('executeHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
     method: 'POST',
     path: '/api/execute/stream',
     handler: async (req, ctx) => container.get('executeHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   // File operation routes
@@ -39,42 +39,42 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/read',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
     method: 'POST',
     path: '/api/write',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
     method: 'POST',
     path: '/api/delete',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
     method: 'POST',
     path: '/api/rename',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
     method: 'POST',
     path: '/api/move',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
     method: 'POST',
     path: '/api/mkdir',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   // Port management routes
@@ -82,7 +82,7 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/expose-port',
     handler: async (req, ctx) => container.get('portHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
@@ -104,7 +104,7 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/process/start',
     handler: async (req, ctx) => container.get('processHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
@@ -154,7 +154,7 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/git/checkout',
     handler: async (req, ctx) => container.get('gitHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   // Interpreter/Code execution routes
@@ -169,7 +169,7 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/contexts',
     handler: async (req, ctx) => container.get('interpreterHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   router.register({
@@ -190,7 +190,7 @@ export function setupRoutes(router: Router, container: Container): void {
     method: 'POST',
     path: '/api/execute/code',
     handler: async (req, ctx) => container.get('interpreterHandler').handle(req, ctx),
-    middleware: [container.get('validationMiddleware'), container.get('loggingMiddleware')],
+    middleware: [container.get('loggingMiddleware')],
   });
 
   // Proxy routes (catch-all for /proxy/*)

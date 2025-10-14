@@ -5,7 +5,7 @@ import type {
   ReadFileResult, 
   RenameFileResult,
   WriteFileResult 
-} from '@repo/shared-types';
+} from '@repo/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileClient } from '../src/clients/file-client';
 import {

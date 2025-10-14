@@ -13,10 +13,6 @@ export class SecurityServiceAdapter {
     };
   }
 
-  sanitizePath(path: string): string {
-    return this.securityService.sanitizePath(path);
-  }
-
   // Port service interface
   validatePort(port: number): { isValid: boolean; errors: string[] } {
     const result = this.securityService.validatePort(port);

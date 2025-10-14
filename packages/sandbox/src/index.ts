@@ -27,14 +27,14 @@ export type {
   ProcessOptions,
   ProcessStatus,
   StreamOptions
-} from "@repo/shared-types";
-export * from '@repo/shared-types';
+} from "@repo/shared";
+export * from '@repo/shared';
 // Export type guards for runtime validation
 export {
   isExecResult,
   isProcess,
   isProcessStatus
-} from "@repo/shared-types";
+} from "@repo/shared";
 // Export all client types from new architecture
 export type {
   BaseApiResponse,

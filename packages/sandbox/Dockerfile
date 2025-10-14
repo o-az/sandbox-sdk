@@ -69,17 +69,17 @@ WORKDIR /build
 
 # Copy workspace packages and tooling
 COPY tooling/typescript-config ./tooling/typescript-config
-COPY packages/shared-types ./packages/shared-types
+COPY packages/shared ./packages/shared
 COPY packages/sandbox-container ./packages/sandbox-container
 
 # Create minimal workspace package.json
-RUN echo '{"private":true,"workspaces":["tooling/typescript-config","packages/shared-types","packages/sandbox-container"]}' > package.json
+RUN echo '{"private":true,"workspaces":["tooling/typescript-config","packages/shared","packages/sandbox-container"]}' > package.json
 
 # Install all workspace dependencies
 RUN npm install
 
-# Build shared-types first (dependency)
-RUN cd packages/shared-types && npm run build
+# Build shared package first (dependency)
+RUN cd packages/shared && npm run build
 
 # Build sandbox-container
 RUN cd packages/sandbox-container && npm run build
@@ -95,7 +95,7 @@ RUN cp -r /build/packages/sandbox-container/dist ./dist && \
 RUN mkdir -p /container-server/dist/runtime/executors/python && \
     cp /build/packages/sandbox-container/src/runtime/executors/python/ipython_executor.py /container-server/dist/runtime/executors/python/
 
-# Copy node_modules for runtime (includes workspace-linked shared-types)
+# Copy node_modules for runtime (includes workspace-linked shared package)
 RUN cp -r /build/node_modules ./node_modules
 
 # Configure process pool sizes (can be overridden at runtime)

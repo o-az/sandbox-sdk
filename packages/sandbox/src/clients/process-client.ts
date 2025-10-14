@@ -1,4 +1,4 @@
-import type { LogEvent } from '@repo/shared-types';
+import type { LogEvent } from '@repo/shared';
 import { parseSSEStream } from '../sse-parser';
 import { BaseHttpClient } from './base-client';
 import type { BaseApiResponse, HttpClientOptions, SessionRequest } from './types';

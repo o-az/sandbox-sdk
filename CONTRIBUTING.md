@@ -50,14 +50,14 @@ This is a Turborepo monorepo with multiple packages:
 ```
 sandbox-sdk/
 ├── packages/
-│   ├── sandbox/              # Main SDK package (@cloudflare/sandbox)
+│   ├── sandbox/             # Main SDK package (@cloudflare/sandbox)
 │   │   ├── src/             # Client SDK + Durable Object
 │   │   ├── container_src/   # Container runtime code (uses Bun)
 │   │   └── Dockerfile       # Container image definition
-│   ├── sandbox-container/    # Container runtime package (@repo/sandbox-container)
-│   └── shared-types/        # Shared TypeScript types (@repo/shared-types)
+│   ├── sandbox-container/   # Container runtime package (@repo/sandbox-container)
+│   └── shared/              # Shared TypeScript types (@repo/shared)
 ├── tooling/
-│   ├── typescript-config/    # Shared TypeScript configurations
+│   ├── typescript-config/   # Shared TypeScript configurations
 │   └── vitest-config/       # Shared Vitest configurations
 ├── examples/
 │   ├── basic/               # Basic usage example
@@ -70,7 +70,7 @@ sandbox-sdk/
 1. **Making Changes**
    - SDK code is in `packages/sandbox/src/`
    - Container runtime code is in `packages/sandbox/container_src/`
-   - Shared types are in `packages/shared-types/src/`
+   - Shared types are in `packages/shared/src/`
    - Example code is in `examples/`
 
 2. **Running Tests**

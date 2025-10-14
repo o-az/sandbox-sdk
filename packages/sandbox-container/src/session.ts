@@ -28,7 +28,7 @@ import { watch } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import type { ExecEvent } from '@repo/shared-types';
+import type { ExecEvent } from '@repo/shared';
 import type { Subprocess } from 'bun';
 import { CONFIG } from './config';
 

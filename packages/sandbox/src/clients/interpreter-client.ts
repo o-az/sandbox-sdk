@@ -5,7 +5,7 @@ import {
   type OutputMessage,
   type Result,
   ResultImpl,
-} from '@repo/shared-types';
+} from '@repo/shared';
 import { InterpreterNotReadyError } from '../errors.js';
 import { mapContainerError } from '../utils/error-mapping.js';
 import { BaseHttpClient } from './base-client.js';

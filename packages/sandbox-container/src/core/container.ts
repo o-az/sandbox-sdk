@@ -109,7 +109,6 @@ export class Container {
     
     // Initialize middleware
     const corsMiddleware = new CorsMiddleware();
-    const validationMiddleware = new ValidationMiddleware(validator);
     const loggingMiddleware = new LoggingMiddleware(logger);
 
     // Store all dependencies

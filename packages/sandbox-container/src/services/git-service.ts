@@ -7,7 +7,6 @@ import type { SessionManager } from './session-manager';
 export interface SecurityService {
   validateGitUrl(url: string): { isValid: boolean; errors: string[] };
   validatePath(path: string): { isValid: boolean; errors: string[] };
-  sanitizePath(path: string): string;
 }
 
 export class GitService {

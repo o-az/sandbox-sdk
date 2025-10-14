@@ -9,26 +9,26 @@ The SDK is organized as a Turborepo monorepo with clear package boundaries:
 ```
 sandbox-sdk/
 ├── packages/
-│   ├── sandbox/                    # Main SDK package (@cloudflare/sandbox)
+│   ├── sandbox/                   # Main SDK package (@cloudflare/sandbox)
 │   │   ├── src/                   # Client SDK + Durable Object
 │   │   └── container_src/         # Container runtime (separate build)
-│   ├── sandbox-container/          # Container runtime package (@repo/sandbox-container)
+│   ├── sandbox-container/         # Container runtime package (@repo/sandbox-container)
 │   │   └── src/index.ts           # Re-exports from @cloudflare/sandbox/container_src
-│   └── shared-types/              # Shared types (@repo/shared-types)
+│   └── shared/                    # Shared types (@repo/shared)
 │       └── src/types.ts           # Common interfaces and types
 ├── tooling/
-│   ├── typescript-config/          # Shared TypeScript configurations
+│   ├── typescript-config/         # Shared TypeScript configurations
 │   └── vitest-config/             # Shared test configurations
 └── examples/
-    ├── basic/                      # Example: Basic sandbox usage
-    └── code-interpreter/           # Example: Code interpreter integration
+    ├── basic/                     # Example: Basic sandbox usage
+    └── code-interpreter/          # Example: Code interpreter integration
 ```
 
 ### Package Boundaries
 
 **@cloudflare/sandbox** (Main SDK Package)
 - **Exports**: Public SDK API, Sandbox Durable Object class
-- **Dependencies**: @repo/shared-types (types only)
+- **Dependencies**: @repo/shared (types only)
 - **Build Output**:
   - `dist/index.js` - Client SDK + Durable Object
   - `container_dist/` - Container runtime bundle (for Docker)
@@ -38,7 +38,7 @@ sandbox-sdk/
 - **Exports**: Re-exports container runtime from @cloudflare/sandbox
 - **Used By**: Type references and imports (not distributed separately)
 
-**@repo/shared-types** (Shared Types)
+**@repo/shared** (Shared Types)
 - **Purpose**: Common TypeScript interfaces and types
 - **Used By**: All packages for type consistency
 - **No Runtime Code**: Types only, no implementation

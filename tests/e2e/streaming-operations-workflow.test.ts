@@ -2,7 +2,7 @@ import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vite
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 import { parseSSEStream } from '../../packages/sandbox/src/sse-parser';
-import type { ExecEvent } from '@repo/shared-types';
+import type { ExecEvent } from '@repo/shared';
 
 /**
  * Streaming Operations Workflow Integration Tests

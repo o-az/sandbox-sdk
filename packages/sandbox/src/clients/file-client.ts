@@ -5,7 +5,7 @@ import type {
   ReadFileResult, 
   RenameFileResult, 
   WriteFileResult 
-} from '@repo/shared-types';
+} from '@repo/shared';
 import { BaseHttpClient } from './base-client';
 import type { HttpClientOptions, SessionRequest } from './types';
 

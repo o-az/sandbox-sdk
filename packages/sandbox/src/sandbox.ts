@@ -14,7 +14,7 @@ import type {
   RunCodeOptions,
   SessionOptions,
   StreamOptions
-} from "@repo/shared-types";
+} from "@repo/shared";
 import { type ExecuteResponse, SandboxClient } from "./clients";
 import {
   CustomDomainRequiredError,

@@ -12,7 +12,7 @@ sandbox-sdk/
 ├── packages/
 │   ├── sandbox/             (@cloudflare/sandbox) - Main SDK package
 │   ├── sandbox-container/   (@repo/sandbox-container) - Container runtime
-│   └── shared-types/        (@repo/shared-types) - Shared TypeScript types
+│   └── shared/              (@repo/shared) - Shared TypeScript types
 ├── tooling/
 │   ├── typescript-config/   (@repo/typescript-config) - Shared TS configs
 │   └── vitest-config/       (@repo/vitest-config) - Shared test configs
@@ -98,7 +98,7 @@ npm run docker:publish -w @cloudflare/sandbox    # Build and push linux/amd64 + 
 └── src/              - Re-exported container runtime code
     └── index.ts      - Exports from @cloudflare/sandbox/container_src
 
-@repo/shared-types
+@repo/shared
 └── src/              - Shared TypeScript types
     └── types.ts      - Common interfaces and types
 ```

@@ -48,7 +48,7 @@ sandbox-sdk/
 │   │       └── core/       # Router, types, utilities
 │   ├── sandbox-container/   # Container runtime package (@repo/sandbox-container)
 │   │   └── src/index.ts    # Re-exports container runtime
-│   └── shared-types/        # Shared types (@repo/shared-types)
+│   └── shared/             # Shared types (@repo/shared)
 │       └── src/types.ts    # Common interfaces and types
 ├── tooling/
 │   ├── typescript-config/   # Shared TypeScript configs

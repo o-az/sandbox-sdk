@@ -12,7 +12,7 @@
     "clean": "rm -rf dist *.js *.js.map src/**/*.js src/**/*.js.map"
   },
   "dependencies": {
-    "@repo/shared-types": "*",
+    "@repo/shared": "*",
     "esbuild": "^0.25.10",
     "zod": "^3.22.3"
   },

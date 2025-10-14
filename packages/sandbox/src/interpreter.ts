@@ -7,7 +7,7 @@ import {
   type Result,
   ResultImpl,
   type RunCodeOptions,
-} from "@repo/shared-types";
+} from "@repo/shared";
 import type { InterpreterClient } from "./clients/interpreter-client.js";
 import type { Sandbox } from "./sandbox.js";
 

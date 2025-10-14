@@ -8,7 +8,7 @@
   "description": "A sandboxed environment for running commands",
   "dependencies": {
     "@cloudflare/containers": "^0.0.28",
-    "@repo/shared-types": "*"
+    "@repo/shared": "*"
   },
   "tags": [
     "sandbox",
