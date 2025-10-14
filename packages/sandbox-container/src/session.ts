@@ -1,9 +1,26 @@
 /**
- * Session - Persistent shell execution with FIFO-based output separation
+ * Session - Persistent shell execution with reliable stdout/stderr separation
  *
- * This implementation provides a persistent bash session that maintains state
- * (cwd, env vars, shell functions) across commands. It uses FIFO pipes with
- * binary prefixes to reliably separate stdout/stderr without markers or polling.
+ * Overview
+ * - Maintains a persistent bash shell so session state (cwd, env vars, shell
+ *   functions) persists across commands.
+ * - Separates stdout and stderr by writing binary prefixes to a shared log,
+ *   which we later parse to reconstruct the streams.
+ *
+ * Execution Modes
+ * - Foreground (exec): Runs in the main shell (state persists). We avoid FIFOs
+ *   here to eliminate cross-process FIFO open/close races on silent commands
+ *   (e.g., cd, mkdir). Instead, we use bash process substitution to prefix
+ *   stdout/stderr inline and append to the log, then `wait` to ensure those
+ *   consumers drain before the exit code file is written.
+ * - Background (execStream/startProcess): Uses FIFOs + background labelers.
+ *   The command runs in a subshell redirected to FIFOs; labelers read from
+ *   FIFOs and prefix lines into the log; we write an exit code file and a
+ *   small monitor ensures labelers finish and FIFOs are cleaned up.
+ *
+ * Exit Detection
+ * - We write the exit code to a file and detect completion via a hybrid
+ *   fs.watch + polling approach to be robust on tmpfs/overlayfs.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -532,7 +549,7 @@ export class Session {
 
     // Setup trap only for foreground pattern
     if (!isBackground) {
-      script += `  # Cleanup function (called on exit or signals)\n`;
+      script += `  # Cleanup function (foreground only): remove FIFOs if they exist\n`;
       script += `  cleanup() {\n`;
       script += `    rm -f "$sp" "$ep"\n`;
       script += `  }\n`;
@@ -555,6 +572,9 @@ export class Session {
       script += `  \n`;
       script += `  # Label stderr with binary prefix in background (capture PID)\n`;
       script += `  (while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done < \"$ep\") >> \"$log\" & r2=$!\n`;
+      script += `  # EOF note: labelers stop when all writers to the FIFOs close.\n`;
+      script += `  # The subshell writing to >\"$sp\" 2>\"$ep\" controls EOF; after it exits,\n`;
+      script += `  # we wait for labelers and then remove the FIFOs.\n`;
       script += `  \n`;
       if (cwd) {
         const safeCwd = this.escapeShellPath(cwd);
@@ -572,8 +592,8 @@ export class Session {
         script += `    # Write PID for process killing\n`;
         script += `    echo "$CMD_PID" > ${safePidFile}.tmp\n`;
         script += `    mv ${safePidFile}.tmp ${safePidFile}\n`;
-        script += `    # Background monitor waits for labelers and handles FIFO cleanup\n`;
-        script += `    # (PID file cleaned up by TypeScript when command completes)\n`;
+        script += `    # Background monitor: waits for labelers to finish (after FIFO EOF)\n`;
+        script += `    # and then removes the FIFOs. PID file is cleaned up by TypeScript.\n`;
         script += `    (\n`;
         script += `      wait "$r1" "$r2" 2>/dev/null\n`;
         script += `      rm -f "$sp" "$ep"\n`;
@@ -596,8 +616,8 @@ export class Session {
         script += `  # Write PID for process killing\n`;
         script += `  echo "$CMD_PID" > ${safePidFile}.tmp\n`;
         script += `  mv ${safePidFile}.tmp ${safePidFile}\n`;
-        script += `  # Background monitor waits for labelers and handles FIFO cleanup\n`;
-        script += `  # (PID file cleaned up by TypeScript when command completes)\n`;
+      script += `  # Background monitor: waits for labelers to finish (after FIFO EOF)\n`;
+      script += `  # and then removes the FIFOs. PID file is cleaned up by TypeScript.\n`;
         script += `  (\n`;
         script += `    wait "$r1" "$r2" 2>/dev/null\n`;
         script += `    rm -f "$sp" "$ep"\n`;
@@ -669,14 +689,15 @@ export class Session {
         if (resolved) return;
 
         if (changedFile === filename) {
-          resolved = true;
-          watcher.close();
-          clearInterval(pollInterval);
           try {
             const exitCode = await Bun.file(exitCodeFile).text();
+            resolved = true;
+            watcher.close();
+            clearInterval(pollInterval);
             resolve(parseInt(exitCode.trim(), 10));
-          } catch (error) {
-            reject(new Error(`Failed to read exit code: ${error}`));
+          } catch {
+            // Ignore transient read errors (e.g., ENOENT right after event)
+            // Polling or a subsequent watch event will handle it.
           }
         }
       });
