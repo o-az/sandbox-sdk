@@ -17,24 +17,24 @@ describe('Build and Test Workflow', () => {
   describe('local', () => {
     let runner: WranglerDevRunner | null;
     let workerUrl: string;
-    let currentSandboxId: string | null = null;
+    let currentSandboxId: string;
+    let headers: Record<string, string>;
 
     beforeAll(async () => {
       // Get test worker URL (CI: uses deployed URL, Local: spawns wrangler dev)
       const result = await getTestWorkerUrl();
       workerUrl = result.url;
       runner = result.runner;
-    });
 
-    afterEach(async () => {
-      // Cleanup sandbox container after each test
-      if (currentSandboxId) {
-        await cleanupSandbox(workerUrl, currentSandboxId);
-        currentSandboxId = null;
-      }
+      // Create a single sandbox for all tests in this suite
+      currentSandboxId = createSandboxId();
+      headers = createTestHeaders(currentSandboxId);
     });
 
     afterAll(async () => {
+      // Cleanup sandbox container after all tests
+      await cleanupSandbox(workerUrl, currentSandboxId);
+
       // Cleanup wrangler process (only in local mode)
       if (runner) {
         await runner.stop();
@@ -42,9 +42,6 @@ describe('Build and Test Workflow', () => {
     });
 
     test('should execute basic commands and verify file operations', async () => {
-      currentSandboxId = createSandboxId();
-      const headers = createTestHeaders(currentSandboxId);
-
       // Step 1: Execute simple command
       // Use vi.waitFor to handle container startup time
       const echoResponse = await vi.waitFor(
@@ -109,22 +106,15 @@ describe('Build and Test Workflow', () => {
     });
 
     test('should handle command failures correctly', async () => {
-      currentSandboxId = createSandboxId();
-      const headers = createTestHeaders(currentSandboxId);
+      // Execute a command that will fail (reuses the same sandbox from first test)
+      const response = await fetch(`${workerUrl}/api/execute`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: 'exit 1',
 
-      // Execute a command that will fail
-      // Use vi.waitFor to handle container startup
-      const response = await vi.waitFor(
-        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            command: 'exit 1',
-
-          }),
         }),
-        { timeout: 30000, interval: 1000 }
-      );
+      });
 
       expect(response.status).toBe(200);
       const data = await response.json();
