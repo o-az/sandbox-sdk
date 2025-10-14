@@ -2,6 +2,10 @@ import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vite
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
+// Port exposure tests require custom domain with wildcard DNS routing
+// Skip these tests when running against workers.dev deployment (no wildcard support)
+const skipPortExposureTests = process.env.TEST_WORKER_URL?.endsWith('.workers.dev') ?? false;
+
 /**
  * Process Lifecycle Workflow Integration Tests
  *
@@ -289,7 +293,7 @@ console.log("Line 3");
       });
     }, 60000);
 
-    test('should expose port and verify HTTP access', async () => {
+    test.skipIf(skipPortExposureTests)('should expose port and verify HTTP access', async () => {
       const sandboxId = createSandboxId();
       const headers = createTestHeaders(sandboxId);
 
@@ -427,7 +431,7 @@ console.log("Server started on port 8080");
       expect(runningProcesses.length).toBe(0);
     }, 90000);
 
-    test('should handle complete workflow: write → start → monitor → expose → request → cleanup', async () => {
+    test.skipIf(skipPortExposureTests)('should handle complete workflow: write → start → monitor → expose → request → cleanup', async () => {
       const sandboxId = createSandboxId();
       const headers = createTestHeaders(sandboxId);
 

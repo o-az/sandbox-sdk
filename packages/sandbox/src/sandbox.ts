@@ -17,6 +17,7 @@ import type {
 } from "@repo/shared-types";
 import { type ExecuteResponse, SandboxClient } from "./clients";
 import {
+  CustomDomainRequiredError,
   ProcessNotFoundError,
   SandboxError
 } from "./errors";
@@ -556,6 +557,11 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   }
 
   async exposePort(port: number, options: { name?: string; hostname: string }) {
+    // Check if hostname is workers.dev domain (doesn't support wildcard subdomains)
+    if (options.hostname.endsWith('.workers.dev')) {
+      throw new CustomDomainRequiredError(options.hostname);
+    }
+
     const sessionId = await this.ensureDefaultSession();
     await this.client.ports.exposePort(port, sessionId, options?.name);
 

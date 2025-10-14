@@ -248,6 +248,22 @@ export class PortInUseError extends PortError {
   }
 }
 
+export class CustomDomainRequiredError extends SandboxError {
+  constructor(public hostname: string) {
+    super(
+      'Port exposure requires a custom domain with wildcard DNS routing',
+      'CUSTOM_DOMAIN_REQUIRED',
+      SandboxOperation.PORT_EXPOSE,
+      `The domain "${hostname}" does not support wildcard subdomain routing. ` +
+      `Workers deployed on workers.dev domains cannot expose ports. ` +
+      `Please deploy to a custom domain with wildcard DNS configured. ` +
+      `Setup guide: https://github.com/cloudflare/sandbox-sdk#production-deployment`,
+      400
+    );
+    this.name = 'CustomDomainRequiredError';
+  }
+}
+
 export class GitError extends SandboxError {
   constructor(
     message: string,

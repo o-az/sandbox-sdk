@@ -381,6 +381,40 @@ Check available formats with `result.formats()`.
 
 <h2 id="port-forwarding">🌐 Port Forwarding</h2>
 
+### ⚠️ Production Deployment Requirement
+
+**Port exposure requires a custom domain with wildcard DNS routing.** The free `workers.dev` domain doesn't support the wildcard subdomains needed for preview URLs to work.
+
+**Quick Setup (5 minutes):**
+
+1. **Add your domain to Cloudflare** (if not already added)
+
+2. **Create wildcard DNS record** in the Cloudflare dashboard:
+   - Type: `A`
+   - Name: `*`
+   - IPv4 address: `192.0.2.0` (dummy IP, since Worker is the origin)
+   - Proxy status: ✅ Proxied (orange cloud)
+
+3. **Update wrangler.jsonc** with wildcard route:
+   ```jsonc
+   {
+     "routes": [
+       {
+         "pattern": "*.yourdomain.com/*",
+         "zone_name": "yourdomain.com"
+       }
+     ]
+   }
+   ```
+
+4. **Deploy**: `npx wrangler deploy`
+
+That's it! Your preview URLs will work: `https://8080-sandbox-abc123.yourdomain.com`
+
+> 📘 **For detailed instructions**, see the [Production Deployment Guide](./docs/PRODUCTION_DEPLOYMENT.md)
+
+### Basic Usage
+
 The SDK automatically handles preview URL routing for exposed ports. Just add one line to your worker:
 
 ```typescript
@@ -402,7 +436,7 @@ When you expose a port, the SDK returns a preview URL that automatically routes 
 
 ```typescript
 const preview = await sandbox.exposePort(3000);
-console.log(preview.url); // https://3000-sandbox-id.your-worker.dev
+console.log(preview.url); // https://3000-sandbox-id.yourdomain.com
 ```
 
 The SDK handles:
@@ -410,6 +444,9 @@ The SDK handles:
 - Subdomain routing (`3000-sandbox-id.domain.com`) for both production and local development
 - All localhost variants (127.0.0.1, ::1, etc.)
 - Request forwarding with proper headers
+- Security via cryptographic port tokens
+
+### Local Development Notes
 
 > **Important for Local Development**: When developing locally with `wrangler dev`, you must explicitly expose ports in your Dockerfile using the `EXPOSE` instruction. This is **only required for local development** - in production, all container ports are automatically accessible.
 

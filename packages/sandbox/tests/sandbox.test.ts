@@ -391,4 +391,62 @@ describe('Sandbox - Automatic Session Management', () => {
       });
     });
   });
+
+  describe('port exposure - workers.dev detection', () => {
+    beforeEach(async () => {
+      await sandbox.setSandboxName('test-sandbox');
+      vi.spyOn(sandbox.client.ports, 'exposePort').mockResolvedValue({
+        success: true,
+        port: 8080,
+        name: 'test-service',
+        exposedAt: new Date().toISOString(),
+      } as any);
+    });
+
+    it('should reject workers.dev domains with CustomDomainRequiredError', async () => {
+      const hostnames = [
+        'my-worker.workers.dev',
+        'my-worker.my-account.workers.dev'
+      ];
+
+      for (const hostname of hostnames) {
+        try {
+          await sandbox.exposePort(8080, { name: 'test', hostname });
+          // Should not reach here
+          expect.fail('Should have thrown CustomDomainRequiredError');
+        } catch (error: any) {
+          expect(error.name).toBe('CustomDomainRequiredError');
+          expect(error.code).toBe('CUSTOM_DOMAIN_REQUIRED');
+          expect(error.details).toContain('workers.dev');
+          expect(error.details).toContain('Setup guide');
+        }
+      }
+
+      // Verify client method was never called
+      expect(sandbox.client.ports.exposePort).not.toHaveBeenCalled();
+    });
+
+    it('should accept custom domains and subdomains', async () => {
+      const testCases = [
+        { hostname: 'example.com', description: 'apex domain' },
+        { hostname: 'sandbox.example.com', description: 'subdomain' }
+      ];
+
+      for (const { hostname } of testCases) {
+        const result = await sandbox.exposePort(8080, { name: 'test', hostname });
+        expect(result.url).toContain(hostname);
+        expect(result.port).toBe(8080);
+      }
+    });
+
+    it('should accept localhost for local development', async () => {
+      const result = await sandbox.exposePort(8080, {
+        name: 'test',
+        hostname: 'localhost:8787'
+      });
+
+      expect(result.url).toContain('localhost');
+      expect(sandbox.client.ports.exposePort).toHaveBeenCalled();
+    });
+  });
 });
