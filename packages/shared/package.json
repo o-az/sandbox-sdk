@@ -20,6 +20,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
+    "@repo/typescript-config": "*",
     "typescript": "^5.7.2"
   }
 }
