@@ -537,5 +537,77 @@ console.log("Server listening on port 8080");
 
       expect(killResponse.status).toBe(200);
     }, 120000);
+
+    test('should return error when killing nonexistent process', async () => {
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
+
+      // Try to kill a process that doesn't exist
+      const killResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/process/fake-process-id-12345`, {
+          method: 'DELETE',
+          headers,
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      // Should return error
+      expect(killResponse.status).toBe(500);
+      const errorData = await killResponse.json();
+      expect(errorData.error).toBeTruthy();
+      expect(errorData.error).toMatch(/not found|does not exist|invalid|unknown/i);
+    }, 60000);
+
+    test.skipIf(skipPortExposureTests)('should reject exposing reserved ports', async () => {
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
+
+      // Try to expose a reserved port (e.g., port 22 - SSH)
+      const exposeResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/port/expose`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            port: 22,
+            name: 'ssh-server',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      // Should return error for reserved port
+      expect(exposeResponse.status).toBe(500);
+      const errorData = await exposeResponse.json();
+      expect(errorData.error).toBeTruthy();
+      expect(errorData.error).toMatch(/reserved|not allowed|forbidden|invalid port/i);
+    }, 60000);
+
+    test.skipIf(skipPortExposureTests)('should return error when unexposing non-exposed port', async () => {
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
+
+      // Initialize sandbox first
+      await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            command: 'echo "init"',
+          }),
+        }),
+        { timeout: 30000, interval: 2000 }
+      );
+
+      // Try to unexpose a port that was never exposed
+      const unexposeResponse = await fetch(`${workerUrl}/api/exposed-ports/9999`, {
+        method: 'DELETE',
+      });
+
+      // Should return error
+      expect(unexposeResponse.status).toBe(500);
+      const errorData = await unexposeResponse.json();
+      expect(errorData.error).toBeTruthy();
+      expect(errorData.error).toMatch(/not found|not exposed|does not exist/i);
+    }, 60000);
   });
 });

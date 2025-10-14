@@ -226,7 +226,7 @@ describe('Git Clone Workflow', () => {
       expect(dirData.stdout).toContain('Hello-World');
     });
 
-    test('should handle git clone errors gracefully', async () => {
+    test('should handle git clone errors for nonexistent repository', async () => {
       currentSandboxId = createSandboxId();
       const headers = createTestHeaders(currentSandboxId);
 
@@ -243,16 +243,38 @@ describe('Git Clone Workflow', () => {
         { timeout: 30000, interval: 2000 }
       );
 
-      // Git clone should fail, but the API should handle it gracefully
-      // Could be 500 status or 200 with error field
-      if (cloneResponse.status === 500) {
-        const errorData = await cloneResponse.json();
-        expect(errorData.error).toBeTruthy();
-      } else if (cloneResponse.status === 200) {
-        const data = await cloneResponse.json();
-        // Check if there's an error field or non-zero exit code
-        expect(data.success === false || data.exitCode !== 0 || data.error).toBeTruthy();
-      }
+      // Git clone should fail with appropriate error
+      expect(cloneResponse.status).toBe(500);
+      const errorData = await cloneResponse.json();
+      expect(errorData.error).toBeTruthy();
+      // Should mention repository not found or doesn't exist
+      expect(errorData.error).toMatch(/not found|does not exist|repository|fatal/i);
+    });
+
+    test('should handle git clone errors for private repository without auth', async () => {
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
+
+      // Try to clone a private repository without providing credentials
+      // Using a known private repo pattern (will fail with auth error)
+      const cloneResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/git/clone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            repoUrl: 'https://github.com/cloudflare/private-test-repo-that-requires-auth',
+
+          }),
+        }, { expectSuccess: false }), // Don't throw on error - we expect this to fail
+        { timeout: 30000, interval: 2000 }
+      );
+
+      // Should fail with authentication error
+      expect(cloneResponse.status).toBe(500);
+      const errorData = await cloneResponse.json();
+      expect(errorData.error).toBeTruthy();
+      // Should mention authentication, permission, or access denied
+      expect(errorData.error).toMatch(/authentication|permission|access|denied|fatal|not found/i);
     });
 
     test('should maintain session state across git clone and subsequent commands', async () => {

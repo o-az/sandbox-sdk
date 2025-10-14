@@ -642,4 +642,51 @@ describe('File Operations Workflow (E2E)', () => {
     const lsData = await lsResponse.json();
     expect(lsData.success).toBe(false); // Directory should not exist
   }, 90000);
+
+  test('should reject writing to protected paths', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Try to write to a protected system path
+    const writeResponse = await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/write`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/etc/passwd',
+          content: 'malicious content',
+        }),
+      }, { expectSuccess: false }), // Don't throw on error - we expect this to fail
+      { timeout: 30000, interval: 2000 }
+    );
+
+    // Should return error with PERMISSION_DENIED
+    expect(writeResponse.status).toBe(500);
+    const errorData = await writeResponse.json();
+    expect(errorData.error).toBeTruthy();
+    expect(errorData.error).toMatch(/permission denied|not allowed|forbidden/i);
+  }, 60000);
+
+  test('should return error when deleting nonexistent file', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Try to delete a file that doesn't exist
+    const deleteResponse = await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/delete`, {
+        method: 'DELETE',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/this-file-does-not-exist.txt',
+        }),
+      }, { expectSuccess: false }), // Don't throw on error - we expect this to fail
+      { timeout: 30000, interval: 2000 }
+    );
+
+    // Should return error with FILE_NOT_FOUND
+    expect(deleteResponse.status).toBe(500);
+    const errorData = await deleteResponse.json();
+    expect(errorData.error).toBeTruthy();
+    expect(errorData.error).toMatch(/not found|does not exist|no such file/i);
+  }, 60000);
 });
