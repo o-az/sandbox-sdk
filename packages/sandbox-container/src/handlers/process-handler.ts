@@ -50,7 +50,7 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleStart(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<StartProcessRequest>(context);
+    const body = await this.parseRequestBody<StartProcessRequest>(request);
 
     this.logger.info('Starting process', {
       requestId: context.requestId,

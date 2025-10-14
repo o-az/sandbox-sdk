@@ -51,7 +51,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleRead(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<ReadFileRequest>(context);
+    const body = await this.parseRequestBody<ReadFileRequest>(request);
 
     this.logger.info('Reading file', {
       requestId: context.requestId,
@@ -81,7 +81,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleWrite(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<WriteFileRequest>(context);
+    const body = await this.parseRequestBody<WriteFileRequest>(request);
 
     this.logger.info('Writing file', {
       requestId: context.requestId,
@@ -112,7 +112,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleDelete(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<DeleteFileRequest>(context);
+    const body = await this.parseRequestBody<DeleteFileRequest>(request);
 
     this.logger.info('Deleting file', {
       requestId: context.requestId,
@@ -138,7 +138,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleRename(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<RenameFileRequest>(context);
+    const body = await this.parseRequestBody<RenameFileRequest>(request);
 
     this.logger.info('Renaming file', {
       requestId: context.requestId,
@@ -167,7 +167,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleMove(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<MoveFileRequest>(context);
+    const body = await this.parseRequestBody<MoveFileRequest>(request);
 
     this.logger.info('Moving file', {
       requestId: context.requestId,
@@ -196,7 +196,7 @@ export class FileHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleMkdir(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<MkdirRequest>(context);
+    const body = await this.parseRequestBody<MkdirRequest>(request);
 
     this.logger.info('Creating directory', {
       requestId: context.requestId,

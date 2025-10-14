@@ -46,7 +46,7 @@ export class PortHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleExpose(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<ExposePortRequest>(context);
+    const body = await this.parseRequestBody<ExposePortRequest>(request);
     
     this.logger.info('Exposing port', { 
       requestId: context.requestId,

@@ -34,8 +34,8 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleExecute(request: Request, context: RequestContext): Promise<Response> {
-    // Get validated data from context (set by validation middleware)
-    const body = this.getValidatedData<ExecuteRequest>(context);
+    // Parse request body directly
+    const body = await this.parseRequestBody<ExecuteRequest>(request);
     const sessionId = body.sessionId || context.sessionId;
     
     this.logger.info('Executing command', { 
@@ -132,8 +132,8 @@ export class ExecuteHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleStreamingExecute(request: Request, context: RequestContext): Promise<Response> {
-    // Get validated data from context (set by validation middleware)
-    const body = this.getValidatedData<ExecuteRequest>(context);
+    // Parse request body directly
+    const body = await this.parseRequestBody<ExecuteRequest>(request);
     const sessionId = body.sessionId || context.sessionId;
     
     this.logger.info('Starting streaming command execution', { 

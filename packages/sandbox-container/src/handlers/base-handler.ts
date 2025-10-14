@@ -11,7 +11,6 @@ import type {
   RequestContext,
   ServiceError,
   ServiceResult,
-  ValidatedRequestContext,
 } from "../core/types";
 
 export abstract class BaseHandler<TRequest, TResponse>
@@ -93,14 +92,19 @@ export abstract class BaseHandler<TRequest, TResponse>
     }
   }
 
-  protected getValidatedData<T>(context: RequestContext): T {
-    const validatedContext = context as ValidatedRequestContext<T>;
-    if (!validatedContext.validatedData) {
+  /**
+   * Parse and return request body as JSON
+   * Throws if body is missing or invalid JSON
+   */
+  protected async parseRequestBody<T>(request: Request): Promise<T> {
+    try {
+      const body = await request.json();
+      return body as T;
+    } catch (error) {
       throw new Error(
-        "No validated data found in context. Ensure validation middleware ran first."
+        `Failed to parse request body: ${error instanceof Error ? error.message : 'Invalid JSON'}`
       );
     }
-    return validatedContext.validatedData;
   }
 
   protected extractPathParam(pathname: string, position: number): string {

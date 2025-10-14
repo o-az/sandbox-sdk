@@ -162,27 +162,9 @@ describe('ExecuteHandler', () => {
       expect(responseData.context).toBeDefined();
     });
 
-    it('should handle missing validation data (middleware failure)', async () => {
-      // Test what happens when validation middleware fails to provide data
-      // This simulates a middleware error where no validatedData is set
-
-      const request = new Request('http://localhost:3000/api/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'echo test' })
-      });
-      
-      // Use context without validatedData to simulate middleware failure
-      try {
-        await executeHandler.handle(request, mockContext);
-        expect.unreachable('Handler should throw when no validated data is provided');
-      } catch (error) {
-        expect((error as Error).message).toContain('No validated data found in context');
-      }
-
-      // Verify service was not called
-      expect(mockProcessService.executeCommand).not.toHaveBeenCalled();
-    });
+    // Test removed: ValidationMiddleware was deleted in Phase 0 of error consolidation
+    // Handlers now parse request bodies directly using parseRequestBody()
+    // Invalid JSON will be caught during parsing, not by missing validatedData
   });
 
   describe('handle - Background Execution', () => {

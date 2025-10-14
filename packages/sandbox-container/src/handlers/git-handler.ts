@@ -32,7 +32,7 @@ export class GitHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleCheckout(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<GitCheckoutRequest>(context);
+    const body = await this.parseRequestBody<GitCheckoutRequest>(request);
     const sessionId = body.sessionId || context.sessionId;
     
     this.logger.info('Cloning git repository', { 

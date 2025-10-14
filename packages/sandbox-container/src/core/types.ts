@@ -13,12 +13,6 @@ export interface RequestContext {
   timestamp: Date;
 }
 
-// Extended context with validation data
-export interface ValidatedRequestContext<T = unknown> extends RequestContext {
-  originalRequest?: Request;
-  validatedData?: T;
-}
-
 export type ValidationResult<T = unknown> = {
   isValid: true;
   data: T;

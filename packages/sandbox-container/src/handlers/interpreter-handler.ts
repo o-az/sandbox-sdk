@@ -70,7 +70,7 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleCreateContext(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<CreateContextRequest>(context);
+    const body = await this.parseRequestBody<CreateContextRequest>(request);
 
     this.logger.info('Creating code context', {
       requestId: context.requestId,
@@ -165,11 +165,11 @@ export class InterpreterHandler extends BaseHandler<Request, Response> {
   }
 
   private async handleExecuteCode(request: Request, context: RequestContext): Promise<Response> {
-    const body = this.getValidatedData<{
+    const body = await this.parseRequestBody<{
       context_id: string;
       code: string;
       language?: string;
-    }>(context);
+    }>(request);
 
     this.logger.info('Executing code', {
       requestId: context.requestId,
