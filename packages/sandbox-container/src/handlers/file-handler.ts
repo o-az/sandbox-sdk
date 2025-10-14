@@ -1,14 +1,21 @@
-// File Handler
+import type {
+  DeleteFileResult,
+  MkdirResult,
+  MoveFileResult,
+  ReadFileResult,
+  RenameFileResult,
+  WriteFileResult,
+} from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 
-import type { 
+import type {
   DeleteFileRequest,
-  Logger, 
-  MkdirRequest, 
+  Logger,
+  MkdirRequest,
   MoveFileRequest,
   ReadFileRequest,
   RenameFileRequest,
-  RequestContext, 
+  RequestContext,
   WriteFileRequest
 } from '../core/types';
 import type { FileService } from '../services/file-service';
@@ -40,12 +47,9 @@ export class FileHandler extends BaseHandler<Request, Response> {
       case '/api/mkdir':
         return await this.handleMkdir(request, context);
       default:
-        return this.createServiceResponse({
-          success: false,
-          error: {
-            message: 'Invalid file endpoint',
-            code: ErrorCode.UNKNOWN_ERROR,
-          }
+        return this.createErrorResponse({
+          message: 'Invalid file endpoint',
+          code: ErrorCode.UNKNOWN_ERROR,
         }, context);
     }
   }
@@ -67,17 +71,27 @@ export class FileHandler extends BaseHandler<Request, Response> {
       this.logger.info('File read successfully', {
         requestId: context.requestId,
         path: body.path,
-        sizeBytes: result.data!.length,
+        sizeBytes: result.data.length,
       });
+
+      const response: ReadFileResult = {
+        success: true,
+        path: body.path,
+        content: result.data,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('File read failed', undefined, {
         requestId: context.requestId,
         path: body.path,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
+
+      return this.createErrorResponse(result.error, context);
     }
-    return this.createServiceResponse(result, context);
   }
 
   private async handleWrite(request: Request, context: RequestContext): Promise<Response> {
@@ -100,15 +114,24 @@ export class FileHandler extends BaseHandler<Request, Response> {
         path: body.path,
         sizeBytes: body.content.length,
       });
+
+      const response: WriteFileResult = {
+        success: true,
+        path: body.path,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('File write failed', undefined, {
         requestId: context.requestId,
         path: body.path,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
+
+      return this.createErrorResponse(result.error, context);
     }
-    return this.createServiceResponse(result, context);
   }
 
   private async handleDelete(request: Request, context: RequestContext): Promise<Response> {
@@ -126,15 +149,24 @@ export class FileHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         path: body.path,
       });
+
+      const response: DeleteFileResult = {
+        success: true,
+        path: body.path,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('File delete failed', undefined, {
         requestId: context.requestId,
         path: body.path,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
+
+      return this.createErrorResponse(result.error, context);
     }
-    return this.createServiceResponse(result, context);
   }
 
   private async handleRename(request: Request, context: RequestContext): Promise<Response> {
@@ -154,16 +186,26 @@ export class FileHandler extends BaseHandler<Request, Response> {
         oldPath: body.oldPath,
         newPath: body.newPath,
       });
+
+      const response: RenameFileResult = {
+        success: true,
+        path: body.oldPath,
+        newPath: body.newPath,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('File rename failed', undefined, {
         requestId: context.requestId,
         oldPath: body.oldPath,
         newPath: body.newPath,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
+
+      return this.createErrorResponse(result.error, context);
     }
-    return this.createServiceResponse(result, context);
   }
 
   private async handleMove(request: Request, context: RequestContext): Promise<Response> {
@@ -183,16 +225,26 @@ export class FileHandler extends BaseHandler<Request, Response> {
         sourcePath: body.sourcePath,
         destinationPath: body.destinationPath,
       });
+
+      const response: MoveFileResult = {
+        success: true,
+        path: body.sourcePath,
+        newPath: body.destinationPath,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('File move failed', undefined, {
         requestId: context.requestId,
         sourcePath: body.sourcePath,
         destinationPath: body.destinationPath,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
+
+      return this.createErrorResponse(result.error, context);
     }
-    return this.createServiceResponse(result, context);
   }
 
   private async handleMkdir(request: Request, context: RequestContext): Promise<Response> {
@@ -214,15 +266,25 @@ export class FileHandler extends BaseHandler<Request, Response> {
         path: body.path,
         recursive: body.recursive,
       });
+
+      const response: MkdirResult = {
+        success: true,
+        path: body.path,
+        recursive: body.recursive ?? false,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
     } else {
       this.logger.error('Directory creation failed', undefined, {
         requestId: context.requestId,
         path: body.path,
         recursive: body.recursive,
-        errorCode: result.error!.code,
-        errorMessage: result.error!.message,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
       });
+
+      return this.createErrorResponse(result.error, context);
     }
-    return this.createServiceResponse(result, context);
   }
 }

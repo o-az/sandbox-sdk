@@ -10,7 +10,6 @@ import type {
   Logger,
   RequestContext,
   ServiceError,
-  ServiceResult,
 } from "../core/types";
 
 export abstract class BaseHandler<TRequest, TResponse>
@@ -23,25 +22,41 @@ export abstract class BaseHandler<TRequest, TResponse>
     context: RequestContext
   ): Promise<TResponse>;
 
-  protected createSuccessResponse<T>(
-    data: T,
+  /**
+   * Create HTTP response from typed response data
+   * Type parameter ensures response matches a valid result interface from @repo/shared
+   */
+  protected createTypedResponse<T extends { success: boolean }>(
+    responseData: T,
     context: RequestContext,
     statusCode: number = 200
   ): Response {
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-      }),
-      {
-        status: statusCode,
-        headers: {
-          "Content-Type": "application/json",
-          ...context.corsHeaders,
-        },
-      }
-    );
+    return new Response(JSON.stringify(responseData), {
+      status: statusCode,
+      headers: {
+        "Content-Type": "application/json",
+        ...context.corsHeaders,
+      },
+    });
+  }
+
+  /**
+   * Create HTTP response from ServiceError
+   * Enriches error with HTTP status, suggestions, etc.
+   */
+  protected createErrorResponse(
+    serviceError: ServiceError,
+    context: RequestContext,
+    operation?: OperationType
+  ): Response {
+    const errorResponse = this.enrichServiceError(serviceError, operation);
+    return new Response(JSON.stringify(errorResponse), {
+      status: errorResponse.httpStatus,
+      headers: {
+        "Content-Type": "application/json",
+        ...context.corsHeaders,
+      },
+    });
   }
 
   /**
@@ -62,34 +77,6 @@ export abstract class BaseHandler<TRequest, TResponse>
       timestamp: new Date().toISOString(),
       suggestion: getSuggestion(errorCode, serviceError.details || {}),
     };
-  }
-
-  protected createServiceResponse<T = unknown>(
-    result: ServiceResult<T> | ServiceResult<void>,
-    context: RequestContext,
-    successStatus: number = 200,
-    operation?: OperationType
-  ): Response {
-    if (result.success) {
-      const data = "data" in result ? result.data : undefined;
-      return this.createSuccessResponse(data, context, successStatus);
-    } else {
-      // Enrich ServiceError to ErrorResponse
-      const errorResponse = this.enrichServiceError(result.error, operation);
-
-      return new Response(
-        JSON.stringify({
-          ...errorResponse,
-        }),
-        {
-          status: errorResponse.httpStatus,
-          headers: {
-            "Content-Type": "application/json",
-            ...context.corsHeaders,
-          },
-        }
-      );
-    }
   }
 
   /**
