@@ -63,14 +63,17 @@ export const StartProcessRequestSchema = z.object({
 });
 
 // Port management schemas
+// Phase 0: Allow all ports 1-65535 (services will validate - only port 3000 is blocked)
 export const ExposePortRequestSchema = z.object({
-  port: z.number().int().min(1024).max(65535, 'Port must be between 1024 and 65535'),
+  port: z.number().int().min(1).max(65535, 'Port must be between 1 and 65535'),
   name: z.string().optional(),
 });
 
 // Git operation schemas
+// Phase 0: Accept any non-empty string (services will validate format)
+// This allows SSH URLs like git@github.com:user/repo.git
 export const GitCheckoutRequestSchema = z.object({
-  repoUrl: z.string().url('Repository URL must be valid'),
+  repoUrl: z.string().min(1, 'Repository URL cannot be empty'),
   branch: z.string().optional(),
   targetDir: z.string().optional(),
   sessionId: z.string().optional(),

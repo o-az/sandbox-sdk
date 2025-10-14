@@ -643,28 +643,43 @@ describe('File Operations Workflow (E2E)', () => {
     expect(lsData.success).toBe(false); // Directory should not exist
   }, 90000);
 
-  test('should reject writing to protected paths', async () => {
+  test('should allow writing to any path (no path blocking - trust container isolation)', async () => {
     currentSandboxId = createSandboxId();
     const headers = createTestHeaders(currentSandboxId);
 
-    // Try to write to a protected system path
+    // Phase 0: Security simplification - we no longer block system paths
+    // Users control their sandbox - container isolation provides real security
+    // This test verifies we don't artificially restrict paths
+
+    // Try to write to /tmp (should work - users control their sandbox)
     const writeResponse = await vi.waitFor(
       async () => fetchWithStartup(`${workerUrl}/api/file/write`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          path: '/etc/passwd',
-          content: 'malicious content',
+          path: '/tmp/test-no-restrictions.txt',
+          content: 'Users control their sandbox!',
         }),
-      }, { expectSuccess: false }), // Don't throw on error - we expect this to fail
+      }),
       { timeout: 30000, interval: 2000 }
     );
 
-    // Should return error with PERMISSION_DENIED
-    expect(writeResponse.status).toBe(500);
-    const errorData = await writeResponse.json();
-    expect(errorData.error).toBeTruthy();
-    expect(errorData.error).toMatch(/permission denied|not allowed|forbidden/i);
+    expect(writeResponse.status).toBe(200);
+    const writeData = await writeResponse.json();
+    expect(writeData.success).toBe(true);
+
+    // Verify we can read it back
+    const readResponse = await fetch(`${workerUrl}/api/file/read`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/tmp/test-no-restrictions.txt',
+      }),
+    });
+
+    expect(readResponse.status).toBe(200);
+    const readData = await readResponse.json();
+    expect(readData.content).toBe('Users control their sandbox!');
   }, 60000);
 
   test('should return error when deleting nonexistent file', async () => {

@@ -1,98 +1,30 @@
 // Centralized Security Service
+//
+// **Security Model**: Trust container isolation, only protect SDK control plane
+//
+// Philosophy:
+// - Container isolation handles system-level security
+// - Users have full control over their sandbox (it's the value proposition!)
+// - Only protect port 3000 (SDK control plane) from interference
+// - Format validation only (null bytes, length limits)
+// - No content restrictions (no path blocking, no command blocking, no URL allowlists)
 import type { Logger, ValidationResult } from '../core/types';
 
 export class SecurityService {
-  // Dangerous path patterns that should be blocked
-  private static readonly DANGEROUS_PATTERNS = [
-    /^\/$/,           // Root directory
-    /^\/etc/,         // System config
-    /^\/var/,         // Variable data
-    /^\/usr/,         // User programs
-    /^\/bin/,         // System binaries
-    /^\/sbin/,        // System admin binaries
-    /^\/boot/,        // Boot files
-    /^\/dev/,         // Device files
-    /^\/proc/,        // Process info
-    /^\/sys/,         // System info
-    /^tmp\/\.\./,     // Directory traversal in temp
-    /\.\./,           // Directory traversal anywhere
-    /\/\.\./,         // Directory traversal
-    /\.\.$/,          // Ends with directory traversal
-    /\/$/,            // Ends with slash (potential dir traversal)
-  ];
-
-  // Reserved ports for sandbox infrastructure
-  // Only block ports that would conflict with the sandbox itself
+  // Only port 3000 is truly reserved (SDK control plane)
+  // This is REAL security - prevents control plane interference
   private static readonly RESERVED_PORTS = [
-    3000, // Container control plane (API endpoints)
-  ];
-
-  // Dangerous command patterns
-  private static readonly DANGEROUS_COMMANDS = [
-    // Critical system destruction
-    /rm\s+-rf\s+\/$/,          // Delete entire root filesystem
-    /rm\s+-rf\s+\/\s/,         // Delete root with trailing content  
-    /rm\s+-rf\s+\*$/,          // Delete everything in current dir
-    
-    // Privilege escalation (actual security risks)
-    /^sudo(\s|$)/,             // Privilege escalation
-    /^su(\s|$)/,               // Switch user
-    
-    // System password/user modification
-    /^passwd(\s|$)/,           // Change passwords
-    /^useradd(\s|$)/,          // Add users
-    /^userdel(\s|$)/,          // Delete users
-    /^usermod(\s|$)/,          // Modify users
-    
-    // Critical system file access
-    /\/etc\/passwd/,           // System password file
-    /\/etc\/shadow/,           // System shadow file
-    
-    // Filesystem operations
-    /^mkfs(\s|\.)/,            // Format filesystem (mkfs or mkfs.ext4)
-    /^mount(\s|$)/,            // Mount filesystems
-    /^umount(\s|$)/,           // Unmount filesystems
-    /^chmod\s+777/,            // Dangerous permissions
-    /^chown\s+root/,           // Change to root ownership
-    /^dd\s+if=/,               // Direct disk access
-    
-    // System control
-    /^init\s+0/,               // Shutdown system via init
-    /^shutdown/,               // Shutdown system
-    /^reboot/,                 // Reboot system
-    /^halt/,                   // Halt system
-    /^systemctl(\s|$)/,        // System control
-    /^service\s/,              // Service control
-    
-    // Shell execution (direct shell access)
-    /^exec\s+(bash|sh)/,       // Execute shell
-    /^\/bin\/(bash|sh)$/,      // Direct shell access
-    /^bash$/,                  // Direct bash
-    /^sh$/,                    // Direct sh
-    
-    // Remote code execution patterns
-    /curl.*\|\s*(bash|sh)/,    // Download and execute
-    /wget.*\|\s*(bash|sh)/,    // Download and execute
-    /\|\s*bash$/,              // Pipe to bash
-    /\|\s*sh$/,                // Pipe to shell
-    
-    // Process injection/evaluation
-    /^eval\s/,                 // Dynamic evaluation
-    /^nc\s+-l/,                // Netcat listener
-    /netcat\s+-l/,             // Netcat listener
-  ];
-
-  // Valid Git URL patterns
-  private static readonly VALID_GIT_PATTERNS = [
-    /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+(?:\.git)?$/,
-    /^https:\/\/gitlab\.com\/[\w.-]+\/[\w.-]+(?:\.git)?$/,
-    /^https:\/\/bitbucket\.org\/[\w.-]+\/[\w.-]+(?:\.git)?$/,
-    /^git@github\.com:[\w.-]+\/[\w.-]+\.git$/,
-    /^git@gitlab\.com:[\w.-]+\/[\w.-]+\.git$/,
+    3000, // Container control plane (API endpoints) - MUST be protected
   ];
 
   constructor(private logger: Logger) {}
 
+  /**
+   * Validate path format (not content)
+   * - No system directory blocking (users control their sandbox!)
+   * - No directory traversal blocking (container isolation handles this)
+   * - Only format validation (null bytes, length limits)
+   */
   validatePath(path: string): ValidationResult<string> {
     const errors: string[] = [];
 
@@ -102,48 +34,26 @@ export class SecurityService {
       return { isValid: false, errors: errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' })) };
     }
 
-    // Normalize path
-    const normalizedPath = this.normalizePath(path);
-
-    // Check against dangerous patterns
-    for (const pattern of SecurityService.DANGEROUS_PATTERNS) {
-      if (pattern.test(normalizedPath)) {
-        errors.push(`Path matches dangerous pattern: ${pattern.source}`);
-        this.logger.warn('Dangerous path access attempt', { 
-          originalPath: path, 
-          normalizedPath, 
-          pattern: pattern.source 
-        });
-      }
-    }
-
-    // Additional checks
-    if (normalizedPath.includes('\0')) {
+    // Only validate format, not content
+    if (path.includes('\0')) {
       errors.push('Path contains null bytes');
     }
 
-    if (normalizedPath.length > 4096) {
+    if (path.length > 4096) {
       errors.push('Path too long (max 4096 characters)');
     }
 
-    // Check for executable extensions in sensitive locations
-    if (normalizedPath.match(/\.(sh|bash|exe|bat|cmd|ps1)$/i) && 
-        normalizedPath.startsWith('/tmp/')) {
-      errors.push('Executable files not allowed in temporary directories');
-    }
-
     const isValid = errors.length === 0;
-    const validationErrors = errors.map(e => ({ 
-      field: 'path', 
-      message: e, 
-      code: 'PATH_SECURITY_VIOLATION' 
+    const validationErrors = errors.map(e => ({
+      field: 'path',
+      message: e,
+      code: 'INVALID_PATH'
     }));
 
     if (!isValid) {
-      this.logger.warn('Path validation failed', { 
-        path, 
-        normalizedPath, 
-        errors 
+      this.logger.warn('Path validation failed', {
+        path,
+        errors
       });
     }
 
@@ -151,7 +61,7 @@ export class SecurityService {
       return {
         isValid: true,
         errors: validationErrors,
-        data: normalizedPath
+        data: path
       };
     } else {
       return {
@@ -161,51 +71,12 @@ export class SecurityService {
     }
   }
 
-  sanitizePath(path: string): string {
-    if (!path || typeof path !== 'string') {
-      return '';
-    }
-
-    // Remove null bytes
-    let sanitized = path.replace(/\0/g, '');
-    
-    // Normalize path separators
-    sanitized = sanitized.replace(/\\/g, '/');
-    
-    // Remove multiple consecutive slashes
-    sanitized = sanitized.replace(/\/+/g, '/');
-    
-    // Remove trailing slash (except for root)
-    if (sanitized.length > 1 && sanitized.endsWith('/')) {
-      sanitized = sanitized.slice(0, -1);
-    }
-
-    // Resolve directory traversal attempts
-    const parts = sanitized.split('/');
-    const resolved: string[] = [];
-    
-    for (const part of parts) {
-      if (part === '' || part === '.') {
-        continue;
-      }
-      if (part === '..') {
-        if (resolved.length > 0 && resolved[resolved.length - 1] !== '..') {
-          resolved.pop();
-        }
-        continue;
-      }
-      resolved.push(part);
-    }
-
-    const result = `/${resolved.join('/')}`;
-    
-    if (result !== path) {
-      this.logger.info('Path sanitized', { original: path, sanitized: result });
-    }
-
-    return result;
-  }
-
+  /**
+   * Validate port number
+   * - Protects port 3000 (SDK control plane) - CRITICAL!
+   * - Range validation (1-65535)
+   * - No arbitrary port restrictions (users control their sandbox!)
+   */
   validatePort(port: number): ValidationResult<number> {
     const errors: string[] = [];
 
@@ -213,22 +84,22 @@ export class SecurityService {
     if (!Number.isInteger(port)) {
       errors.push('Port must be an integer');
     } else {
-      // Port range validation (allow user ports only)
-      if (port < 1024 || port > 65535) {
-        errors.push('Port must be between 1024 and 65535');
+      // Port range validation
+      if (port < 1 || port > 65535) {
+        errors.push('Port must be between 1 and 65535');
       }
 
-      // Only block ports used by sandbox infrastructure
+      // CRITICAL: Protect SDK control plane
       if (SecurityService.RESERVED_PORTS.includes(port)) {
-        errors.push(`Port ${port} is reserved for the container control plane`);
+        errors.push(`Port ${port} is reserved for the sandbox API control plane`);
       }
     }
 
     const isValid = errors.length === 0;
-    const validationErrors = errors.map(e => ({ 
-      field: 'port', 
-      message: e, 
-      code: 'INVALID_PORT' 
+    const validationErrors = errors.map(e => ({
+      field: 'port',
+      message: e,
+      code: 'INVALID_PORT'
     }));
 
     if (!isValid) {
@@ -249,6 +120,12 @@ export class SecurityService {
     }
   }
 
+  /**
+   * Validate command format (not content)
+   * - No command blocking (users can run bash, sudo, rm -rf - it's their sandbox!)
+   * - Only format validation (null bytes, length limits)
+   * - Container isolation provides real security
+   */
   validateCommand(command: string): ValidationResult<string> {
     const errors: string[] = [];
 
@@ -259,7 +136,7 @@ export class SecurityService {
     }
 
     const trimmedCommand = command.trim();
-    
+
     if (trimmedCommand.length === 0) {
       errors.push('Command cannot be empty');
     }
@@ -268,53 +145,21 @@ export class SecurityService {
       errors.push('Command too long (max 8192 characters)');
     }
 
-    // Check against dangerous command patterns
-    for (const pattern of SecurityService.DANGEROUS_COMMANDS) {
-      if (pattern.test(trimmedCommand)) {
-        errors.push(`Command matches dangerous pattern: ${pattern.source}`);
-        this.logger.warn('Dangerous command execution attempt', { 
-          command: trimmedCommand, 
-          pattern: pattern.source 
-        });
-      }
-    }
-
-    // Additional checks
     if (trimmedCommand.includes('\0')) {
       errors.push('Command contains null bytes');
     }
 
-    // Check for specific shell injection patterns (be permissive for development)
-    const dangerousShellPatterns = [
-      /;\s*(rm|sudo|passwd|shutdown)/,  // Command chaining with dangerous commands
-      /\|\s*(rm|sudo|passwd|shutdown)/, // Piping to dangerous commands
-      /&&\s*(rm|sudo|passwd|shutdown)/, // AND chaining with dangerous commands
-      /\|\|\s*(rm|sudo|passwd|shutdown)/, // OR chaining with dangerous commands
-      /`.*sudo/,                        // Command substitution with sudo
-      /\$\(.*sudo/,                     // Command substitution with sudo
-      /`.*rm\s+-rf/,                    // Command substitution with rm -rf
-      /\$\(.*rm\s+-rf/,                 // Command substitution with rm -rf
-      /\$\{IFS\}/,                      // Shell variable manipulation (bypass attempt)
-    ];
-
-    for (const pattern of dangerousShellPatterns) {
-      if (pattern.test(trimmedCommand)) {
-        errors.push('Command contains dangerous shell injection pattern');
-        break;
-      }
-    }
-
     const isValid = errors.length === 0;
-    const validationErrors = errors.map(e => ({ 
-      field: 'command', 
-      message: e, 
-      code: 'COMMAND_SECURITY_VIOLATION' 
+    const validationErrors = errors.map(e => ({
+      field: 'command',
+      message: e,
+      code: 'INVALID_COMMAND'
     }));
 
     if (!isValid) {
-      this.logger.warn('Command validation failed', { 
-        command: trimmedCommand, 
-        errors 
+      this.logger.warn('Command validation failed', {
+        command: trimmedCommand,
+        errors
       });
     }
 
@@ -332,6 +177,12 @@ export class SecurityService {
     }
   }
 
+  /**
+   * Validate Git URL format (not content)
+   * - No URL allowlist (users can use private repos, self-hosted Git)
+   * - Only format validation (null bytes, length limits)
+   * - Trust users to provide valid Git URLs
+   */
   validateGitUrl(url: string): ValidationResult<string> {
     const errors: string[] = [];
 
@@ -351,36 +202,21 @@ export class SecurityService {
       errors.push('Git URL too long (max 2048 characters)');
     }
 
-    // Check against valid Git URL patterns
-    const isValidPattern = SecurityService.VALID_GIT_PATTERNS.some(pattern => 
-      pattern.test(trimmedUrl)
-    );
-
-    if (!isValidPattern) {
-      errors.push('Git URL must be from a trusted provider (GitHub, GitLab, Bitbucket)');
-    }
-
-    // Additional security checks
     if (trimmedUrl.includes('\0')) {
       errors.push('Git URL contains null bytes');
     }
 
-    // Check for suspicious characters
-    if (/[<>|&;`$(){}[\]]/.test(trimmedUrl)) {
-      errors.push('Git URL contains suspicious characters');
-    }
-
     const isValid = errors.length === 0;
-    const validationErrors = errors.map(e => ({ 
-      field: 'gitUrl', 
-      message: e, 
-      code: 'GIT_URL_SECURITY_VIOLATION' 
+    const validationErrors = errors.map(e => ({
+      field: 'gitUrl',
+      message: e,
+      code: 'INVALID_GIT_URL'
     }));
 
     if (!isValid) {
-      this.logger.warn('Git URL validation failed', { 
-        gitUrl: trimmedUrl, 
-        errors 
+      this.logger.warn('Git URL validation failed', {
+        gitUrl: trimmedUrl,
+        errors
       });
     }
 
@@ -398,12 +234,7 @@ export class SecurityService {
     }
   }
 
-  // Additional helper methods
-
-  isPathInAllowedDirectory(path: string, allowedDirs: string[] = ['/tmp', '/home', '/workspace']): boolean {
-    const normalizedPath = this.normalizePath(path);
-    return allowedDirs.some(dir => normalizedPath.startsWith(dir));
-  }
+  // Helper methods
 
   generateSecureSessionId(): string {
     // Use crypto.randomBytes for secure session ID generation
@@ -413,34 +244,8 @@ export class SecurityService {
     const randomHex = Array.from(randomBytes)
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
-    
+
     return `session_${timestamp}_${randomHex}`;
-  }
-
-  hashSensitiveData(data: string): string {
-    // Simple hash for logging sensitive data (not cryptographically secure)
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return `hash_${Math.abs(hash).toString(16)}`;
-  }
-
-  private normalizePath(path: string): string {
-    // Convert backslashes to forward slashes
-    let normalized = path.replace(/\\/g, '/');
-    
-    // Remove multiple consecutive slashes
-    normalized = normalized.replace(/\/+/g, '/');
-    
-    // Always start with /
-    if (!normalized.startsWith('/')) {
-      normalized = `/${normalized}`;
-    }
-
-    return normalized;
   }
 
   // Method to log security events for monitoring
@@ -451,5 +256,4 @@ export class SecurityService {
       ...details,
     });
   }
-
 }

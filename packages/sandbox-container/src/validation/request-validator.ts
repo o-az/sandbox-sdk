@@ -1,4 +1,9 @@
-import type { SecurityService } from '@sandbox-container/security/security-service';
+// Request Validator - Structure validation only
+//
+// Philosophy:
+// - Use Zod for HTTP request structure validation (untrusted external input)
+// - NO security validation here - services handle their own validation
+// - Keep it simple - just parse and return typed data
 import type { ValidationResult } from '../core/types';
 import {
   type ExecuteRequest,
@@ -15,12 +20,13 @@ import {
 } from './schemas';
 
 export class RequestValidator {
-  constructor(private security: SecurityService) {}
+  // No security service dependency needed!
+  // Services handle their own validation
 
   validateExecuteRequest(request: unknown): ValidationResult<ExecuteRequest> {
-    // Parse with Zod - no casting needed!
+    // Parse with Zod - structure validation only
     const parseResult = ExecuteRequestSchema.safeParse(request);
-    
+
     if (!parseResult.success) {
       return {
         isValid: false,
@@ -32,21 +38,10 @@ export class RequestValidator {
       };
     }
 
-    // parseResult.data is automatically typed as ExecuteRequest
-    const typedRequest = parseResult.data;
-    
-    // Additional security validation for command
-    const commandValidation = this.security.validateCommand(typedRequest.command);
-    if (!commandValidation.isValid) {
-      return {
-        isValid: false,
-        errors: commandValidation.errors,
-      };
-    }
-
+    // Return parsed data - services will handle validation
     return {
       isValid: true,
-      data: typedRequest,
+      data: parseResult.data,
       errors: [],
     };
   }
@@ -55,7 +50,7 @@ export class RequestValidator {
     // Get the appropriate schema for the operation
     const schema = FileRequestSchemas[operation];
     const parseResult = schema.safeParse(request);
-    
+
     if (!parseResult.success) {
       return {
         isValid: false,
@@ -67,48 +62,17 @@ export class RequestValidator {
       };
     }
 
-    // parseResult.data is automatically typed correctly
-    const typedRequest = parseResult.data;
-    
-    // Additional security validation for path(s)
-    const pathsToValidate: string[] = [];
-    
-    if ('path' in typedRequest) {
-      pathsToValidate.push(typedRequest.path);
-    }
-    if ('oldPath' in typedRequest) {
-      pathsToValidate.push(typedRequest.oldPath);
-    }
-    if ('newPath' in typedRequest) {
-      pathsToValidate.push(typedRequest.newPath);
-    }
-    if ('sourcePath' in typedRequest) {
-      pathsToValidate.push(typedRequest.sourcePath);
-    }
-    if ('destinationPath' in typedRequest) {
-      pathsToValidate.push(typedRequest.destinationPath);
-    }
-
-    for (const path of pathsToValidate) {
-      const pathValidation = this.security.validatePath(path);
-      if (!pathValidation.isValid) {
-        return {
-          isValid: false,
-          errors: pathValidation.errors,
-        };
-      }
-    }
-
+    // Return parsed data - services will handle validation
     return {
       isValid: true,
-      data: typedRequest as T, // Safe cast since we validated with the correct schema for this operation
+      data: parseResult.data as T,
       errors: [],
     };
   }
 
   validateProcessRequest(request: unknown): ValidationResult<StartProcessRequest> {
     const parseResult = StartProcessRequestSchema.safeParse(request);
-    
+
     if (!parseResult.success) {
       return {
         isValid: false,
@@ -120,27 +84,17 @@ export class RequestValidator {
       };
     }
 
-    const typedRequest = parseResult.data;
-    
-    // Additional security validation for command
-    const commandValidation = this.security.validateCommand(typedRequest.command);
-    if (!commandValidation.isValid) {
-      return {
-        isValid: false,
-        errors: commandValidation.errors,
-      };
-    }
-
+    // Return parsed data - services will handle validation
     return {
       isValid: true,
-      data: typedRequest,
+      data: parseResult.data,
       errors: [],
     };
   }
 
   validatePortRequest(request: unknown): ValidationResult<ExposePortRequest> {
     const parseResult = ExposePortRequestSchema.safeParse(request);
-    
+
     if (!parseResult.success) {
       return {
         isValid: false,
@@ -152,27 +106,17 @@ export class RequestValidator {
       };
     }
 
-    const typedRequest = parseResult.data;
-    
-    // Additional security validation for port
-    const portValidation = this.security.validatePort(typedRequest.port);
-    if (!portValidation.isValid) {
-      return {
-        isValid: false,
-        errors: portValidation.errors,
-      };
-    }
-
+    // Return parsed data - services will handle validation
     return {
       isValid: true,
-      data: typedRequest,
+      data: parseResult.data,
       errors: [],
     };
   }
 
   validateGitRequest(request: unknown): ValidationResult<GitCheckoutRequest> {
     const parseResult = GitCheckoutRequestSchema.safeParse(request);
-    
+
     if (!parseResult.success) {
       return {
         isValid: false,
@@ -184,31 +128,10 @@ export class RequestValidator {
       };
     }
 
-    const typedRequest = parseResult.data;
-    
-    // Additional security validation for Git URL
-    const gitUrlValidation = this.security.validateGitUrl(typedRequest.repoUrl);
-    if (!gitUrlValidation.isValid) {
-      return {
-        isValid: false,
-        errors: gitUrlValidation.errors,
-      };
-    }
-
-    // If targetDir is provided, validate it as a path
-    if (typedRequest.targetDir) {
-      const pathValidation = this.security.validatePath(typedRequest.targetDir);
-      if (!pathValidation.isValid) {
-        return {
-          isValid: false,
-          errors: pathValidation.errors,
-        };
-      }
-    }
-
+    // Return parsed data - services will handle validation
     return {
       isValid: true,
-      data: typedRequest,
+      data: parseResult.data,
       errors: [],
     };
   }
