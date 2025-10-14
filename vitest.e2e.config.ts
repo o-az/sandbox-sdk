@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitest/config';
-import path from 'node:path';
 
 /**
  * E2E test configuration
@@ -29,13 +28,6 @@ export default defineConfig({
       forks: {
         singleFork: true,
       },
-    },
-  },
-
-  resolve: {
-    alias: {
-      '@container': path.resolve(__dirname, 'packages/sandbox-container/src'),
-      '@sandbox-utils': path.resolve(__dirname, 'packages/sandbox/src'),
     },
   },
 });

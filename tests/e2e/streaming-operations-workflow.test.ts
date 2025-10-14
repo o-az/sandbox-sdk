@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
-import { parseSSEStream } from '@sandbox-utils/sse-parser';
+import { parseSSEStream, type ExecEvent } from '@cloudflare/sandbox';
 
 /**
  * Streaming Operations Workflow Integration Tests
@@ -46,17 +46,17 @@ describe('Streaming Operations Workflow', () => {
     /**
      * Helper to collect events from streaming response using SDK's parseSSEStream utility
      */
-    async function collectSSEEvents(response: Response, maxEvents: number = 50): Promise<any[]> {
+    async function collectSSEEvents(response: Response, maxEvents: number = 50): Promise<ExecEvent[]> {
       if (!response.body) {
         throw new Error('No readable stream in response');
       }
 
       console.log('[Test] Starting to consume stream...');
-      const events: any[] = [];
+      const events: ExecEvent[] = [];
       const abortController = new AbortController();
 
       try {
-        for await (const event of parseSSEStream(response.body, abortController.signal)) {
+        for await (const event of parseSSEStream<ExecEvent>(response.body, abortController.signal)) {
           console.log('[Test] Received event:', event.type);
           events.push(event);
 
@@ -111,7 +111,7 @@ describe('Streaming Operations Workflow', () => {
       // Should have start event
       const startEvent = events.find((e) => e.type === 'start');
       expect(startEvent).toBeDefined();
-      expect(startEvent.command).toContain('echo');
+      expect(startEvent?.command).toContain('echo');
 
       // Should have stdout events
       const stdoutEvents = events.filter((e) => e.type === 'stdout');
@@ -126,7 +126,7 @@ describe('Streaming Operations Workflow', () => {
       // Should have complete event
       const completeEvent = events.find((e) => e.type === 'complete');
       expect(completeEvent).toBeDefined();
-      expect(completeEvent.exitCode).toBe(0);
+      expect(completeEvent?.exitCode).toBe(0);
     }, 60000);
 
     test('should stream stderr events separately', async () => {
@@ -224,7 +224,7 @@ describe('Streaming Operations Workflow', () => {
       // Should have complete event with non-zero exit code
       const completeEvent = events.find((e) => e.type === 'complete');
       expect(completeEvent).toBeDefined();
-      expect(completeEvent.exitCode).not.toBe(0);
+      expect(completeEvent?.exitCode).not.toBe(0);
     }, 60000);
 
     test('should handle nonexistent commands with proper exit code', async () => {
@@ -262,7 +262,7 @@ describe('Streaming Operations Workflow', () => {
       // Should have complete event with exit code 127 (command not found)
       const completeEvent = events.find((e) => e.type === 'complete');
       expect(completeEvent).toBeDefined();
-      expect(completeEvent.exitCode).toBe(127); // Standard Unix "command not found" exit code
+      expect(completeEvent?.exitCode).toBe(127); // Standard Unix "command not found" exit code
 
       // Should have stderr events with error message
       const stderrEvents = events.filter((e) => e.type === 'stderr');
@@ -330,7 +330,7 @@ describe('Streaming Operations Workflow', () => {
       // Should complete successfully
       const completeEvent = events.find((e) => e.type === 'complete');
       expect(completeEvent).toBeDefined();
-      expect(completeEvent.exitCode).toBe(0);
+      expect(completeEvent?.exitCode).toBe(0);
     }, 60000);
 
     test('should support concurrent streaming operations', async () => {
@@ -383,9 +383,9 @@ describe('Streaming Operations Workflow', () => {
       const complete2 = events2.find((e) => e.type === 'complete');
 
       expect(complete1).toBeDefined();
-      expect(complete1.exitCode).toBe(0);
+      expect(complete1?.exitCode).toBe(0);
       expect(complete2).toBeDefined();
-      expect(complete2.exitCode).toBe(0);
+      expect(complete2?.exitCode).toBe(0);
 
       // Verify outputs didn't mix
       const output1 = events1.filter((e) => e.type === 'stdout').map((e) => e.data).join('');
@@ -404,7 +404,7 @@ describe('Streaming Operations Workflow', () => {
       const sessionResponse = await vi.waitFor(
         async () => fetchWithStartup(`${workerUrl}/api/session/create`, {
           method: 'POST',
-          headers: createTestHeaders(currentSandboxId),
+          headers: createTestHeaders(currentSandboxId ?? ''),
           body: JSON.stringify({
             env: {
               SESSION_ID: 'test-session-streaming',
@@ -417,11 +417,14 @@ describe('Streaming Operations Workflow', () => {
 
       const sessionData = await sessionResponse.json();
       const sessionId = sessionData.sessionId;
+      if (!sessionId) {
+        throw new Error('Session ID not returned from API');
+      }
 
       // Stream a command in the session
       const streamResponse = await fetch(`${workerUrl}/api/execStream`, {
         method: 'POST',
-        headers: createTestHeaders(sandboxId, sessionId),
+        headers: createTestHeaders(currentSandboxId, sessionId),
         body: JSON.stringify({
           command: 'echo "Session: $SESSION_ID, Env: $NODE_ENV"',
         }),

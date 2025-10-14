@@ -620,7 +620,7 @@ export class FileService implements FileSystemOperations {
 
       // 4. Build command string (stat with format argument)
       const escapedPath = this.escapePath(path);
-      const command = `stat ${statCmd.args[1]} ${escapedPath}`;
+      const command = `stat ${statCmd.args[0]} ${statCmd.args[1]} ${escapedPath}`;
 
       // 5. Get file stats using SessionManager
       const execResult = await this.sessionManager.executeInSession(sessionId, command);
