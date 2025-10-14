@@ -540,21 +540,22 @@ export class Session {
       script += `  \n`;
     }
 
-    script += `  # Pre-cleanup and create FIFOs with error handling\n`;
-    script += `  rm -f "$sp" "$ep" && mkfifo "$sp" "$ep" || exit 1\n`;
-    script += `  \n`;
-    script += `  # Label stdout with binary prefix in background (capture PID)\n`;
-    script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x01\\x01\\x01%s\\n' "$line"; done < "$sp") >> "$log" & r1=$!\n`;
-    script += `  \n`;
-    script += `  # Label stderr with binary prefix in background (capture PID)\n`;
-    script += `  (while IFS= read -r line || [[ -n "$line" ]]; do printf '\\x02\\x02\\x02%s\\n' "$line"; done < "$ep") >> "$log" & r2=$!\n`;
-    script += `  \n`;
-    script += `\n`;
+
 
     // Execute command based on execution mode (foreground vs background)
     if (isBackground) {
       // BACKGROUND PATTERN (for execStream/startProcess)
       // Command runs in subshell, shell continues immediately
+      // Create FIFOs and start labelers (background mode)
+      script += `  # Pre-cleanup and create FIFOs with error handling\n`;
+      script += `  rm -f \"$sp\" \"$ep\" && mkfifo \"$sp\" \"$ep\" || exit 1\n`;
+      script += `  \n`;
+      script += `  # Label stdout with binary prefix in background (capture PID)\n`;
+      script += `  (while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x01\\x01\\x01%s\\n' \"$line\"; done < \"$sp\") >> \"$log\" & r1=$!\n`;
+      script += `  \n`;
+      script += `  # Label stderr with binary prefix in background (capture PID)\n`;
+      script += `  (while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done < \"$ep\") >> \"$log\" & r2=$!\n`;
+      script += `  \n`;
       if (cwd) {
         const safeCwd = this.escapeShellPath(cwd);
         script += `  # Save and change directory\n`;
@@ -580,13 +581,8 @@ export class Session {
         script += `    # Restore directory immediately\n`;
         script += `    cd "$PREV_DIR"\n`;
         script += `  else\n`;
-        script += `    echo "Failed to change directory to ${safeCwd}" > "$ep"\n`;
-        script += `    : > "$sp"\n`;
-        script += `    wait "$r1" "$r2" 2>/dev/null\n`;
-        script += `    # Write error exit code\n`;
-        script += `    echo "1" > ${safeExitCodeFile}.tmp\n`;
-        script += `    mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
-        script += `    rm -f "$sp" "$ep"\n`;
+        script += `    printf '\\x02\\x02\\x02%s\\n' \"Failed to change directory to ${safeCwd}\" >> \"$log\"\n`;
+        script += `    EXIT_CODE=1\n`;
         script += `  fi\n`;
       } else {
         script += `  # Execute command in BACKGROUND (runs in subshell, enables concurrency)\n`;
@@ -611,46 +607,36 @@ export class Session {
       // FOREGROUND PATTERN (for exec)
       // Command runs in main shell, state persists!
 
-      // Open FIFOs on explicit file descriptors for clean closure
-      script += `  # Open FIFOs on explicit file descriptors\n`;
-      script += `  exec 3> "$sp"\n`;
-      script += `  exec 4> "$ep"\n`;
-      script += `  \n`;
+      // FOREGROUND: Avoid FIFOs to eliminate race conditions.
+      // Use bash process substitution to prefix stdout/stderr while keeping
+      // execution in the main shell so session state persists across commands.
+
 
       if (cwd) {
         const safeCwd = this.escapeShellPath(cwd);
         script += `  # Save and change directory\n`;
         script += `  PREV_DIR=$(pwd)\n`;
         script += `  if cd ${safeCwd}; then\n`;
-        script += `    # Execute command in FOREGROUND (state persists!)\n`;
-        script += `    { ${command}; } >&3 2>&4\n`;
+        script += `    # Execute command with prefixed streaming via process substitution\n`;
+        script += `    { ${command}; } > >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x01\\x01\\x01%s\\n' \"$line\"; done >> \"$log\") 2> >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done >> \"$log\")\n`;
         script += `    EXIT_CODE=$?\n`;
         script += `    # Restore directory\n`;
         script += `    cd "$PREV_DIR"\n`;
         script += `  else\n`;
-        script += `    echo "Failed to change directory to ${safeCwd}" >&4\n`;
-        script += `    : >&3\n`;
+        script += `    printf '\\x02\\x02\\x02%s\\n' \"Failed to change directory to ${safeCwd}\" >> \"$log\"\n`;
         script += `    EXIT_CODE=1\n`;
         script += `  fi\n`;
       } else {
-        script += `  # Execute command in FOREGROUND (state persists!)\n`;
-        script += `  { ${command}; } >&3 2>&4\n`;
+        script += `  # Execute command with prefixed streaming via process substitution\n`;
+        script += `  { ${command}; } > >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x01\\x01\\x01%s\\n' \"$line\"; done >> \"$log\") 2> >(while IFS= read -r line || [[ -n \"$line\" ]]; do printf '\\x02\\x02\\x02%s\\n' \"$line\"; done >> \"$log\")\n`;
         script += `  EXIT_CODE=$?\n`;
       }
 
-      // CRITICAL: Close FDs to signal EOF to labelers
-      script += `  \n`;
-      script += `  # Close FDs to signal EOF to labelers\n`;
-      script += `  exec 3>&-\n`;
-      script += `  exec 4>&-\n`;
-      script += `  \n`;
-
-      // For foreground: wait for labelers and write exit code in main script
-      script += `  # Wait for labeler processes to finish (they got EOF)\n`;
-      script += `  wait "$r1" "$r2" 2>/dev/null\n`;
+      // Ensure process-substitution consumers complete before writing exit code
+      script += `  wait 2>/dev/null\n`;
       script += `  \n`;
       script += `  # Write exit code\n`;
-      script += `  echo "$EXIT_CODE" > ${safeExitCodeFile}.tmp\n`;
+      script += `  echo \"$EXIT_CODE\" > ${safeExitCodeFile}.tmp\n`;
       script += `  mv ${safeExitCodeFile}.tmp ${safeExitCodeFile}\n`;
     }
 
