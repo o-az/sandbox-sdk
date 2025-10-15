@@ -132,6 +132,9 @@ dist
 .wrangler
 .dev.vars
 
+# Generated wrangler config (use wrangler.template.jsonc as source of truth)
+tests/e2e/test-worker/wrangler.jsonc
+
 .DS_Store
 
 # Turborepo cache

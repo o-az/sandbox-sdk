@@ -87,13 +87,19 @@ jobs:
       - name: Build packages
         run: npm run build
 
-      - name: Build test worker Docker image
-        run: npm run docker:local -w @cloudflare/sandbox
-
       - name: Set worker name
         id: worker-name
         run: |
           echo "worker_name=sandbox-e2e-test-worker-release-${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      # Generate unique wrangler config for this release
+      - name: Generate wrangler config
+        run: |
+          cd tests/e2e/test-worker
+          ./generate-config.sh ${{ steps.worker-name.outputs.worker_name }}
+
+      - name: Build test worker Docker image
+        run: npm run docker:local -w @cloudflare/sandbox
 
       - name: Deploy test worker
         uses: cloudflare/wrangler-action@v3
@@ -118,7 +124,17 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          # Delete worker (this also removes the worker's binding to the container)
           npx wrangler delete --name ${{ steps.worker-name.outputs.worker_name }} || echo "Worker already deleted or doesn't exist"
+
+          # Get container ID for this worker and delete it
+          CONTAINER_ID=$(npx wrangler containers list --json | jq -r '.[] | select(.name=="${{ steps.worker-name.outputs.worker_name }}") | .id')
+          if [ -n "$CONTAINER_ID" ]; then
+            echo "Deleting container: $CONTAINER_ID"
+            npx wrangler containers delete "$CONTAINER_ID" || echo "Failed to delete container"
+          else
+            echo "No container found for worker ${{ steps.worker-name.outputs.worker_name }}"
+          fi
         working-directory: tests/e2e/test-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

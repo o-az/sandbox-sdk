@@ -1,0 +1,102 @@
+name: Cleanup Stale PR Resources
+
+permissions:
+  contents: read
+  pull-requests: read
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  cleanup-stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cleanup stale PR resources
+        run: |
+          echo "=== Checking for stale PR resources ==="
+
+          # Get current timestamp (in seconds)
+          CURRENT_TIME=$(date +%s)
+          STALE_THRESHOLD=$((24 * 60 * 60)) # 24 hours in seconds
+
+          # List all workers and filter for PR test workers
+          WORKERS=$(npx wrangler workers list --json 2>/dev/null || echo "[]")
+
+          echo "$WORKERS" | jq -r '.[] | select(.name | test("^sandbox-e2e-test-worker-pr-[0-9]+$")) | .name' | while read -r WORKER_NAME; do
+            if [ -z "$WORKER_NAME" ]; then
+              continue
+            fi
+
+            # Extract PR number from worker name
+            PR_NUMBER=$(echo "$WORKER_NAME" | sed 's/sandbox-e2e-test-worker-pr-//')
+
+            echo ""
+            echo "Checking worker: $WORKER_NAME (PR #$PR_NUMBER)"
+
+            # Check if PR exists and get its last update time
+            PR_INFO=$(gh pr view "$PR_NUMBER" --json state,updatedAt 2>/dev/null || echo "")
+
+            if [ -z "$PR_INFO" ]; then
+              echo "  ⚠️  PR #$PR_NUMBER not found - will clean up"
+              SHOULD_CLEANUP=true
+            else
+              PR_STATE=$(echo "$PR_INFO" | jq -r '.state')
+              PR_UPDATED=$(echo "$PR_INFO" | jq -r '.updatedAt')
+              PR_UPDATED_SECONDS=$(date -d "$PR_UPDATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$PR_UPDATED" +%s 2>/dev/null)
+
+              TIME_SINCE_UPDATE=$((CURRENT_TIME - PR_UPDATED_SECONDS))
+              HOURS_SINCE_UPDATE=$((TIME_SINCE_UPDATE / 3600))
+
+              echo "  State: $PR_STATE"
+              echo "  Last updated: $HOURS_SINCE_UPDATE hours ago"
+
+              if [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "MERGED" ]; then
+                echo "  ✓ PR is closed/merged - will clean up"
+                SHOULD_CLEANUP=true
+              elif [ "$TIME_SINCE_UPDATE" -gt "$STALE_THRESHOLD" ]; then
+                echo "  ✓ PR is stale (>24h inactive) - will clean up"
+                SHOULD_CLEANUP=true
+              else
+                echo "  ✗ PR is active - skipping"
+                SHOULD_CLEANUP=false
+              fi
+            fi
+
+            # Cleanup if needed
+            if [ "$SHOULD_CLEANUP" = true ]; then
+              echo "  Deleting worker: $WORKER_NAME"
+              npx wrangler delete --name "$WORKER_NAME" 2>/dev/null || echo "  Failed to delete worker"
+
+              # Also delete associated container
+              CONTAINER_ID=$(npx wrangler containers list --json 2>/dev/null | jq -r ".[] | select(.name==\"$WORKER_NAME\") | .id")
+              if [ -n "$CONTAINER_ID" ]; then
+                echo "  Deleting container: $CONTAINER_ID"
+                npx wrangler containers delete "$CONTAINER_ID" 2>/dev/null || echo "  Failed to delete container"
+              fi
+
+              echo "  ✅ Cleanup complete"
+            fi
+          done
+
+          echo ""
+          echo "=== Stale resource cleanup complete ==="
+        working-directory: tests/e2e/test-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

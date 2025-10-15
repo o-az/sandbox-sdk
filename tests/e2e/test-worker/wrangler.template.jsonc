@@ -1,5 +1,5 @@
 {
-  "name": "sandbox-e2e-test-worker",
+  "name": "{{WORKER_NAME}}",
   "main": "index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,7 +13,7 @@
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
-      "name": "sandbox"
+      "name": "{{CONTAINER_NAME}}"
     }
   ],
 
