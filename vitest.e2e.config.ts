@@ -7,7 +7,15 @@ import { defineConfig } from 'vitest/config';
  * They validate true end-to-end behavior with real Durable Objects and containers.
  *
  * Run with: npm run test:e2e
+ *
+ * Parallelization strategy:
+ * - Local: Serial execution (wrangler dev can be unstable with parallel tests)
+ * - CI: Parallel execution (deployed worker handles concurrency well)
  */
+
+// Check if running in CI environment
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+
 export default defineConfig({
   test: {
     name: 'e2e',
@@ -20,14 +28,24 @@ export default defineConfig({
     hookTimeout: 60000, // 1 minute for beforeAll/afterAll
     teardownTimeout: 30000, // 30s for cleanup
 
-    // Run tests serially to avoid port conflicts
-    // Each test spawns its own wrangler dev instance or uses deployed worker
+    // Conditional parallelization based on environment
     pool: 'forks',
-    maxConcurrency: 1,
-    poolOptions: {
-      forks: {
-        singleFork: true,
+    ...(isCI ? {
+      // CI: Enable parallel execution - deployed worker handles it well
+      poolOptions: {
+        forks: {
+          singleFork: false,
+        },
       },
-    },
+      fileParallelism: true,
+    } : {
+      // Local: Serial execution to avoid wrangler dev conflicts
+      maxConcurrency: 1,
+      poolOptions: {
+        forks: {
+          singleFork: true,
+        },
+      },
+    }),
   },
 });
