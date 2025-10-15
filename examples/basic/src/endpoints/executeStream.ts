@@ -4,7 +4,7 @@ import { corsHeaders, errorResponse, parseJsonBody } from "../http";
 
 export async function executeCommandStream(sandbox: Sandbox<unknown>, request: Request) {
     const body = await parseJsonBody(request);
-    const { command, sessionId } = body;
+    const { command } = body;
 
     if (!command) {
         return errorResponse("Command is required");
@@ -20,7 +20,7 @@ export async function executeCommandStream(sandbox: Sandbox<unknown>, request: R
             const encoder = new TextEncoder();
 
             // Get the ReadableStream from sandbox
-            const stream = await sandbox.execStream(command, { sessionId });
+            const stream = await sandbox.execStream(command);
             
             // Convert to AsyncIterable using parseSSEStream
             for await (const event of parseSSEStream<ExecEvent>(stream)) {
