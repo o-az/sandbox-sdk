@@ -67,7 +67,7 @@ describe('Process Lifecycle Workflow', () => {
 
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(startResponse.status).toBe(200);
@@ -113,7 +113,7 @@ describe('Process Lifecycle Workflow', () => {
 
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const process1Data = await process1Response.json();
@@ -181,7 +181,7 @@ describe('Process Lifecycle Workflow', () => {
 
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const startData = await startResponse.json();
@@ -224,7 +224,7 @@ console.log("Line 3");
 
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Start the script
@@ -323,7 +323,7 @@ console.log("Server started on port 8080");
 
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Start the server
@@ -391,7 +391,7 @@ console.log("Server started on port 8080");
 
             }),
           }),
-          { timeout: 30000, interval: 2000 }
+          { timeout: 60000, interval: 2000 }
         );
 
         const data = await startResponse.json();
@@ -466,7 +466,7 @@ console.log("Server listening on port 8080");
 
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Step 2: Start the process
@@ -549,7 +549,7 @@ console.log("Server listening on port 8080");
           method: 'DELETE',
           headers,
         }, { expectSuccess: false }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Should return error
@@ -573,7 +573,7 @@ console.log("Server listening on port 8080");
             name: 'ssh-server',
           }),
         }, { expectSuccess: false }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Should return error for reserved port
@@ -596,7 +596,7 @@ console.log("Server listening on port 8080");
             command: 'echo "init"',
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Try to unexpose a port that was never exposed

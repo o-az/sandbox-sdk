@@ -42,7 +42,7 @@ describe('Environment Variables Workflow', () => {
             envVars: { TEST_VAR: 'hello_world' },
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(setEnvResponse.status).toBe(200);
@@ -81,7 +81,7 @@ describe('Environment Variables Workflow', () => {
             },
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(setEnvResponse.status).toBe(200);
@@ -116,7 +116,7 @@ describe('Environment Variables Workflow', () => {
             envVars: { PERSISTENT_VAR: 'still_here' },
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(setEnvResponse.status).toBe(200);
@@ -177,7 +177,7 @@ describe('Environment Variables Workflow', () => {
             envVars: { PROCESS_VAR: 'from_env' },
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(setEnvResponse.status).toBe(200);

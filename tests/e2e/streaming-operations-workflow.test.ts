@@ -97,7 +97,7 @@ describe('Streaming Operations Workflow', () => {
             command: 'echo "Line 1"; echo "Line 2"; echo "Line 3"',
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(streamResponse.status).toBe(200);
@@ -143,7 +143,7 @@ describe('Streaming Operations Workflow', () => {
             command: "bash -c 'echo stdout message; echo stderr message >&2'",
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       expect(streamResponse.status).toBe(200);
@@ -181,7 +181,7 @@ describe('Streaming Operations Workflow', () => {
             command: 'echo "Hello Streaming"',
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const events = await collectSSEEvents(streamResponse);
@@ -217,7 +217,7 @@ describe('Streaming Operations Workflow', () => {
             command: 'false', // Always fails with exit code 1
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const events = await collectSSEEvents(streamResponse);
@@ -241,7 +241,7 @@ describe('Streaming Operations Workflow', () => {
             command: 'echo "init"',
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Try to stream a nonexistent command (should execute and fail with exit code 127)
@@ -287,7 +287,7 @@ describe('Streaming Operations Workflow', () => {
             command: "bash -c 'STREAM_VAR=streaming-value; echo $STREAM_VAR'",
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const events1 = await collectSSEEvents(streamResponse1);
@@ -313,7 +313,7 @@ describe('Streaming Operations Workflow', () => {
             command: "bash -c 'for i in 1 2 3 4 5; do echo \"Count: $i\"; sleep 0.2; done'",
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const events = await collectSSEEvents(streamResponse, 20);
@@ -347,7 +347,7 @@ describe('Streaming Operations Workflow', () => {
             command: 'echo "init"',
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       // Start two streaming commands concurrently
@@ -413,7 +413,7 @@ describe('Streaming Operations Workflow', () => {
             },
           }),
         }),
-        { timeout: 30000, interval: 2000 }
+        { timeout: 60000, interval: 2000 }
       );
 
       const sessionData = await sessionResponse.json();

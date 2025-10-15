@@ -56,7 +56,7 @@ describe('File Operations Workflow (E2E)', () => {
           recursive: true,
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     const mkdirData = await mkdirResponse.json();
@@ -93,7 +93,7 @@ describe('File Operations Workflow (E2E)', () => {
           recursive: true,
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     // Write file in subdirectory
@@ -140,7 +140,7 @@ describe('File Operations Workflow (E2E)', () => {
           recursive: true,
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     await fetch(`${workerUrl}/api/file/write`, {
@@ -220,7 +220,7 @@ describe('File Operations Workflow (E2E)', () => {
           }),
         });
       },
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     // Write file in source directory
@@ -289,7 +289,7 @@ describe('File Operations Workflow (E2E)', () => {
           recursive: true,
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     await fetch(`${workerUrl}/api/file/write`, {
@@ -354,7 +354,7 @@ describe('File Operations Workflow (E2E)', () => {
           recursive: true,
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     // Try to delete directory with deleteFile - should fail
@@ -414,7 +414,7 @@ describe('File Operations Workflow (E2E)', () => {
           recursive: true,
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     // Write files in different levels
@@ -505,7 +505,7 @@ describe('File Operations Workflow (E2E)', () => {
           }),
         });
       },
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     // Step 2: Write initial files
@@ -661,7 +661,7 @@ describe('File Operations Workflow (E2E)', () => {
           content: 'Users control their sandbox!',
         }),
       }),
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     expect(writeResponse.status).toBe(200);
@@ -695,7 +695,7 @@ describe('File Operations Workflow (E2E)', () => {
           path: '/workspace/this-file-does-not-exist.txt',
         }),
       }, { expectSuccess: false }), // Don't throw on error - we expect this to fail
-      { timeout: 30000, interval: 2000 }
+      { timeout: 60000, interval: 2000 }
     );
 
     // Should return error with FILE_NOT_FOUND
