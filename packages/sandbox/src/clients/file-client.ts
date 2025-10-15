@@ -128,11 +128,44 @@ export class FileClient extends BaseHttpClient {
       };
 
       const response = await this.post<ReadFileResult>('/api/read', data);
-      
+
       this.logSuccess('File read', `${path} (${response.content.length} chars)`);
       return response;
     } catch (error) {
       this.logError('readFile', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stream a file using Server-Sent Events
+   * Returns a ReadableStream of SSE events containing metadata, chunks, and completion
+   * @param path - File path to stream
+   * @param sessionId - The session ID for this operation
+   */
+  async readFileStream(
+    path: string,
+    sessionId: string
+  ): Promise<ReadableStream<Uint8Array>> {
+    try {
+      const data = {
+        path,
+        sessionId,
+      };
+
+      const response = await this.doFetch('/api/read/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      const stream = await this.handleStreamResponse(response);
+      this.logSuccess('File stream started', path);
+      return stream;
+    } catch (error) {
+      this.logError('readFileStream', error);
       throw error;
     }
   }

@@ -61,7 +61,7 @@ export default {
         });
       }
 
-      // Command execution (works with both sandbox and explicit sessions)
+      // Command execution
       if (url.pathname === '/api/execute' && request.method === 'POST') {
         const result = await executor.exec(body.command);
         return new Response(JSON.stringify(result), {
@@ -69,7 +69,7 @@ export default {
         });
       }
 
-      // Command execution with streaming (works with both sandbox and explicit sessions)
+      // Command execution with streaming
       if (url.pathname === '/api/execStream' && request.method === 'POST') {
         console.log('[TestWorker] execStream called for command:', body.command);
         const startTime = Date.now();
@@ -86,7 +86,7 @@ export default {
         });
       }
 
-      // Git clone (works with both sandbox and explicit sessions)
+      // Git clone
       if (url.pathname === '/api/git/clone' && request.method === 'POST') {
         await executor.gitCheckout(body.repoUrl, {
           branch: body.branch,
@@ -97,7 +97,7 @@ export default {
         });
       }
 
-      // File read (works with both sandbox and explicit sessions)
+      // File read
       if (url.pathname === '/api/file/read' && request.method === 'POST') {
         const file = await executor.readFile(body.path);
         return new Response(JSON.stringify(file), {
@@ -105,7 +105,19 @@ export default {
         });
       }
 
-      // File write (works with both sandbox and explicit sessions)
+      // File read stream
+      if (url.pathname === '/api/read/stream' && request.method === 'POST') {
+        const stream = await executor.readFileStream(body.path);
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
+      }
+
+      // File write
       if (url.pathname === '/api/file/write' && request.method === 'POST') {
         await executor.writeFile(body.path, body.content);
         return new Response(JSON.stringify({ success: true }), {
@@ -113,7 +125,7 @@ export default {
         });
       }
 
-      // File mkdir (works with both sandbox and explicit sessions)
+      // File mkdir
       if (url.pathname === '/api/file/mkdir' && request.method === 'POST') {
         await executor.mkdir(body.path, { recursive: body.recursive });
         return new Response(JSON.stringify({ success: true }), {
@@ -121,7 +133,7 @@ export default {
         });
       }
 
-      // File delete (works with both sandbox and explicit sessions)
+      // File delete
       if (url.pathname === '/api/file/delete' && request.method === 'DELETE') {
         await executor.deleteFile(body.path);
         return new Response(JSON.stringify({ success: true }), {
@@ -129,7 +141,7 @@ export default {
         });
       }
 
-      // File rename (works with both sandbox and explicit sessions)
+      // File rename
       if (url.pathname === '/api/file/rename' && request.method === 'POST') {
         await executor.renameFile(body.oldPath, body.newPath);
         return new Response(JSON.stringify({ success: true }), {
@@ -137,7 +149,7 @@ export default {
         });
       }
 
-      // File move (works with both sandbox and explicit sessions)
+      // File move
       if (url.pathname === '/api/file/move' && request.method === 'POST') {
         await executor.moveFile(body.sourcePath, body.destinationPath);
         return new Response(JSON.stringify({ success: true }), {
@@ -145,7 +157,7 @@ export default {
         });
       }
 
-      // Process start (works with both sandbox and explicit sessions)
+      // Process start
       if (url.pathname === '/api/process/start' && request.method === 'POST') {
         const process = await executor.startProcess(body.command);
         return new Response(JSON.stringify(process), {
@@ -153,7 +165,7 @@ export default {
         });
       }
 
-      // Process list (works with both sandbox and explicit sessions)
+      // Process list
       if (url.pathname === '/api/process/list' && request.method === 'GET') {
         const processes = await executor.listProcesses();
         return new Response(JSON.stringify(processes), {
@@ -161,7 +173,7 @@ export default {
         });
       }
 
-      // Process get by ID (works with both sandbox and explicit sessions)
+      // Process get by ID
       if (url.pathname.startsWith('/api/process/') && request.method === 'GET') {
         const pathParts = url.pathname.split('/');
         const processId = pathParts[3];
@@ -211,7 +223,7 @@ export default {
         }
       }
 
-      // Process kill by ID (works with both sandbox and explicit sessions)
+      // Process kill by ID
       if (url.pathname.startsWith('/api/process/') && request.method === 'DELETE') {
         const processId = url.pathname.split('/')[3];
         await executor.killProcess(processId);
@@ -220,7 +232,7 @@ export default {
         });
       }
 
-      // Kill all processes (works with both sandbox and explicit sessions)
+      // Kill all processes
       if (url.pathname === '/api/process/kill-all' && request.method === 'POST') {
         await executor.killAllProcesses();
         return new Response(JSON.stringify({ success: true }), {
@@ -269,7 +281,7 @@ export default {
         }
       }
 
-      // Environment variables (works with both sandbox and explicit sessions)
+      // Environment variables
       if (url.pathname === '/api/env/set' && request.method === 'POST') {
         await executor.setEnvVars(body.envVars);
         return new Response(JSON.stringify({ success: true }), {

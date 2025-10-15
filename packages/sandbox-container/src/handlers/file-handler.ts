@@ -1,5 +1,6 @@
 import type {
   DeleteFileResult,
+  FileStreamEvent,
   MkdirResult,
   MoveFileResult,
   ReadFileResult,
@@ -36,6 +37,8 @@ export class FileHandler extends BaseHandler<Request, Response> {
     switch (pathname) {
       case '/api/read':
         return await this.handleRead(request, context);
+      case '/api/read/stream':
+        return await this.handleReadStream(request, context);
       case '/api/write':
         return await this.handleWrite(request, context);
       case '/api/delete':
@@ -79,6 +82,10 @@ export class FileHandler extends BaseHandler<Request, Response> {
         path: body.path,
         content: result.data,
         timestamp: new Date().toISOString(),
+        encoding: result.metadata?.encoding,
+        isBinary: result.metadata?.isBinary,
+        mimeType: result.metadata?.mimeType,
+        size: result.metadata?.size,
       };
 
       return this.createTypedResponse(response, context);
@@ -91,6 +98,88 @@ export class FileHandler extends BaseHandler<Request, Response> {
       });
 
       return this.createErrorResponse(result.error, context);
+    }
+  }
+
+  private async handleReadStream(request: Request, context: RequestContext): Promise<Response> {
+    const body = await this.parseRequestBody<ReadFileRequest>(request);
+
+    this.logger.info('Streaming file', {
+      requestId: context.requestId,
+      path: body.path,
+    });
+
+    try {
+      // Get file metadata first
+      const metadataResult = await this.fileService.readFile(body.path, { encoding: 'utf-8' });
+
+      if (!metadataResult.success) {
+        // Return error as SSE event
+        const encoder = new TextEncoder();
+        const errorEvent: FileStreamEvent = {
+          type: 'error',
+          error: metadataResult.error.message
+        };
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+            controller.close();
+          }
+        });
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            ...context.corsHeaders,
+          },
+        });
+      }
+
+      // Create SSE stream
+      const stream = await this.fileService.readFileStreamOperation(body.path, body.sessionId);
+
+      this.logger.info('File streaming started', {
+        requestId: context.requestId,
+        path: body.path,
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          ...context.corsHeaders,
+        },
+      });
+    } catch (error) {
+      this.logger.error('File streaming failed', error instanceof Error ? error : undefined, {
+        requestId: context.requestId,
+        path: body.path,
+      });
+
+      // Return error as SSE event
+      const encoder = new TextEncoder();
+      const errorEvent: FileStreamEvent = {
+        type: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          ...context.corsHeaders,
+        },
+      });
     }
   }
 

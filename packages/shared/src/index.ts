@@ -43,6 +43,10 @@ export type {
   ExecOptions,
   ExecResult,
   ExecutionSession,
+  // File streaming types
+  FileChunk,
+  FileMetadata,
+  FileStreamEvent,
   GitCheckoutResult,
   // Miscellaneous result types
   HealthCheckResult,
@@ -73,7 +77,7 @@ export type {
   SessionCreateResult,
   SessionDeleteResult,
   SessionOptions,
-  ShutdownResult, 
+  ShutdownResult,
   StreamOptions,
   WriteFileResult
 } from './types.js';

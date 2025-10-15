@@ -50,29 +50,32 @@ describe('FileService', () => {
   });
 
   describe('read', () => {
-    it('should read file successfully with base64 encoding', async () => {
+    it('should read text file with MIME type detection', async () => {
       const testPath = '/tmp/test.txt';
       const testContent = 'Hello, World!';
-      const base64Content = Buffer.from(testContent, 'utf-8').toString('base64');
 
       // Mock exists check
       mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
         success: true,
-        data: {
-          exitCode: 0,
-          stdout: '',
-          stderr: '',
-        },
+        data: { exitCode: 0, stdout: '', stderr: '' },
       } as ServiceResult<RawExecResult>);
 
-      // Mock read command
+      // Mock stat command (file size)
       mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
         success: true,
-        data: {
-          exitCode: 0,
-          stdout: base64Content,
-          stderr: '',
-        },
+        data: { exitCode: 0, stdout: '13', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock MIME type detection
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'text/plain', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock cat command for text file
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: testContent, stderr: '' },
       } as ServiceResult<RawExecResult>);
 
       const result = await fileService.read(testPath, {}, 'session-123');
@@ -80,24 +83,150 @@ describe('FileService', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data).toBe(testContent);
+        expect(result.metadata?.encoding).toBe('utf-8');
+        expect(result.metadata?.isBinary).toBe(false);
+        expect(result.metadata?.mimeType).toBe('text/plain');
+        expect(result.metadata?.size).toBe(13);
       }
 
       // Verify security validation was called
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(testPath);
 
-      // Verify SessionManager was called for exists check (cwd is undefined, so only 2 params)
-      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
-        1,
+      // Verify MIME type detection command was called
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "test -e '/tmp/test.txt'"
+        "file --mime-type -b '/tmp/test.txt'"
       );
 
-      // Verify SessionManager was called for read with base64 (cwd is undefined, so only 2 params)
-      expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
-        2,
+      // Verify cat was called for text file
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "base64 < '/tmp/test.txt'"
+        "cat '/tmp/test.txt'"
       );
+    });
+
+    it('should read binary file with base64 encoding', async () => {
+      const testPath = '/tmp/image.png';
+      const binaryData = Buffer.from([0x89, 0x50, 0x4e, 0x47]); // PNG header
+      const base64Content = binaryData.toString('base64');
+
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command (file size)
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '1024', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock MIME type detection - PNG image
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'image/png', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock base64 command for binary file
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: base64Content, stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.read(testPath, {}, 'session-123');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toBe(base64Content);
+        expect(result.metadata?.encoding).toBe('base64');
+        expect(result.metadata?.isBinary).toBe(true);
+        expect(result.metadata?.mimeType).toBe('image/png');
+        expect(result.metadata?.size).toBe(1024);
+      }
+
+      // Verify base64 command was called for binary file
+      expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
+        'session-123',
+        "base64 -w 0 < '/tmp/image.png'"
+      );
+    });
+
+    it('should detect JSON files as text', async () => {
+      const testPath = '/tmp/config.json';
+      const testContent = '{"key": "value"}';
+
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '17', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock MIME type detection - JSON
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'application/json', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock cat command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: testContent, stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.read(testPath, {}, 'session-123');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toBe(testContent);
+        expect(result.metadata?.encoding).toBe('utf-8');
+        expect(result.metadata?.isBinary).toBe(false);
+        expect(result.metadata?.mimeType).toBe('application/json');
+      }
+    });
+
+    it('should detect JavaScript files as text', async () => {
+      const testPath = '/tmp/script.js';
+      const testContent = 'console.log("test");';
+
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '20', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock MIME type detection - JavaScript
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: 'text/javascript', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock cat command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: testContent, stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.read(testPath, {}, 'session-123');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toBe(testContent);
+        expect(result.metadata?.encoding).toBe('utf-8');
+        expect(result.metadata?.isBinary).toBe(false);
+      }
     });
 
     it('should return error when security validation fails', async () => {
@@ -134,6 +263,54 @@ describe('FileService', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('FILE_NOT_FOUND');
+      }
+    });
+
+    it('should handle stat command errors', async () => {
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command failure
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: 'Permission denied' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.read('/tmp/test.txt');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
+      }
+    });
+
+    it('should handle MIME type detection errors gracefully', async () => {
+      // Mock exists check
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock stat command
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 0, stdout: '100', stderr: '' },
+      } as ServiceResult<RawExecResult>);
+
+      // Mock MIME type detection failure
+      mocked(mockSessionManager.executeInSession).mockResolvedValueOnce({
+        success: true,
+        data: { exitCode: 1, stdout: '', stderr: 'Cannot detect MIME type' },
+      } as ServiceResult<RawExecResult>);
+
+      const result = await fileService.read('/tmp/test.txt');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('FILESYSTEM_ERROR');
       }
     });
 

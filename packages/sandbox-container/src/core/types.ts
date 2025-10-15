@@ -27,9 +27,10 @@ export interface ValidationError {
   code: string;
 }
 
-export type ServiceResult<T> = T extends void 
+export type ServiceResult<T, M = Record<string, unknown>> = T extends void
   ? {
       success: true;
+      metadata?: M;
     } | {
       success: false;
       error: ServiceError;
@@ -37,6 +38,7 @@ export type ServiceResult<T> = T extends void
   : {
       success: true;
       data: T;
+      metadata?: M;
     } | {
       success: false;
       error: ServiceError;
@@ -270,6 +272,13 @@ export interface FileStats {
   size: number;
   modified: Date;
   created: Date;
+}
+
+export interface FileMetadata {
+  encoding: 'utf-8' | 'base64';
+  isBinary: boolean;
+  mimeType: string;
+  size: number;
 }
 
 export interface ReadOptions {

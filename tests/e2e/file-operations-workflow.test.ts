@@ -682,6 +682,205 @@ describe('File Operations Workflow (E2E)', () => {
     expect(readData.content).toBe('Users control their sandbox!');
   }, 60000);
 
+  test('should read text files with correct encoding and metadata', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Create a text file
+    await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/write`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/test.txt',
+          content: 'Hello, World! This is a test.',
+        }),
+      }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    // Read the file and check metadata
+    const readResponse = await fetch(`${workerUrl}/api/file/read`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/test.txt',
+      }),
+    });
+
+    expect(readResponse.status).toBe(200);
+    const readData = await readResponse.json();
+
+    expect(readData.success).toBe(true);
+    expect(readData.content).toBe('Hello, World! This is a test.');
+    expect(readData.encoding).toBe('utf-8');
+    expect(readData.isBinary).toBe(false);
+    expect(readData.mimeType).toMatch(/text\/plain/);
+    expect(readData.size).toBeGreaterThan(0);
+  }, 60000);
+
+  test('should write and read binary files with base64 encoding', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Create a simple binary file (1x1 PNG - smallest valid PNG)
+    const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jYlkKQAAAABJRU5ErkJggg==';
+
+    // First create the file using exec with base64 decode
+    await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: `echo '${pngBase64}' | base64 -d > /workspace/test.png`,
+        }),
+      }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    // Read the binary file
+    const readResponse = await fetch(`${workerUrl}/api/file/read`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/test.png',
+      }),
+    });
+
+    expect(readResponse.status).toBe(200);
+    const readData = await readResponse.json();
+
+    expect(readData.success).toBe(true);
+    expect(readData.encoding).toBe('base64');
+    expect(readData.isBinary).toBe(true);
+    expect(readData.mimeType).toMatch(/image\/png/);
+    expect(readData.content).toBeTruthy();
+    expect(readData.size).toBeGreaterThan(0);
+
+    // Verify the content is valid base64
+    expect(readData.content).toMatch(/^[A-Za-z0-9+/=]+$/);
+  }, 60000);
+
+  test('should detect JSON files as text', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    const jsonContent = JSON.stringify({ key: 'value', number: 42 });
+
+    // Write JSON file
+    await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/write`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/config.json',
+          content: jsonContent,
+        }),
+      }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    // Read and verify metadata
+    const readResponse = await fetch(`${workerUrl}/api/file/read`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/config.json',
+      }),
+    });
+
+    expect(readResponse.status).toBe(200);
+    const readData = await readResponse.json();
+
+    expect(readData.success).toBe(true);
+    expect(readData.content).toBe(jsonContent);
+    expect(readData.encoding).toBe('utf-8');
+    expect(readData.isBinary).toBe(false);
+    expect(readData.mimeType).toMatch(/json/);
+  }, 60000);
+
+  test('should stream large text files', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Create a larger text file
+    const largeContent = 'Line content\n'.repeat(1000); // 13KB file
+
+    await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/write`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/large.txt',
+          content: largeContent,
+        }),
+      }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    // Stream the file
+    const streamResponse = await fetch(`${workerUrl}/api/read/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/large.txt',
+      }),
+    });
+
+    expect(streamResponse.status).toBe(200);
+    expect(streamResponse.headers.get('content-type')).toBe('text/event-stream');
+
+    // Collect events from stream
+    const reader = streamResponse.body?.getReader();
+    expect(reader).toBeDefined();
+
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let receivedMetadata = false;
+    let receivedChunks = 0;
+    let receivedComplete = false;
+    let buffer = '';
+
+    // Read entire stream - don't break early
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+    }
+
+    // Process all buffered events
+    const lines = buffer.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const jsonStr = line.slice(6);
+        try {
+          const event = JSON.parse(jsonStr);
+
+          if (event.type === 'metadata') {
+            receivedMetadata = true;
+            expect(event.encoding).toBe('utf-8');
+            expect(event.isBinary).toBe(false);
+            expect(event.mimeType).toMatch(/text\/plain/);
+          } else if (event.type === 'chunk') {
+            receivedChunks++;
+            expect(event.data).toBeTruthy();
+          } else if (event.type === 'complete') {
+            receivedComplete = true;
+            expect(event.bytesRead).toBe(13000);
+          }
+        } catch (e) {
+          // Ignore parse errors for empty lines
+        }
+      }
+    }
+
+    expect(receivedMetadata).toBe(true);
+    expect(receivedChunks).toBeGreaterThan(0);
+    expect(receivedComplete).toBe(true);
+  }, 60000);
+
   test('should return error when deleting nonexistent file', async () => {
     currentSandboxId = createSandboxId();
     const headers = createTestHeaders(currentSandboxId);

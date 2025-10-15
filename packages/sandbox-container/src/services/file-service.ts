@@ -5,6 +5,7 @@ import type {
 } from '@repo/shared/errors';
 import { ErrorCode, Operation } from '@repo/shared/errors';
 import type {
+  FileMetadata,
   FileStats,
   Logger,
   MkdirOptions,
@@ -21,7 +22,7 @@ export interface SecurityService {
 
 // File system operations interface with session support
 export interface FileSystemOperations {
-  read(path: string, options?: ReadOptions, sessionId?: string): Promise<ServiceResult<string>>;
+  read(path: string, options?: ReadOptions, sessionId?: string): Promise<ServiceResult<string, FileMetadata>>;
   write(path: string, content: string, options?: WriteOptions, sessionId?: string): Promise<ServiceResult<void>>;
   delete(path: string, sessionId?: string): Promise<ServiceResult<void>>;
   rename(oldPath: string, newPath: string, sessionId?: string): Promise<ServiceResult<void>>;
@@ -53,7 +54,7 @@ export class FileService implements FileSystemOperations {
     return `'${path.replace(/'/g, "'\\''")}'`;
   }
 
-  async read(path: string, options: ReadOptions = {}, sessionId = 'default'): Promise<ServiceResult<string>> {
+  async read(path: string, options: ReadOptions = {}, sessionId = 'default'): Promise<ServiceResult<string, FileMetadata>> {
     try {
       // 1. Validate path for security
       const validation = this.security.validatePath(path);
@@ -75,7 +76,10 @@ export class FileService implements FileSystemOperations {
       // 2. Check if file exists using session-aware check
       const existsResult = await this.exists(path, sessionId);
       if (!existsResult.success) {
-        return existsResult as ServiceResult<string>;
+        return {
+          success: false,
+          error: existsResult.error
+        };
       }
 
       if (!existsResult.data) {
@@ -92,47 +96,184 @@ export class FileService implements FileSystemOperations {
         };
       }
 
-      // 3. Read file content using SessionManager with base64 encoding
-      // Base64 ensures binary files (images, PDFs, etc.) are read correctly
+      // 3. Get file size using stat
       const escapedPath = this.escapePath(path);
-      const command = `base64 < ${escapedPath}`;
+      const statCommand = `stat -c '%s' ${escapedPath} 2>/dev/null`;
+      const statResult = await this.sessionManager.executeInSession(sessionId, statCommand);
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
-
-      if (!execResult.success) {
-        return execResult as ServiceResult<string>;
-      }
-
-      const result = execResult.data;
-
-      if (result.exitCode !== 0) {
+      if (!statResult.success) {
         return {
           success: false,
           error: {
-            message: `Failed to read file '${path}': ${result.stderr || `exit code ${result.exitCode}`}`,
+            message: `Failed to get file size for '${path}'`,
             code: ErrorCode.FILESYSTEM_ERROR,
             details: {
               path,
               operation: Operation.FILE_READ,
-              exitCode: result.exitCode,
-              stderr: result.stderr
+              stderr: 'Command execution failed'
             } satisfies FileSystemContext
           }
         };
       }
 
-      // Decode base64 to get original content
-      const base64Content = result.stdout.trim();
-      const content = Buffer.from(base64Content, 'base64').toString('utf-8');
+      if (statResult.data.exitCode !== 0) {
+        return {
+          success: false,
+          error: {
+            message: `Failed to get file size for '${path}'`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_READ,
+              stderr: statResult.data.stderr
+            } satisfies FileSystemContext
+          }
+        };
+      }
+
+      const fileSize = parseInt(statResult.data.stdout.trim(), 10);
+
+      // 4. Detect MIME type using file command
+      const mimeCommand = `file --mime-type -b ${escapedPath}`;
+      const mimeResult = await this.sessionManager.executeInSession(sessionId, mimeCommand);
+
+      if (!mimeResult.success) {
+        return {
+          success: false,
+          error: {
+            message: `Failed to detect MIME type for '${path}'`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_READ,
+              stderr: 'Command execution failed'
+            } satisfies FileSystemContext
+          }
+        };
+      }
+
+      if (mimeResult.data.exitCode !== 0) {
+        return {
+          success: false,
+          error: {
+            message: `Failed to detect MIME type for '${path}'`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_READ,
+              stderr: mimeResult.data.stderr
+            } satisfies FileSystemContext
+          }
+        };
+      }
+
+      const mimeType = mimeResult.data.stdout.trim();
+
+      // 5. Determine if file is binary based on MIME type
+      // Text MIME types: text/*, application/json, application/xml, application/javascript, etc.
+      const isBinary = !mimeType.startsWith('text/') &&
+                       !mimeType.includes('json') &&
+                       !mimeType.includes('xml') &&
+                       !mimeType.includes('javascript') &&
+                       !mimeType.includes('x-empty');
+
+      // 6. Read file with appropriate encoding
+      let content: string;
+      let actualEncoding: 'utf-8' | 'base64';
+
+      if (isBinary) {
+        // Binary files: read as base64, return as-is (DO NOT decode)
+        const base64Command = `base64 -w 0 < ${escapedPath}`;
+        const base64Result = await this.sessionManager.executeInSession(sessionId, base64Command);
+
+        if (!base64Result.success) {
+          return {
+            success: false,
+            error: {
+              message: `Failed to read binary file '${path}': Command execution failed`,
+              code: ErrorCode.FILESYSTEM_ERROR,
+              details: {
+                path,
+                operation: Operation.FILE_READ
+              } satisfies FileSystemContext
+            }
+          };
+        }
+
+        if (base64Result.data.exitCode !== 0) {
+          return {
+            success: false,
+            error: {
+              message: `Failed to read binary file '${path}': ${base64Result.data.stderr}`,
+              code: ErrorCode.FILESYSTEM_ERROR,
+              details: {
+                path,
+                operation: Operation.FILE_READ,
+                exitCode: base64Result.data.exitCode,
+                stderr: base64Result.data.stderr
+              } satisfies FileSystemContext
+            }
+          };
+        }
+
+        content = base64Result.data.stdout.trim();
+        actualEncoding = 'base64';
+      } else {
+        // Text files: read normally
+        const catCommand = `cat ${escapedPath}`;
+        const catResult = await this.sessionManager.executeInSession(sessionId, catCommand);
+
+        if (!catResult.success) {
+          return {
+            success: false,
+            error: {
+              message: `Failed to read text file '${path}': Command execution failed`,
+              code: ErrorCode.FILESYSTEM_ERROR,
+              details: {
+                path,
+                operation: Operation.FILE_READ
+              } satisfies FileSystemContext
+            }
+          };
+        }
+
+        if (catResult.data.exitCode !== 0) {
+          return {
+            success: false,
+            error: {
+              message: `Failed to read text file '${path}': ${catResult.data.stderr}`,
+              code: ErrorCode.FILESYSTEM_ERROR,
+              details: {
+                path,
+                operation: Operation.FILE_READ,
+                exitCode: catResult.data.exitCode,
+                stderr: catResult.data.stderr
+              } satisfies FileSystemContext
+            }
+          };
+        }
+
+        content = catResult.data.stdout;
+        actualEncoding = 'utf-8';
+      }
 
       this.logger.info('File read successfully', {
         path,
-        sizeBytes: content.length
+        sizeBytes: fileSize,
+        encoding: actualEncoding,
+        mimeType,
+        isBinary
       });
 
       return {
         success: true,
-        data: content
+        data: content,
+        metadata: {
+          encoding: actualEncoding,
+          isBinary,
+          mimeType,
+          size: fileSize
+        }
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -747,7 +888,7 @@ export class FileService implements FileSystemOperations {
 
   // Convenience methods with ServiceResult wrapper for higher-level operations
 
-  async readFile(path: string, options?: ReadOptions, sessionId?: string): Promise<ServiceResult<string>> {
+  async readFile(path: string, options?: ReadOptions, sessionId?: string): Promise<ServiceResult<string, FileMetadata>> {
     return await this.read(path, options, sessionId);
   }
 
@@ -773,5 +914,152 @@ export class FileService implements FileSystemOperations {
 
   async getFileStats(path: string, sessionId?: string): Promise<ServiceResult<FileStats>> {
     return await this.stat(path, sessionId);
+  }
+
+  /**
+   * Stream a file using Server-Sent Events (SSE)
+   * Sends metadata, chunks, and completion events
+   * Uses 65535 byte chunks for proper base64 alignment
+   */
+  async readFileStreamOperation(path: string, sessionId = 'default'): Promise<ReadableStream<Uint8Array>> {
+    const encoder = new TextEncoder();
+    const escapedPath = this.escapePath(path);
+
+    return new ReadableStream({
+      start: async (controller) => {
+        try {
+          // 1. Get file metadata
+          const metadataResult = await this.read(path, {}, sessionId);
+
+          if (!metadataResult.success) {
+            const errorEvent = {
+              type: 'error',
+              error: metadataResult.error.message
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+            controller.close();
+            return;
+          }
+
+          const metadata = metadataResult.metadata;
+          if (!metadata) {
+            const errorEvent = {
+              type: 'error',
+              error: 'Failed to get file metadata'
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+            controller.close();
+            return;
+          }
+
+          // 2. Send metadata event
+          const metadataEvent = {
+            type: 'metadata',
+            mimeType: metadata.mimeType,
+            size: metadata.size,
+            isBinary: metadata.isBinary,
+            encoding: metadata.encoding
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadataEvent)}\n\n`));
+
+          // 3. Stream file in chunks using dd
+          // Chunk size of 65535 bytes (divisible by 3 for base64 alignment)
+          const chunkSize = 65535;
+          let bytesRead = 0;
+          let blockNumber = 0;
+
+          while (bytesRead < metadata.size) {
+            // Use dd to read specific chunk
+            const skip = blockNumber;
+            const count = 1;
+
+            let command: string;
+            if (metadata.isBinary) {
+              // Binary files: read as base64
+              command = `dd if=${escapedPath} bs=${chunkSize} skip=${skip} count=${count} 2>/dev/null | base64 -w 0`;
+            } else {
+              // Text files: read as-is
+              command = `dd if=${escapedPath} bs=${chunkSize} skip=${skip} count=${count} 2>/dev/null`;
+            }
+
+            const execResult = await this.sessionManager.executeInSession(sessionId, command);
+
+            if (!execResult.success) {
+              const errorEvent = {
+                type: 'error',
+                error: `Failed to read chunk at offset ${bytesRead}: Command execution failed`
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+              controller.close();
+              return;
+            }
+
+            if (execResult.data.exitCode !== 0) {
+              const errorEvent = {
+                type: 'error',
+                error: `Failed to read chunk at offset ${bytesRead}: ${execResult.data.stderr}`
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+              controller.close();
+              return;
+            }
+
+            const chunkData = execResult.data.stdout;
+
+            if (chunkData.length === 0) {
+              // End of file
+              break;
+            }
+
+            // Send chunk event
+            const chunkEvent = {
+              type: 'chunk',
+              data: chunkData
+            };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunkEvent)}\n\n`));
+
+            // Calculate actual bytes read
+            // For text files: use the actual length of the data
+            // For binary files: decode base64 length (every 4 base64 chars = 3 bytes)
+            let actualBytesRead: number;
+            if (metadata.isBinary) {
+              // Base64 decoding: 4 chars = 3 bytes
+              // Handle padding: remove '=' characters before calculating
+              const base64Length = chunkData.replace(/=/g, '').length;
+              actualBytesRead = Math.floor((base64Length * 3) / 4);
+            } else {
+              actualBytesRead = chunkData.length;
+            }
+
+            bytesRead += actualBytesRead;
+            blockNumber++;
+          }
+
+          // 4. Send complete event
+          const completeEvent = {
+            type: 'complete',
+            bytesRead: metadata.size
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(completeEvent)}\n\n`));
+          controller.close();
+
+          this.logger.info('File streaming completed', {
+            path,
+            bytesRead: metadata.size
+          });
+
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          this.logger.error('File streaming failed', error instanceof Error ? error : undefined, { path });
+
+          const errorEvent = {
+            type: 'error',
+            error: errorMessage
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
+          controller.close();
+        }
+      }
+    });
   }
 }

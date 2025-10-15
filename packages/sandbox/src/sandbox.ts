@@ -562,6 +562,20 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     return this.client.files.readFile(path, session, { encoding: options.encoding });
   }
 
+  /**
+   * Stream a file from the sandbox using Server-Sent Events
+   * Returns a ReadableStream that can be consumed with streamFile() or collectFile() utilities
+   * @param path - Path to the file to stream
+   * @param options - Optional session ID
+   */
+  async readFileStream(
+    path: string,
+    options: { sessionId?: string } = {}
+  ): Promise<ReadableStream<Uint8Array>> {
+    const session = options.sessionId ?? await this.ensureDefaultSession();
+    return this.client.files.readFileStream(path, session);
+  }
+
   async exposePort(port: number, options: { name?: string; hostname: string }) {
     // Check if hostname is workers.dev domain (doesn't support wildcard subdomains)
     if (options.hostname.endsWith('.workers.dev')) {
@@ -853,6 +867,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       // File operations - pass sessionId via options or parameter
       writeFile: (path, content, options) => this.writeFile(path, content, { ...options, sessionId }),
       readFile: (path, options) => this.readFile(path, { ...options, sessionId }),
+      readFileStream: (path) => this.readFileStream(path, { sessionId }),
       mkdir: (path, options) => this.mkdir(path, { ...options, sessionId }),
       deleteFile: (path) => this.deleteFile(path, sessionId),
       renameFile: (oldPath, newPath) => this.renameFile(oldPath, newPath, sessionId),

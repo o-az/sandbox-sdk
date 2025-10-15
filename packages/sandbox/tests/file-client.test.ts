@@ -189,7 +189,7 @@ describe('FileClient', () => {
   });
 
   describe('readFile', () => {
-    it('should read files successfully', async () => {
+    it('should read text files successfully with metadata', async () => {
       const fileContent = `# Configuration File
 server:
   port: 3000
@@ -203,6 +203,10 @@ database:
         path: '/app/config.yaml',
         content: fileContent,
         timestamp: '2023-01-01T00:00:00Z',
+        encoding: 'utf-8',
+        isBinary: false,
+        mimeType: 'text/yaml',
+        size: 100,
       };
 
       mockFetch.mockResolvedValue(new Response(
@@ -217,9 +221,13 @@ database:
       expect(result.content).toContain('port: 3000');
       expect(result.content).toContain('postgresql://localhost/app');
       expect(result.exitCode).toBe(0);
+      expect(result.encoding).toBe('utf-8');
+      expect(result.isBinary).toBe(false);
+      expect(result.mimeType).toBe('text/yaml');
+      expect(result.size).toBe(100);
     });
 
-    it('should read binary files with encoding', async () => {
+    it('should read binary files with base64 encoding and metadata', async () => {
       const binaryContent = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jYlkKQAAAABJRU5ErkJggg==';
       const mockResponse: ReadFileResult = {
         success: true,
@@ -227,6 +235,10 @@ database:
         path: '/app/logo.png',
         content: binaryContent,
         timestamp: '2023-01-01T00:00:00Z',
+        encoding: 'base64',
+        isBinary: true,
+        mimeType: 'image/png',
+        size: 95,
       };
 
       mockFetch.mockResolvedValue(new Response(
@@ -239,6 +251,10 @@ database:
       expect(result.success).toBe(true);
       expect(result.content).toBe(binaryContent);
       expect(result.content.startsWith('iVBORw0K')).toBe(true);
+      expect(result.encoding).toBe('base64');
+      expect(result.isBinary).toBe(true);
+      expect(result.mimeType).toBe('image/png');
+      expect(result.size).toBe(95);
     });
 
     it('should handle file not found errors', async () => {
@@ -271,6 +287,81 @@ database:
 
       await expect(client.readFile('/app/logs', 'session-read'))
         .rejects.toThrow(FileSystemError);
+    });
+  });
+
+  describe('readFileStream', () => {
+    it('should stream file successfully', async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"type":"metadata","mimeType":"text/plain","size":100,"isBinary":false,"encoding":"utf-8"}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: {"type":"chunk","data":"Hello"}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: {"type":"complete","bytesRead":5}\n\n'));
+          controller.close();
+        }
+      });
+
+      mockFetch.mockResolvedValue(new Response(mockStream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' }
+      }));
+
+      const result = await client.readFileStream('/app/test.txt', 'session-stream');
+
+      expect(result).toBeInstanceOf(ReadableStream);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/read/stream'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            path: '/app/test.txt',
+            sessionId: 'session-stream',
+          })
+        })
+      );
+    });
+
+    it('should handle binary file streams', async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"type":"metadata","mimeType":"image/png","size":1024,"isBinary":true,"encoding":"base64"}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: {"type":"chunk","data":"iVBORw0K"}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: {"type":"complete","bytesRead":1024}\n\n'));
+          controller.close();
+        }
+      });
+
+      mockFetch.mockResolvedValue(new Response(mockStream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' }
+      }));
+
+      const result = await client.readFileStream('/app/image.png', 'session-stream');
+
+      expect(result).toBeInstanceOf(ReadableStream);
+    });
+
+    it('should handle stream errors', async () => {
+      const errorResponse = {
+        error: 'File not found: /app/missing.txt',
+        code: 'FILE_NOT_FOUND',
+        path: '/app/missing.txt'
+      };
+
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify(errorResponse),
+        { status: 404 }
+      ));
+
+      await expect(client.readFileStream('/app/missing.txt', 'session-stream'))
+        .rejects.toThrow(FileNotFoundError);
+    });
+
+    it('should handle network errors during streaming', async () => {
+      mockFetch.mockRejectedValue(new Error('Network timeout'));
+
+      await expect(client.readFileStream('/app/file.txt', 'session-stream'))
+        .rejects.toThrow('Network timeout');
     });
   });
 

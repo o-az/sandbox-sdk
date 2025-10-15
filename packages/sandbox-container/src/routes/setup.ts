@@ -44,6 +44,13 @@ export function setupRoutes(router: Router, container: Container): void {
 
   router.register({
     method: 'POST',
+    path: '/api/read/stream',
+    handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
+    middleware: [container.get('loggingMiddleware')],
+  });
+
+  router.register({
+    method: 'POST',
     path: '/api/write',
     handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
     middleware: [container.get('loggingMiddleware')],

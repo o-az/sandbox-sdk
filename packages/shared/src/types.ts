@@ -281,6 +281,26 @@ export interface ReadFileResult {
   content: string;
   timestamp: string;
   exitCode?: number;
+
+  /**
+   * Encoding used for content (utf-8 for text, base64 for binary)
+   */
+  encoding?: 'utf-8' | 'base64';
+
+  /**
+   * Whether the file is detected as binary
+   */
+  isBinary?: boolean;
+
+  /**
+   * MIME type of the file (e.g., 'image/png', 'text/plain')
+   */
+  mimeType?: string;
+
+  /**
+   * File size in bytes
+   */
+  size?: number;
 }
 
 export interface DeleteFileResult {
@@ -314,6 +334,47 @@ export interface GitCheckoutResult {
   timestamp: string;
   exitCode?: number;
 }
+
+// File Streaming Types
+
+/**
+ * SSE events for file streaming
+ */
+export type FileStreamEvent =
+  | {
+      type: 'metadata';
+      mimeType: string;
+      size: number;
+      isBinary: boolean;
+      encoding: 'utf-8' | 'base64';
+    }
+  | {
+      type: 'chunk';
+      data: string; // base64 for binary, UTF-8 for text
+    }
+  | {
+      type: 'complete';
+      bytesRead: number;
+    }
+  | {
+      type: 'error';
+      error: string;
+    };
+
+/**
+ * File metadata from streaming
+ */
+export interface FileMetadata {
+  mimeType: string;
+  size: number;
+  isBinary: boolean;
+  encoding: 'utf-8' | 'base64';
+}
+
+/**
+ * File stream chunk - either string (text) or Uint8Array (binary, auto-decoded)
+ */
+export type FileChunk = string | Uint8Array;
 
 // Process management result types
 export interface ProcessStartResult {
@@ -490,6 +551,7 @@ export interface ExecutionSession {
   // File operations
   writeFile(path: string, content: string, options?: { encoding?: string }): Promise<WriteFileResult>;
   readFile(path: string, options?: { encoding?: string }): Promise<ReadFileResult>;
+  readFileStream(path: string): Promise<ReadableStream<Uint8Array>>;
   mkdir(path: string, options?: { recursive?: boolean }): Promise<MkdirResult>;
   deleteFile(path: string): Promise<DeleteFileResult>;
   renameFile(oldPath: string, newPath: string): Promise<RenameFileResult>;
@@ -527,6 +589,18 @@ export interface ISandbox {
   // Utility methods
   cleanupCompletedProcesses(): Promise<number>;
   getProcessLogs(id: string): Promise<{ stdout: string; stderr: string; processId: string }>;
+
+  // File operations
+  writeFile(path: string, content: string, options?: { encoding?: string }): Promise<WriteFileResult>;
+  readFile(path: string, options?: { encoding?: string }): Promise<ReadFileResult>;
+  readFileStream(path: string): Promise<ReadableStream<Uint8Array>>;
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<MkdirResult>;
+  deleteFile(path: string): Promise<DeleteFileResult>;
+  renameFile(oldPath: string, newPath: string): Promise<RenameFileResult>;
+  moveFile(sourcePath: string, destinationPath: string): Promise<MoveFileResult>;
+
+  // Git operations
+  gitCheckout(repoUrl: string, options?: { branch?: string; targetDir?: string }): Promise<GitCheckoutResult>;
 
   // Session management
   createSession(options?: SessionOptions): Promise<ExecutionSession>;

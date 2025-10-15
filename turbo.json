@@ -46,7 +46,7 @@
     },
     "docker:local": {
       "dependsOn": ["^build"],
-      "cache": true,
+      "cache": false,
       "outputs": [],
       "inputs": [
         "Dockerfile",
@@ -82,6 +82,16 @@
     },
     "clean": {
       "cache": false
+    },
+    "test:e2e": {
+      "dependsOn": ["^build", "docker:local"],
+      "cache": false,
+      "outputs": [],
+      "inputs": [
+        "tests/e2e/**/*.ts",
+        "vitest.e2e.config.ts",
+        "packages/sandbox/Dockerfile"
+      ]
     }
   },
   "globalDependencies": [

@@ -20,13 +20,13 @@ export type {
   BaseExecOptions,
   ExecEvent,
   ExecOptions,
-  ExecResult,
+  ExecResult,FileChunk, FileMetadata, FileStreamEvent, 
   ISandbox,
   LogEvent,
   Process,
   ProcessOptions,
   ProcessStatus,
-  StreamOptions
+  StreamOptions 
 } from "@repo/shared";
 export * from '@repo/shared';
 // Export type guards for runtime validation
@@ -81,7 +81,8 @@ export type {
   WriteFileRequest
 } from "./clients";
 export type { ExecutionCallbacks, InterpreterClient } from './clients/interpreter-client.js';
-
+// Export file streaming utilities for binary file support
+export { collectFile, streamFile } from './file-stream';
 // Export interpreter functionality
 export { CodeInterpreter } from './interpreter.js';
 // Re-export request handler utilities
