@@ -38,24 +38,21 @@ export {
 // Export all client types from new architecture
 export type {
   BaseApiResponse,
-  CommandsResponse, 
+  CommandsResponse,
   ContainerStub,
   ErrorResponse,
 
   // Command client types
   ExecuteRequest,
   ExecuteResponse as CommandExecuteResponse,
-  ExposedPortInfo,
 
   // Port client types
   ExposePortRequest,
-  ExposePortResponse,
   FileOperationRequest,
-  GetExposedPortsResponse,
 
   // Git client types
   GitCheckoutRequest,
-  GitCheckoutResponse,
+  GitCheckoutResult,
   // Base client types
   HttpClientOptions as SandboxClientOptions,
 
@@ -64,6 +61,9 @@ export type {
 
   // Utility client types
   PingResponse,
+  PortCloseResult,
+  PortExposeResult,
+  PortListResult,
   ProcessCleanupResult,
   ProcessInfoResult,
   ProcessKillResult,
@@ -78,7 +78,6 @@ export type {
   // Process client types
   StartProcessRequest,
   UnexposePortRequest,
-  UnexposePortResponse,
   WriteFileRequest
 } from "./clients";
 export type { ExecutionCallbacks, InterpreterClient } from './clients/interpreter-client.js';

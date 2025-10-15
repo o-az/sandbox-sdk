@@ -112,7 +112,6 @@ describe('Build and Test Workflow', () => {
         headers,
         body: JSON.stringify({
           command: 'exit 1',
-
         }),
       });
 

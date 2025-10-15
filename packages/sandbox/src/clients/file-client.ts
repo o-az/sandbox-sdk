@@ -43,31 +43,6 @@ export interface FileOperationRequest extends SessionRequest {
 }
 
 /**
- * Request interface for writing files
- */
-export interface WriteFileRequest extends SessionRequest {
-  path: string;
-  content: string;
-  encoding?: string;
-}
-
-/**
- * Request interface for reading files
- */
-export interface ReadFileRequest extends SessionRequest {
-  path: string;
-  encoding?: string;
-}
-
-/**
- * Request interface for file operations (delete, rename, move)
- */
-export interface FileOperationRequest extends SessionRequest {
-  path: string;
-  newPath?: string; // For rename/move operations
-}
-
-/**
  * Client for file system operations
  */
 export class FileClient extends BaseHttpClient {

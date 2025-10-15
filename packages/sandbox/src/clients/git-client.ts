@@ -1,5 +1,9 @@
+import type { GitCheckoutResult } from '@repo/shared';
 import { BaseHttpClient } from './base-client';
-import type { BaseApiResponse, HttpClientOptions, SessionRequest } from './types';
+import type { HttpClientOptions, SessionRequest } from './types';
+
+// Re-export for convenience
+export type { GitCheckoutResult };
 
 /**
  * Request interface for Git checkout operations
@@ -8,18 +12,6 @@ export interface GitCheckoutRequest extends SessionRequest {
   repoUrl: string;
   branch?: string;
   targetDir?: string;
-}
-
-/**
- * Response interface for Git checkout operations
- */
-export interface GitCheckoutResponse extends BaseApiResponse {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  repoUrl: string;
-  branch: string;
-  targetDir: string;
 }
 
 /**
@@ -43,7 +35,7 @@ export class GitClient extends BaseHttpClient {
       branch?: string;
       targetDir?: string;
     }
-  ): Promise<GitCheckoutResponse> {
+  ): Promise<GitCheckoutResult> {
     try {
       // Determine target directory - use provided path or generate from repo name
       let targetDir = options?.targetDir;
@@ -65,7 +57,7 @@ export class GitClient extends BaseHttpClient {
         data.branch = options.branch;
       }
 
-      const response = await this.post<GitCheckoutResponse>(
+      const response = await this.post<GitCheckoutResult>(
         '/api/git/checkout',
         data
       );

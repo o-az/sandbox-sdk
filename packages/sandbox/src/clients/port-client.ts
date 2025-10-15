@@ -1,5 +1,17 @@
+import type {
+  PortCloseResult,
+  PortExposeResult,
+  PortListResult,
+} from '@repo/shared';
 import { BaseHttpClient } from './base-client';
-import type { BaseApiResponse, HttpClientOptions } from './types';
+import type { HttpClientOptions } from './types';
+
+// Re-export for convenience
+export type {
+  PortExposeResult,
+  PortCloseResult,
+  PortListResult,
+};
 
 /**
  * Request interface for exposing ports
@@ -10,43 +22,10 @@ export interface ExposePortRequest {
 }
 
 /**
- * Response interface for exposing ports
- */
-export interface ExposePortResponse extends BaseApiResponse {
-  port: number;
-  exposedAt: string;
-  name?: string;
-}
-
-/**
  * Request interface for unexposing ports
  */
 export interface UnexposePortRequest {
   port: number;
-}
-
-/**
- * Response interface for unexposing ports
- */
-export interface UnexposePortResponse extends BaseApiResponse {
-  port: number;
-}
-
-/**
- * Information about an exposed port
- */
-export interface ExposedPortInfo {
-  port: number;
-  name?: string;
-  exposedAt: string;
-}
-
-/**
- * Response interface for getting exposed ports
- */
-export interface GetExposedPortsResponse extends BaseApiResponse {
-  ports: ExposedPortInfo[];
-  count: number;
 }
 
 /**
@@ -67,18 +46,18 @@ export class PortClient extends BaseHttpClient {
     port: number,
     sessionId: string,
     name?: string
-  ): Promise<ExposePortResponse> {
+  ): Promise<PortExposeResult> {
     try {
       const data = { port, sessionId, name };
 
-      const response = await this.post<ExposePortResponse>(
+      const response = await this.post<PortExposeResult>(
         '/api/expose-port',
         data
       );
 
       this.logSuccess(
         'Port exposed',
-        `${port} exposed at ${response.exposedAt}${name ? ` (${name})` : ''}`
+        `${port} exposed at ${response.url}${name ? ` (${name})` : ''}`
       );
 
       return response;
@@ -93,10 +72,10 @@ export class PortClient extends BaseHttpClient {
    * @param port - Port number to unexpose
    * @param sessionId - The session ID for this operation
    */
-  async unexposePort(port: number, sessionId: string): Promise<UnexposePortResponse> {
+  async unexposePort(port: number, sessionId: string): Promise<PortCloseResult> {
     try {
       const url = `/api/exposed-ports/${port}?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.delete<UnexposePortResponse>(url);
+      const response = await this.delete<PortCloseResult>(url);
 
       this.logSuccess('Port unexposed', `${port}`);
       return response;
@@ -110,14 +89,14 @@ export class PortClient extends BaseHttpClient {
    * Get all currently exposed ports
    * @param sessionId - The session ID for this operation
    */
-  async getExposedPorts(sessionId: string): Promise<GetExposedPortsResponse> {
+  async getExposedPorts(sessionId: string): Promise<PortListResult> {
     try {
       const url = `/api/exposed-ports?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.get<GetExposedPortsResponse>(url);
+      const response = await this.get<PortListResult>(url);
 
       this.logSuccess(
         'Exposed ports retrieved',
-        `${response.count} ports exposed`
+        `${response.ports.length} ports exposed`
       );
 
       return response;

@@ -20,18 +20,17 @@ export { FileClient } from './file-client';
 // Git client types
 export type {
   GitCheckoutRequest,
-  GitCheckoutResponse,
+  GitCheckoutResult,
 } from './git-client';
 export { GitClient } from './git-client';
 export { type ExecutionCallbacks, InterpreterClient } from './interpreter-client';
 // Port client types
 export type {
-  ExposedPortInfo,
   ExposePortRequest,
-  ExposePortResponse,
-  GetExposedPortsResponse,
+  PortCloseResult,
+  PortExposeResult,
+  PortListResult,
   UnexposePortRequest,
-  UnexposePortResponse,
 } from './port-client';
 export { PortClient } from './port-client';
 // Process client types
