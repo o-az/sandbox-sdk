@@ -124,28 +124,41 @@ describe('Sandbox - Automatic Session Management', () => {
     it('should use default session for process management', async () => {
       vi.spyOn(sandbox.client.processes, 'startProcess').mockResolvedValue({
         success: true,
-        process: {
+        processId: 'proc-1',
+        pid: 1234,
+        command: 'sleep 10',
+        timestamp: new Date().toISOString(),
+      } as any);
+
+      vi.spyOn(sandbox.client.processes, 'listProcesses').mockResolvedValue({
+        success: true,
+        processes: [{
           id: 'proc-1',
           pid: 1234,
           command: 'sleep 10',
           status: 'running',
           startTime: new Date().toISOString(),
-        },
+        }],
+        timestamp: new Date().toISOString(),
       } as any);
 
-      vi.spyOn(sandbox.client.processes, 'listProcesses').mockResolvedValue({
-        success: true,
-        processes: [],
-      } as any);
-
-      await sandbox.startProcess('sleep 10');
-      await sandbox.listProcesses();
+      const process = await sandbox.startProcess('sleep 10');
+      const processes = await sandbox.listProcesses();
 
       expect(sandbox.client.utils.createSession).toHaveBeenCalledTimes(1);
 
+      // startProcess uses sessionId (to start process in that session)
       const startSessionId = vi.mocked(sandbox.client.processes.startProcess).mock.calls[0][1];
-      const listSessionId = vi.mocked(sandbox.client.processes.listProcesses).mock.calls[0][0];
-      expect(startSessionId).toBe(listSessionId);
+      expect(startSessionId).toMatch(/^sandbox-/);
+
+      // listProcesses is sandbox-scoped - no sessionId parameter
+      const listProcessesCall = vi.mocked(sandbox.client.processes.listProcesses).mock.calls[0];
+      expect(listProcessesCall).toEqual([]);
+
+      // Verify the started process appears in the list
+      expect(process.id).toBe('proc-1');
+      expect(processes).toHaveLength(1);
+      expect(processes[0].id).toBe('proc-1');
     });
 
     it('should use default session for git operations', async () => {

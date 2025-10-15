@@ -66,12 +66,11 @@ export class ProcessClient extends BaseHttpClient {
   }
 
   /**
-   * List all processes
-   * @param sessionId - The session ID for this operation
+   * List all processes (sandbox-scoped, not session-scoped)
    */
-  async listProcesses(sessionId: string): Promise<ProcessListResult> {
+  async listProcesses(): Promise<ProcessListResult> {
     try {
-      const url = `/api/process/list?session=${encodeURIComponent(sessionId)}`;
+      const url = `/api/process/list`;
       const response = await this.get<ProcessListResult>(url);
 
       this.logSuccess('Processes listed', `${response.processes.length} processes`);
@@ -83,15 +82,14 @@ export class ProcessClient extends BaseHttpClient {
   }
 
   /**
-   * Get information about a specific process
+   * Get information about a specific process (sandbox-scoped, not session-scoped)
    * @param processId - ID of the process to retrieve
-   * @param sessionId - The session ID for this operation
    */
-  async getProcess(processId: string, sessionId: string): Promise<ProcessInfoResult> {
+  async getProcess(processId: string): Promise<ProcessInfoResult> {
     try {
-      const url = `/api/process/${processId}?session=${encodeURIComponent(sessionId)}`;
+      const url = `/api/process/${processId}`;
       const response = await this.get<ProcessInfoResult>(url);
-      
+
       this.logSuccess('Process retrieved', `ID: ${processId}`);
       return response;
     } catch (error) {
@@ -101,13 +99,12 @@ export class ProcessClient extends BaseHttpClient {
   }
 
   /**
-   * Kill a specific process
+   * Kill a specific process (sandbox-scoped, not session-scoped)
    * @param processId - ID of the process to kill
-   * @param sessionId - The session ID for this operation
    */
-  async killProcess(processId: string, sessionId: string): Promise<ProcessKillResult> {
+  async killProcess(processId: string): Promise<ProcessKillResult> {
     try {
-      const url = `/api/process/${processId}?session=${encodeURIComponent(sessionId)}`;
+      const url = `/api/process/${processId}`;
       const response = await this.delete<ProcessKillResult>(url);
 
       this.logSuccess('Process killed', `ID: ${processId}`);
@@ -119,12 +116,11 @@ export class ProcessClient extends BaseHttpClient {
   }
 
   /**
-   * Kill all running processes
-   * @param sessionId - The session ID for this operation
+   * Kill all running processes (sandbox-scoped, not session-scoped)
    */
-  async killAllProcesses(sessionId: string): Promise<ProcessCleanupResult> {
+  async killAllProcesses(): Promise<ProcessCleanupResult> {
     try {
-      const url = `/api/process/kill-all?session=${encodeURIComponent(sessionId)}`;
+      const url = `/api/process/kill-all`;
       const response = await this.delete<ProcessCleanupResult>(url);
 
       this.logSuccess(
@@ -140,13 +136,12 @@ export class ProcessClient extends BaseHttpClient {
   }
 
   /**
-   * Get logs from a specific process
+   * Get logs from a specific process (sandbox-scoped, not session-scoped)
    * @param processId - ID of the process to get logs from
-   * @param sessionId - The session ID for this operation
    */
-  async getProcessLogs(processId: string, sessionId: string): Promise<ProcessLogsResult> {
+  async getProcessLogs(processId: string): Promise<ProcessLogsResult> {
     try {
-      const url = `/api/process/${processId}/logs?session=${encodeURIComponent(sessionId)}`;
+      const url = `/api/process/${processId}/logs`;
       const response = await this.get<ProcessLogsResult>(url);
 
       this.logSuccess(
@@ -162,19 +157,18 @@ export class ProcessClient extends BaseHttpClient {
   }
 
   /**
-   * Stream logs from a specific process
+   * Stream logs from a specific process (sandbox-scoped, not session-scoped)
    * @param processId - ID of the process to stream logs from
-   * @param sessionId - The session ID for this operation
    */
-  async streamProcessLogs(processId: string, sessionId: string): Promise<ReadableStream<Uint8Array>> {
+  async streamProcessLogs(processId: string): Promise<ReadableStream<Uint8Array>> {
     try {
-      const url = `/api/process/${processId}/stream?session=${encodeURIComponent(sessionId)}`;
+      const url = `/api/process/${processId}/stream`;
       const response = await this.doFetch(url, {
         method: 'GET',
       });
 
       const stream = await this.handleStreamResponse(response);
-      
+
       this.logSuccess('Process log stream started', `ID: ${processId}`);
 
       return stream;

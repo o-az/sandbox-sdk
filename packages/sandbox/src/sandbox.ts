@@ -390,7 +390,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
 
   async listProcesses(sessionId?: string): Promise<Process[]> {
     const session = sessionId ?? await this.ensureDefaultSession();
-    const response = await this.client.processes.listProcesses(session);
+    const response = await this.client.processes.listProcesses();
 
     return response.processes.map(processData =>
       this.createProcessFromDTO({
@@ -407,7 +407,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
 
   async getProcess(id: string, sessionId?: string): Promise<Process | null> {
     const session = sessionId ?? await this.ensureDefaultSession();
-    const response = await this.client.processes.getProcess(id, session);
+    const response = await this.client.processes.getProcess(id);
     if (!response.process) {
       return null;
     }
@@ -425,15 +425,13 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   }
 
   async killProcess(id: string, signal?: string, sessionId?: string): Promise<void> {
-    const session = sessionId ?? await this.ensureDefaultSession();
     // Note: signal parameter is not currently supported by the HttpClient implementation
     // The HTTP client already throws properly typed errors, so we just let them propagate
-    await this.client.processes.killProcess(id, session);
+    await this.client.processes.killProcess(id);
   }
 
   async killAllProcesses(sessionId?: string): Promise<number> {
-    const session = sessionId ?? await this.ensureDefaultSession();
-    const response = await this.client.processes.killAllProcesses(session);
+    const response = await this.client.processes.killAllProcesses();
     return response.cleanedCount;
   }
 
@@ -445,9 +443,8 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   }
 
   async getProcessLogs(id: string, sessionId?: string): Promise<{ stdout: string; stderr: string; processId: string }> {
-    const session = sessionId ?? await this.ensureDefaultSession();
     // The HTTP client already throws properly typed errors, so we just let them propagate
-    const response = await this.client.processes.getProcessLogs(id, session);
+    const response = await this.client.processes.getProcessLogs(id);
     return {
       stdout: response.stdout,
       stderr: response.stderr,
@@ -486,9 +483,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       throw new Error('Operation was aborted');
     }
 
-    const session = await this.ensureDefaultSession();
-    // Get the stream from ProcessClient
-    return this.client.processes.streamProcessLogs(processId, session);
+    return this.client.processes.streamProcessLogs(processId);
   }
 
   /**
@@ -500,7 +495,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       throw new Error('Operation was aborted');
     }
 
-    return this.client.processes.streamProcessLogs(processId, sessionId);
+    return this.client.processes.streamProcessLogs(processId);
   }
 
   async gitCheckout(
@@ -862,15 +857,15 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       exec: (command, options) => this.execWithSession(command, sessionId, options),
       execStream: (command, options) => this.execStreamWithSession(command, sessionId, options),
 
-      // Process management - just pass sessionId to main methods
+      // Process management
       startProcess: (command, options) => this.startProcess(command, options, sessionId),
       listProcesses: () => this.listProcesses(sessionId),
       getProcess: (id) => this.getProcess(id, sessionId),
-      killProcess: (id, signal) => this.killProcess(id, signal, sessionId),
-      killAllProcesses: () => this.killAllProcesses(sessionId),
-      cleanupCompletedProcesses: () => this.cleanupCompletedProcesses(sessionId),
-      getProcessLogs: (id) => this.getProcessLogs(id, sessionId),
-      streamProcessLogs: (processId, options) => this.streamProcessLogsWithSession(processId, sessionId, options),
+      killProcess: (id, signal) => this.killProcess(id, signal),
+      killAllProcesses: () => this.killAllProcesses(),
+      cleanupCompletedProcesses: () => this.cleanupCompletedProcesses(),
+      getProcessLogs: (id) => this.getProcessLogs(id),
+      streamProcessLogs: (processId, options) => this.streamProcessLogs(processId, options),
 
       // File operations - pass sessionId via options or parameter
       writeFile: (path, content, options) => this.writeFile(path, content, { ...options, sessionId }),
