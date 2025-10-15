@@ -2,9 +2,6 @@ name: Pull Request
 
 on:
   pull_request:
-  push:
-    branches:
-      - refactor-with-tests
 
 jobs:
   # Fast quality checks
@@ -123,7 +120,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --env ${{ steps.env-name.outputs.env_name }}
+          command: deploy --name ${{ steps.env-name.outputs.worker_name }}
           workingDirectory: tests/e2e/test-worker
 
       # Construct worker URL from worker name

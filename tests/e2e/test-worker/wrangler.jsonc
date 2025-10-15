@@ -31,45 +31,5 @@
       "new_sqlite_classes": ["Sandbox"],
       "tag": "v1"
     }
-  ],
-
-  "env": {
-    "main": {
-      "name": "sandbox-e2e-test-worker-main",
-      "containers": [
-        {
-          "class_name": "Sandbox",
-          "image": "./Dockerfile",
-          "name": "sandbox"
-        }
-      ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "class_name": "Sandbox",
-            "name": "Sandbox"
-          }
-        ]
-      }
-    },
-    "refactor-with-tests": {
-      "name": "sandbox-e2e-test-worker-refactor-with-tests",
-      "containers": [
-        {
-          "class_name": "Sandbox",
-          "image": "./Dockerfile",
-          "name": "sandbox",
-          "max_instances": 25
-        }
-      ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "class_name": "Sandbox",
-            "name": "Sandbox"
-          }
-        ]
-      }
-    }
-  }
+  ]
 }

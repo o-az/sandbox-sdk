@@ -85,20 +85,26 @@ jobs:
       - name: Build test worker Docker image
         run: npm run docker:local -w @cloudflare/sandbox
 
-      # Deploy to branch-specific environment
+      # Set worker name
+      - name: Set worker name
+        id: worker-name
+        run: |
+          echo "worker_name=sandbox-e2e-test-worker-${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+      # Deploy test worker
       - name: Deploy test worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --env ${{ github.ref_name }}
+          command: deploy --name ${{ steps.worker-name.outputs.worker_name }}
           workingDirectory: tests/e2e/test-worker
 
       # Construct worker URL from worker name
       - name: Get deployment URL
         id: get-url
         run: |
-          echo "worker_url=https://sandbox-e2e-test-worker-${{ github.ref_name }}.agents-b8a.workers.dev" >> $GITHUB_OUTPUT
+          echo "worker_url=https://${{ steps.worker-name.outputs.worker_name }}.agents-b8a.workers.dev" >> $GITHUB_OUTPUT
 
       # Run E2E tests against deployed worker
       - name: Run E2E tests
