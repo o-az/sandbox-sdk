@@ -79,7 +79,7 @@ export class ProcessManager {
     options: ProcessOptions
   ): ProcessRecordData {
     return {
-      id: this.generateProcessId(),
+      id: options.processId || this.generateProcessId(),
       command,
       pid,
       status: 'running',

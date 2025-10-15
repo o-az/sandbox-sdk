@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type {
+  PortCloseResult,
   PortExposeResult,
   PortListResult,
-  PortCloseResult,
 } from '@repo/shared';
 import type { ErrorResponse } from '@repo/shared/errors';
 import type { Logger, PortInfo, RequestContext } from '@sandbox-container/core/types';

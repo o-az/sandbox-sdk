@@ -4,6 +4,7 @@
 // - Use Zod for HTTP request structure validation (untrusted external input)
 // - NO security validation here - services handle their own validation
 // - Keep it simple - just parse and return typed data
+import type { StartProcessRequest } from '@repo/shared';
 import type { ValidationResult } from '../core/types';
 import {
   type ExecuteRequest,
@@ -15,7 +16,6 @@ import {
   FileRequestSchemas,
   type GitCheckoutRequest,
   GitCheckoutRequestSchema,
-  type StartProcessRequest,
   StartProcessRequestSchema,
 } from './schemas';
 

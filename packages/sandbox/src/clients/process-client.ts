@@ -1,74 +1,25 @@
-import type { LogEvent } from '@repo/shared';
-import { parseSSEStream } from '../sse-parser';
+import type {
+  ProcessCleanupResult,
+  ProcessInfoResult,
+  ProcessKillResult,
+  ProcessListResult,
+  ProcessLogsResult,
+  ProcessStartResult,
+  StartProcessRequest,
+} from '@repo/shared';
 import { BaseHttpClient } from './base-client';
-import type { BaseApiResponse, HttpClientOptions, SessionRequest } from './types';
+import type { HttpClientOptions } from './types';
 
-/**
- * Request interface for starting processes
- */
-export interface StartProcessRequest extends SessionRequest {
-  command: string;
-  processId?: string;
-}
-
-/**
- * Process information
- */
-export interface ProcessInfo {
-  id: string;
-  command: string;
-  status: 'running' | 'completed' | 'killed' | 'failed';
-  pid?: number;
-  exitCode?: number;
-  startTime: string;
-  endTime?: string;
-}
-
-/**
- * Response interface for starting processes
- */
-export interface StartProcessResponse extends BaseApiResponse {
-  process: ProcessInfo;
-}
-
-/**
- * Response interface for listing processes
- */
-export interface ListProcessesResponse extends BaseApiResponse {
-  processes: ProcessInfo[];
-  count: number;
-}
-
-/**
- * Response interface for getting a single process
- */
-export interface GetProcessResponse extends BaseApiResponse {
-  process: ProcessInfo;
-}
-
-/**
- * Response interface for process logs - matches container format
- */
-export interface GetProcessLogsResponse extends BaseApiResponse {
-  processId: string;
-  stdout: string;
-  stderr: string;
-}
-
-/**
- * Response interface for killing processes
- */
-export interface KillProcessResponse extends BaseApiResponse {
-  message: string;
-}
-
-/**
- * Response interface for killing all processes
- */
-export interface KillAllProcessesResponse extends BaseApiResponse {
-  killedCount: number;
-  message: string;
-}
+// Re-export for convenience
+export type {
+  StartProcessRequest,
+  ProcessStartResult,
+  ProcessListResult,
+  ProcessInfoResult,
+  ProcessKillResult,
+  ProcessLogsResult,
+  ProcessCleanupResult,
+};
 
 
 /**
@@ -89,22 +40,22 @@ export class ProcessClient extends BaseHttpClient {
     command: string,
     sessionId: string,
     options?: { processId?: string }
-  ): Promise<StartProcessResponse> {
+  ): Promise<ProcessStartResult> {
     try {
-      const data = {
+      const data: StartProcessRequest = {
         command,
         sessionId,
         processId: options?.processId,
       };
 
-      const response = await this.post<StartProcessResponse>(
+      const response = await this.post<ProcessStartResult>(
         '/api/process/start',
         data
       );
 
       this.logSuccess(
         'Process started',
-        `${command} (ID: ${response.process.id})`
+        `${command} (ID: ${response.processId})`
       );
 
       return response;
@@ -118,12 +69,12 @@ export class ProcessClient extends BaseHttpClient {
    * List all processes
    * @param sessionId - The session ID for this operation
    */
-  async listProcesses(sessionId: string): Promise<ListProcessesResponse> {
+  async listProcesses(sessionId: string): Promise<ProcessListResult> {
     try {
       const url = `/api/process/list?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.get<ListProcessesResponse>(url);
-      
-      this.logSuccess('Processes listed', `${response.count} processes`);
+      const response = await this.get<ProcessListResult>(url);
+
+      this.logSuccess('Processes listed', `${response.processes.length} processes`);
       return response;
     } catch (error) {
       this.logError('listProcesses', error);
@@ -136,10 +87,10 @@ export class ProcessClient extends BaseHttpClient {
    * @param processId - ID of the process to retrieve
    * @param sessionId - The session ID for this operation
    */
-  async getProcess(processId: string, sessionId: string): Promise<GetProcessResponse> {
+  async getProcess(processId: string, sessionId: string): Promise<ProcessInfoResult> {
     try {
       const url = `/api/process/${processId}?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.get<GetProcessResponse>(url);
+      const response = await this.get<ProcessInfoResult>(url);
       
       this.logSuccess('Process retrieved', `ID: ${processId}`);
       return response;
@@ -154,10 +105,10 @@ export class ProcessClient extends BaseHttpClient {
    * @param processId - ID of the process to kill
    * @param sessionId - The session ID for this operation
    */
-  async killProcess(processId: string, sessionId: string): Promise<KillProcessResponse> {
+  async killProcess(processId: string, sessionId: string): Promise<ProcessKillResult> {
     try {
       const url = `/api/process/${processId}?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.delete<KillProcessResponse>(url);
+      const response = await this.delete<ProcessKillResult>(url);
 
       this.logSuccess('Process killed', `ID: ${processId}`);
       return response;
@@ -171,14 +122,14 @@ export class ProcessClient extends BaseHttpClient {
    * Kill all running processes
    * @param sessionId - The session ID for this operation
    */
-  async killAllProcesses(sessionId: string): Promise<KillAllProcessesResponse> {
+  async killAllProcesses(sessionId: string): Promise<ProcessCleanupResult> {
     try {
       const url = `/api/process/kill-all?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.delete<KillAllProcessesResponse>(url);
+      const response = await this.delete<ProcessCleanupResult>(url);
 
       this.logSuccess(
         'All processes killed',
-        `${response.killedCount} processes terminated`
+        `${response.cleanedCount} processes terminated`
       );
 
       return response;
@@ -193,10 +144,10 @@ export class ProcessClient extends BaseHttpClient {
    * @param processId - ID of the process to get logs from
    * @param sessionId - The session ID for this operation
    */
-  async getProcessLogs(processId: string, sessionId: string): Promise<GetProcessLogsResponse> {
+  async getProcessLogs(processId: string, sessionId: string): Promise<ProcessLogsResult> {
     try {
       const url = `/api/process/${processId}/logs?session=${encodeURIComponent(sessionId)}`;
-      const response = await this.get<GetProcessLogsResponse>(url);
+      const response = await this.get<ProcessLogsResult>(url);
 
       this.logSuccess(
         'Process logs retrieved',

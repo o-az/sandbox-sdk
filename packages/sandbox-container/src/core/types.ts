@@ -1,5 +1,3 @@
-// Core architectural types and interfaces for the refactored container
-
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS';
 
 export interface Handler<TRequest, TResponse> {
@@ -395,5 +393,8 @@ export interface MkdirResponse {
   timestamp: string;
 }
 
+// Import StartProcessRequest from @repo/shared for type safety across client/container boundary
+export type { StartProcessRequest } from '@repo/shared';
+
 // Import union types from Zod schemas
-export type { ExposePortRequest, FileOperation, FileRequest, StartProcessRequest } from '../validation/schemas';
+export type { ExposePortRequest, FileOperation, FileRequest } from '../validation/schemas';

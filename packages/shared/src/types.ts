@@ -332,6 +332,7 @@ export interface ProcessListResult {
     command: string;
     status: ProcessStatus;
     startTime: string;
+    endTime?: string;
     exitCode?: number;
   }>;
   timestamp: string;

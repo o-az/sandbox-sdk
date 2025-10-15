@@ -1,10 +1,10 @@
 import type {
+  ProcessCleanupResult, 
   ProcessInfoResult,
   ProcessKillResult,
   ProcessListResult,
   ProcessLogsResult,
-  ProcessStartResult,
-  ProcessCleanupResult
+  ProcessStartResult
 } from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 import type { Logger, ProcessStatus, RequestContext, StartProcessRequest } from '../core/types';
@@ -57,13 +57,16 @@ export class ProcessHandler extends BaseHandler<Request, Response> {
   private async handleStart(request: Request, context: RequestContext): Promise<Response> {
     const body = await this.parseRequestBody<StartProcessRequest>(request);
 
+    // Extract command and pass remaining fields as options (flat structure)
+    const { command, ...options } = body;
+
     this.logger.info('Starting process', {
       requestId: context.requestId,
-      command: body.command,
-      options: body.options
+      command,
+      options
     });
 
-    const result = await this.processService.startProcess(body.command, body.options || {});
+    const result = await this.processService.startProcess(command, options);
 
     if (result.success) {
       const process = result.data;

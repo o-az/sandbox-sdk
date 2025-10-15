@@ -1,5 +1,3 @@
-// Bun-optimized Process Management Service
-
 import type {
   CommandErrorContext,
   ProcessErrorContext,

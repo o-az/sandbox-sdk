@@ -36,14 +36,13 @@ export type {
 export { PortClient } from './port-client';
 // Process client types
 export type {
-  GetProcessLogsResponse,
-  GetProcessResponse,
-  KillAllProcessesResponse,
-  KillProcessResponse,
-  ListProcessesResponse,
-  ProcessInfo,
+  ProcessCleanupResult,
+  ProcessInfoResult,
+  ProcessKillResult,
+  ProcessListResult,
+  ProcessLogsResult,
+  ProcessStartResult,
   StartProcessRequest,
-  StartProcessResponse,
 } from './process-client';
 export { ProcessClient } from './process-client';
 export { SandboxClient } from './sandbox-client';

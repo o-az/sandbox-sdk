@@ -52,24 +52,24 @@ export type {
   ExposePortResponse,
   FileOperationRequest,
   GetExposedPortsResponse,
-  GetProcessLogsResponse,
-  GetProcessResponse,
 
   // Git client types
   GitCheckoutRequest,
   GitCheckoutResponse,
   // Base client types
   HttpClientOptions as SandboxClientOptions,
-  KillAllProcessesResponse,
-  KillProcessResponse,
-  ListProcessesResponse,
 
   // File client types
   MkdirRequest,
 
   // Utility client types
   PingResponse,
-  ProcessInfo,
+  ProcessCleanupResult,
+  ProcessInfoResult,
+  ProcessKillResult,
+  ProcessListResult,
+  ProcessLogsResult,
+  ProcessStartResult,
   ReadFileRequest,
   RequestConfig,
   ResponseHandler,
@@ -77,7 +77,6 @@ export type {
 
   // Process client types
   StartProcessRequest,
-  StartProcessResponse,
   UnexposePortRequest,
   UnexposePortResponse,
   WriteFileRequest

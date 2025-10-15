@@ -4,6 +4,7 @@ import { z } from 'zod';
 // Process options schema
 export const ProcessOptionsSchema = z.object({
   sessionId: z.string().optional(),
+  processId: z.string().optional(),
   timeoutMs: z.number().positive().optional(),
   env: z.record(z.string()).optional(),
   cwd: z.string().optional(),
@@ -57,9 +58,16 @@ export const MkdirRequestSchema = z.object({
 });
 
 // Process management schemas
+// Uses flat structure consistent with other endpoints
 export const StartProcessRequestSchema = z.object({
   command: z.string().min(1, 'Command cannot be empty'),
-  options: ProcessOptionsSchema.optional(),
+  sessionId: z.string().optional(),
+  processId: z.string().optional(),
+  timeoutMs: z.number().positive().optional(),
+  env: z.record(z.string()).optional(),
+  cwd: z.string().optional(),
+  encoding: z.string().optional(),
+  autoCleanup: z.boolean().optional(),
 });
 
 // Port management schemas
@@ -88,7 +96,8 @@ export type DeleteFileRequest = z.infer<typeof DeleteFileRequestSchema>;
 export type RenameFileRequest = z.infer<typeof RenameFileRequestSchema>;
 export type MoveFileRequest = z.infer<typeof MoveFileRequestSchema>;
 export type MkdirRequest = z.infer<typeof MkdirRequestSchema>;
-export type StartProcessRequest = z.infer<typeof StartProcessRequestSchema>;
+// Note: StartProcessRequest is now imported from @repo/shared for type safety
+// The Zod schema is still used for runtime validation
 export type ExposePortRequest = z.infer<typeof ExposePortRequestSchema>;
 export type GitCheckoutRequest = z.infer<typeof GitCheckoutRequestSchema>;
 

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "bun:test";
 import type {
+  ProcessCleanupResult, 
   ProcessInfoResult,
   ProcessKillResult,
   ProcessListResult,
   ProcessLogsResult,
   ProcessStartResult,
-  ProcessCleanupResult
+  StartProcessRequest
 } from '@repo/shared';
 import type { ErrorResponse } from '@repo/shared/errors';
 import type { Logger, ProcessInfo, RequestContext } from '@sandbox-container/core/types';
@@ -54,9 +55,9 @@ describe('ProcessHandler', () => {
 
   describe('handleStart - POST /api/process/start', () => {
     it('should start process successfully', async () => {
-      const startProcessData = {
+      const startProcessData: StartProcessRequest = {
         command: 'echo "hello"',
-        options: { cwd: '/tmp' }
+        cwd: '/tmp'
       };
 
       const mockProcessInfo: ProcessInfo = {

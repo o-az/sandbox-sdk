@@ -1,8 +1,8 @@
 // Port Handler
 import type {
+  PortCloseResult,
   PortExposeResult,
   PortListResult,
-  PortCloseResult,
 } from '@repo/shared';
 import { ErrorCode } from '@repo/shared/errors';
 

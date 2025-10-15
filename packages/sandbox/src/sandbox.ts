@@ -309,13 +309,12 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
         processId: options?.processId
       });
 
-      const process = response.process;
       const processObj: Process = {
-        id: process.id,
-        pid: process.pid,
-        command: process.command,
-        status: process.status as ProcessStatus,
-        startTime: new Date(process.startTime),
+        id: response.processId,
+        pid: response.pid,
+        command: response.command,
+        status: 'running' as ProcessStatus,
+        startTime: new Date(),
         endTime: undefined,
         exitCode: undefined,
         sessionId,
@@ -333,16 +332,16 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
 
       // Bind context properly
       processObj.kill = async (signal?: string) => {
-        await this.killProcess(process.id, signal);
+        await this.killProcess(response.processId, signal);
       };
 
       processObj.getStatus = async () => {
-        const current = await this.getProcess(process.id);
+        const current = await this.getProcess(response.processId);
         return current?.status || 'error';
       };
 
       processObj.getLogs = async () => {
-        const logs = await this.getProcessLogs(process.id);
+        const logs = await this.getProcessLogs(response.processId);
         return { stdout: logs.stdout, stderr: logs.stderr };
       };
 
@@ -436,7 +435,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   async killAllProcesses(): Promise<number> {
     const sessionId = await this.ensureDefaultSession();
     const response = await this.client.processes.killAllProcesses(sessionId);
-    return response.killedCount;
+    return response.cleanedCount;
   }
 
   async cleanupCompletedProcesses(): Promise<number> {
@@ -830,25 +829,25 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
         const response = await this.client.processes.startProcess(command, sessionId, {
           processId: options?.processId
         });
-        const process = response.process;
+        const processId = response.processId;
         return {
-          id: process.id,
-          pid: process.pid,
-          command: process.command,
-          status: process.status as ProcessStatus,
-          startTime: new Date(process.startTime),
-          endTime: process.endTime ? new Date(process.endTime) : undefined,
-          exitCode: process.exitCode ?? undefined,
+          id: processId,
+          pid: response.pid,
+          command: response.command,
+          status: 'running' as ProcessStatus,
+          startTime: new Date(),
+          endTime: undefined,
+          exitCode: undefined,
           sessionId,
           kill: async (signal?: string) => {
-            await this.client.processes.killProcess(process.id, sessionId);
+            await this.client.processes.killProcess(processId, sessionId);
           },
           getStatus: async () => {
-            const resp = await this.client.processes.getProcess(process.id, sessionId);
+            const resp = await this.client.processes.getProcess(processId, sessionId);
             return resp.process?.status as ProcessStatus || "error";
           },
           getLogs: async () => {
-            const logs = await this.client.processes.getProcessLogs(process.id, sessionId);
+            const logs = await this.client.processes.getProcessLogs(processId, sessionId);
             return { stdout: logs.stdout, stderr: logs.stderr };
           },
         };
@@ -912,7 +911,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
 
       killAllProcesses: async () => {
         const response = await this.client.processes.killAllProcesses(sessionId);
-        return response.killedCount;
+        return response.cleanedCount;
       },
 
       cleanupCompletedProcesses: async () => {
