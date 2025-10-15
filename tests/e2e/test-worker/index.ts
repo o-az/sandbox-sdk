@@ -297,6 +297,52 @@ export default {
         });
       }
 
+      // Code Interpreter - Create Context
+      if (url.pathname === '/api/code/context/create' && request.method === 'POST') {
+        const context = await executor.createCodeContext(body);
+        return new Response(JSON.stringify(context), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Code Interpreter - List Contexts
+      if (url.pathname === '/api/code/context/list' && request.method === 'GET') {
+        const contexts = await executor.listCodeContexts();
+        return new Response(JSON.stringify(contexts), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Code Interpreter - Delete Context
+      if (url.pathname.startsWith('/api/code/context/') && request.method === 'DELETE') {
+        const pathParts = url.pathname.split('/');
+        const contextId = pathParts[4]; // /api/code/context/:id
+        await executor.deleteCodeContext(contextId);
+        return new Response(JSON.stringify({ success: true, contextId }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Code Interpreter - Execute Code
+      if (url.pathname === '/api/code/execute' && request.method === 'POST') {
+        const execution = await executor.runCode(body.code, body.options || {});
+        return new Response(JSON.stringify(execution), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Code Interpreter - Execute Code with Streaming
+      if (url.pathname === '/api/code/execute/stream' && request.method === 'POST') {
+        const stream = await executor.runCodeStream(body.code, body.options || {});
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
+      }
+
       // Cleanup endpoint - destroys the sandbox container
       // This is used by E2E tests to explicitly clean up after each test
       if (url.pathname === '/cleanup' && request.method === 'POST') {

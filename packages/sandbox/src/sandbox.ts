@@ -908,6 +908,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
         const execution = await this.codeInterpreter.runCode(code, options);
         return execution.toJSON();
       },
+      runCodeStream: (code, options) => this.codeInterpreter.runCodeStream(code, options),
       listCodeContexts: () => this.codeInterpreter.listCodeContexts(),
       deleteCodeContext: (contextId) => this.codeInterpreter.deleteCodeContext(contextId),
     };
@@ -924,6 +925,10 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   async runCode(code: string, options?: RunCodeOptions): Promise<ExecutionResult> {
     const execution = await this.codeInterpreter.runCode(code, options);
     return execution.toJSON();
+  }
+
+  async runCodeStream(code: string, options?: RunCodeOptions): Promise<ReadableStream> {
+    return this.codeInterpreter.runCodeStream(code, options);
   }
 
   async listCodeContexts(): Promise<CodeContext[]> {

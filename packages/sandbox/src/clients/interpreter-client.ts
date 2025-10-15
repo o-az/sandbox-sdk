@@ -1,5 +1,7 @@
 import {
   type CodeContext,
+  type ContextCreateResult,
+  type ContextListResult,
   type CreateContextOptions,
   type ExecutionError,
   type OutputMessage,
@@ -10,19 +12,6 @@ import type { ErrorResponse } from '../errors';
 import { createErrorFromResponse, ErrorCode, InterpreterNotReadyError } from '../errors';
 import { BaseHttpClient } from './base-client.js';
 import type { HttpClientOptions } from './types.js';
-
-// API Response types
-interface ContextResponse {
-  id: string;
-  language: string;
-  cwd: string;
-  createdAt: string; // ISO date string from JSON
-  lastUsed: string; // ISO date string from JSON
-}
-
-interface ContextListResponse {
-  contexts: ContextResponse[];
-}
 
 // Streaming execution data from the server
 interface StreamingExecutionData {
@@ -92,13 +81,17 @@ export class InterpreterClient extends BaseHttpClient {
         throw error;
       }
 
-      const data = (await response.json()) as ContextResponse;
+      const data = (await response.json()) as ContextCreateResult;
+      if (!data.success) {
+        throw new Error(`Failed to create context: ${JSON.stringify(data)}`);
+      }
+
       return {
-        id: data.id,
+        id: data.contextId,
         language: data.language,
-        cwd: data.cwd,
-        createdAt: new Date(data.createdAt),
-        lastUsed: new Date(data.lastUsed),
+        cwd: data.cwd || '/workspace',
+        createdAt: new Date(data.timestamp),
+        lastUsed: new Date(data.timestamp),
       };
     });
   }
@@ -153,13 +146,17 @@ export class InterpreterClient extends BaseHttpClient {
         throw error;
       }
 
-      const data = (await response.json()) as ContextListResponse;
+      const data = (await response.json()) as ContextListResult;
+      if (!data.success) {
+        throw new Error(`Failed to list contexts: ${JSON.stringify(data)}`);
+      }
+
       return data.contexts.map((ctx) => ({
         id: ctx.id,
         language: ctx.language,
-        cwd: ctx.cwd,
-        createdAt: new Date(ctx.createdAt),
-        lastUsed: new Date(ctx.lastUsed),
+        cwd: ctx.cwd || '/workspace',
+        createdAt: new Date(data.timestamp),
+        lastUsed: new Date(data.timestamp),
       }));
     });
   }
