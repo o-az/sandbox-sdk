@@ -1,3 +1,5 @@
+<img width="1362" height="450" alt="Image" src="https://github.com/user-attachments/assets/6f770ae3-0a14-4d2b-9aed-a304ee5446c5" />
+
 # Cloudflare Sandbox SDK
 
 [![npm version](https://img.shields.io/npm/v/@cloudflare/sandbox.svg)](https://www.npmjs.com/package/@cloudflare/sandbox)
