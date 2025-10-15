@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll, vi } from 'vitest';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
@@ -96,7 +96,6 @@ describe('Build and Test Workflow', () => {
         headers,
         body: JSON.stringify({
           command: 'pwd',
-
         }),
       });
 
@@ -116,14 +115,14 @@ describe('Build and Test Workflow', () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      // Should return 500 error since shell terminated unexpectedly
+      expect(response.status).toBe(500);
       const data = await response.json();
 
-      // Should indicate failure
-      expect(data.success).toBe(false);
-
-      // Error message should mention shell termination
-      expect(data.error?.message || data.stderr || '').toMatch(/shell terminated unexpectedly|shell.*died/i);
+      // Should have an error object (500 responses may not have success field)
+      expect(data.error).toBeDefined();
+      expect(data.error).toMatch(/shell terminated unexpectedly/i);
+      expect(data.error).toMatch(/exit code.*1/i);
     });
   });
 });

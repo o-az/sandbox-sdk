@@ -108,6 +108,7 @@ export class Session {
   private shell: Subprocess | null = null;
   private shellExitedPromise: Promise<never> | null = null;
   private ready = false;
+  private isDestroying = false;
   private sessionDir: string | null = null;
   private readonly id: string;
   private readonly options: SessionOptions;
@@ -152,6 +153,11 @@ export class Session {
     // shell death immediately and provide clear error messages to users
     this.shellExitedPromise = new Promise<never>((_, reject) => {
       this.shell!.exited.then((exitCode) => {
+        // If we're intentionally destroying the session, don't log error or reject
+        if (this.isDestroying) {
+          return;
+        }
+
         console.error(`[Session ${this.id}] Shell process exited unexpectedly with code ${exitCode ?? 'unknown'}`);
         this.ready = false;
 
@@ -162,9 +168,11 @@ export class Session {
         ));
       }).catch((error) => {
         // Handle any errors from shell.exited promise
-        console.error(`[Session ${this.id}] Shell exit monitor error:`, error);
-        this.ready = false;
-        reject(error);
+        if (!this.isDestroying) {
+          console.error(`[Session ${this.id}] Shell exit monitor error:`, error);
+          this.ready = false;
+          reject(error);
+        }
       });
     });
 
@@ -498,6 +506,9 @@ export class Session {
    * Destroy the session and clean up resources
    */
   async destroy(): Promise<void> {
+    // Mark as destroying to prevent shell exit monitor from logging errors
+    this.isDestroying = true;
+
     if (this.shell && !this.shell.killed) {
       // Close stdin to send EOF to bash (standard way to terminate interactive shells)
       if (this.shell.stdin && typeof this.shell.stdin !== 'number') {

@@ -1,6 +1,4 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import type { PortExposeResult } from '@repo/shared';
-import type { SerializedProcess, ProcessListResponse, ProcessLogsResponse } from './types';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
 import { createSandboxId, createTestHeaders, fetchWithStartup, cleanupSandbox } from './helpers/test-fixtures';
 
@@ -73,7 +71,7 @@ describe('Process Lifecycle Workflow', () => {
       );
 
       expect(startResponse.status).toBe(200);
-      const startData = await startResponse.json() as SerializedProcess;
+      const startData = await startResponse.json();
       expect(startData.id).toBeTruthy();
       expect(startData.status).toBe('running');
       const processId = startData.id;
@@ -88,7 +86,7 @@ describe('Process Lifecycle Workflow', () => {
       });
 
       expect(statusResponse.status).toBe(200);
-      const statusData = await statusResponse.json() as SerializedProcess;
+      const statusData = await statusResponse.json();
       expect(statusData.id).toBe(processId);
       expect(statusData.status).toBe('running');
 
@@ -118,7 +116,7 @@ describe('Process Lifecycle Workflow', () => {
         { timeout: 30000, interval: 2000 }
       );
 
-      const process1Data = await process1Response.json() as SerializedProcess;
+      const process1Data = await process1Response.json();
       const process1Id = process1Data.id;
 
       const process2Response = await fetch(`${workerUrl}/api/process/start`, {
@@ -130,7 +128,7 @@ describe('Process Lifecycle Workflow', () => {
         }),
       });
 
-      const process2Data = await process2Response.json() as SerializedProcess;
+      const process2Data = await process2Response.json();
       const process2Id = process2Data.id;
 
       // Wait a bit for processes to be registered
@@ -143,7 +141,7 @@ describe('Process Lifecycle Workflow', () => {
       });
 
       expect(listResponse.status).toBe(200);
-      const listData = await listResponse.json() as ProcessListResponse;
+      const listData = await listResponse.json();
 
       // Debug logging
       console.log('[DEBUG] List response:', JSON.stringify(listData, null, 2));
@@ -186,7 +184,7 @@ describe('Process Lifecycle Workflow', () => {
         { timeout: 30000, interval: 2000 }
       );
 
-      const startData = await startResponse.json() as SerializedProcess;
+      const startData = await startResponse.json();
       const processId = startData.id;
 
       // Wait for process to complete
@@ -199,7 +197,7 @@ describe('Process Lifecycle Workflow', () => {
       });
 
       expect(logsResponse.status).toBe(200);
-      const logsData = await logsResponse.json() as ProcessLogsResponse;
+      const logsData = await logsResponse.json();
       expect(logsData.stdout).toContain('Hello from process');
     }, 60000);
 
@@ -239,7 +237,7 @@ console.log("Line 3");
         }),
       });
 
-      const startData = await startResponse.json() as SerializedProcess;
+      const startData = await startResponse.json();
       const processId = startData.id;
 
       // Stream logs (SSE)
@@ -338,7 +336,7 @@ console.log("Server started on port 8080");
         }),
       });
 
-      const startData = await startResponse.json() as SerializedProcess;
+      const startData = await startResponse.json();
       const processId = startData.id;
 
       // Wait for server to start
@@ -356,7 +354,7 @@ console.log("Server started on port 8080");
       });
 
       expect(exposeResponse.status).toBe(200);
-      const exposeData = await exposeResponse.json() as PortExposeResult;
+      const exposeData = await exposeResponse.json();
       expect(exposeData.url).toBeTruthy();
       const previewUrl = exposeData.url;
 
@@ -396,7 +394,7 @@ console.log("Server started on port 8080");
           { timeout: 30000, interval: 2000 }
         );
 
-        const data = await startResponse.json() as SerializedProcess;
+        const data = await startResponse.json();
         processes.push(data.id);
       }
 
@@ -408,7 +406,7 @@ console.log("Server started on port 8080");
         method: 'GET',
         headers,
       });
-      const listData = await listResponse.json() as ProcessListResponse;
+      const listData = await listResponse.json();
       expect(listData.length).toBeGreaterThanOrEqual(3);
 
       // Kill all processes
@@ -427,7 +425,7 @@ console.log("Server started on port 8080");
         method: 'GET',
         headers,
       });
-      const listAfterData = await listAfterResponse.json() as ProcessListResponse;
+      const listAfterData = await listAfterResponse.json();
 
       // Should have fewer running processes now
       const runningProcesses = listAfterData.filter((p) => p.status === 'running');
@@ -482,7 +480,7 @@ console.log("Server listening on port 8080");
       });
 
       expect(startResponse.status).toBe(200);
-      const startData = await startResponse.json() as SerializedProcess;
+      const startData = await startResponse.json();
       const processId = startData.id;
 
       // Step 3: Wait and verify process is running
@@ -494,7 +492,7 @@ console.log("Server listening on port 8080");
       });
 
       expect(statusResponse.status).toBe(200);
-      const statusData = await statusResponse.json() as SerializedProcess;
+      const statusData = await statusResponse.json();
       expect(statusData.status).toBe('running');
 
       // Step 4: Expose port
@@ -509,7 +507,7 @@ console.log("Server listening on port 8080");
       });
 
       expect(exposeResponse.status).toBe(200);
-      const exposeData = await exposeResponse.json() as PortExposeResult;
+      const exposeData = await exposeResponse.json();
       const previewUrl = exposeData.url;
 
       // Step 5: Make HTTP request to health endpoint
@@ -525,7 +523,7 @@ console.log("Server listening on port 8080");
       });
 
       expect(logsResponse.status).toBe(200);
-      const logsData = await logsResponse.json() as ProcessLogsResponse;
+      const logsData = await logsResponse.json();
       expect(logsData.stdout).toContain('Server listening on port 8080');
 
       // Step 7: Cleanup - unexpose port and kill the process

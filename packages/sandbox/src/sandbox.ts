@@ -1,3 +1,4 @@
+import type { DurableObject } from 'cloudflare:workers';
 import { Container, getContainer } from "@cloudflare/containers";
 import type {
   CodeContext,
@@ -48,8 +49,8 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   private defaultSession: string | null = null;
   envVars: Record<string, string> = {};
 
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx as any, env);
+  constructor(ctx: DurableObject['ctx'], env: Env) {
+    super(ctx, env);
     this.client = new SandboxClient({
       onCommandComplete: (success, exitCode, _stdout, _stderr, command) => {
         console.log(

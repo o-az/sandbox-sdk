@@ -336,7 +336,7 @@ describe('Sandbox - Automatic Session Management', () => {
         '/test.txt',
         'content',
         'test-session',
-        undefined
+        { encoding: undefined }
       );
     });
 
@@ -355,7 +355,7 @@ describe('Sandbox - Automatic Session Management', () => {
       expect(sandbox.client.git.checkout).toHaveBeenCalledWith(
         'https://github.com/test/repo.git',
         'test-session',
-        undefined
+        { branch: undefined, targetDir: undefined }
       );
     });
   });
