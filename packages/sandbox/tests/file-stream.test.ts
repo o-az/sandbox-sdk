@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { streamFile, collectFile } from '../src/file-stream';
 import type { FileMetadata } from '@repo/shared';
+import { describe, expect, it } from 'vitest';
+import { collectFile, streamFile } from '../src/file-stream';
 
 describe('File Streaming Utilities', () => {
   /**
@@ -292,9 +292,9 @@ describe('File Streaming Utilities', () => {
 
       for (const testCase of testCases) {
         const stream = createMockSSEStream([
-          'data: {"type":"metadata","mimeType":"application/octet-stream","size":' + testCase.expected.length + ',"isBinary":true,"encoding":"base64"}\n\n',
+          `data: {"type":"metadata","mimeType":"application/octet-stream","size":${testCase.expected.length},"isBinary":true,"encoding":"base64"}\n\n`,
           `data: {"type":"chunk","data":"${testCase.input}"}\n\n`,
-          'data: {"type":"complete","bytesRead":' + testCase.expected.length + '}\n\n',
+          `data: {"type":"complete","bytesRead":${testCase.expected.length}}\n\n`,
         ]);
 
         const result = await collectFile(stream);

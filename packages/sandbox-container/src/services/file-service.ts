@@ -917,6 +917,248 @@ export class FileService implements FileSystemOperations {
   }
 
   /**
+   * List files in a directory
+   * Returns detailed file information including permissions
+   */
+  async listFiles(
+    path: string,
+    options: { recursive?: boolean; includeHidden?: boolean } = {},
+    sessionId = 'default'
+  ): Promise<ServiceResult<Array<{
+    name: string;
+    absolutePath: string;
+    relativePath: string;
+    type: 'file' | 'directory' | 'symlink' | 'other';
+    size: number;
+    modifiedAt: string;
+    mode: string;
+    permissions: {
+      readable: boolean;
+      writable: boolean;
+      executable: boolean;
+    };
+  }>>> {
+    try {
+      // 1. Validate path for security
+      const validation = this.security.validatePath(path);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: {
+            message: `Invalid path format for '${path}': ${validation.errors.join(', ')}`,
+            code: ErrorCode.VALIDATION_FAILED,
+            details: {
+              validationErrors: validation.errors.map(e => ({ field: 'path', message: e, code: 'INVALID_PATH' }))
+            } satisfies ValidationFailedContext
+          }
+        };
+      }
+
+      this.logger.info('Listing files', { path, recursive: options.recursive, includeHidden: options.includeHidden });
+
+      // 2. Check if directory exists using session-aware check
+      const existsResult = await this.exists(path, sessionId);
+      if (!existsResult.success) {
+        return existsResult as ServiceResult<Array<any>>;
+      }
+
+      if (!existsResult.data) {
+        return {
+          success: false,
+          error: {
+            message: `Directory not found: ${path}`,
+            code: ErrorCode.FILE_NOT_FOUND,
+            details: {
+              path,
+              operation: Operation.FILE_READ
+            } satisfies FileNotFoundContext
+          }
+        };
+      }
+
+      // 3. Check if path is a directory
+      const statResult = await this.stat(path, sessionId);
+      if (statResult.success && !statResult.data.isDirectory) {
+        return {
+          success: false,
+          error: {
+            message: `Path is not a directory: ${path}`,
+            code: ErrorCode.IS_DIRECTORY,
+            details: {
+              path,
+              operation: Operation.FILE_READ
+            } satisfies FileSystemContext
+          }
+        };
+      }
+
+      // 4. Build find command to list files
+      const escapedPath = this.escapePath(path);
+      const basePath = path.endsWith('/') ? path.slice(0, -1) : path;
+
+      // Use find with appropriate flags
+      let findCommand = `find ${escapedPath}`;
+
+      // Add maxdepth for non-recursive
+      if (!options.recursive) {
+        findCommand += ' -maxdepth 1';
+      }
+
+      // Filter hidden files unless includeHidden is true
+      if (!options.includeHidden) {
+        findCommand += ' -not -path "*/\\.*"';
+      }
+
+      // Skip the base directory itself and format output
+      findCommand += ` -not -path ${escapedPath} -printf '%p\\t%y\\t%s\\t%TY-%Tm-%TdT%TH:%TM:%TS\\t%m\\n'`;
+
+      const execResult = await this.sessionManager.executeInSession(sessionId, findCommand);
+
+      if (!execResult.success) {
+        return execResult as ServiceResult<Array<any>>;
+      }
+
+      const result = execResult.data;
+
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          error: {
+            message: `Failed to list files in '${path}': ${result.stderr || `exit code ${result.exitCode}`}`,
+            code: ErrorCode.FILESYSTEM_ERROR,
+            details: {
+              path,
+              operation: Operation.FILE_READ,
+              exitCode: result.exitCode,
+              stderr: result.stderr
+            } satisfies FileSystemContext
+          }
+        };
+      }
+
+      // 5. Parse the output
+      const files: Array<{
+        name: string;
+        absolutePath: string;
+        relativePath: string;
+        type: 'file' | 'directory' | 'symlink' | 'other';
+        size: number;
+        modifiedAt: string;
+        mode: string;
+        permissions: {
+          readable: boolean;
+          writable: boolean;
+          executable: boolean;
+        };
+      }> = [];
+
+      const lines = result.stdout.trim().split('\n').filter(line => line.trim());
+
+      for (const line of lines) {
+        const parts = line.split('\t');
+        if (parts.length !== 5) continue;
+
+        const [absolutePath, typeChar, sizeStr, modifiedAt, modeStr] = parts;
+
+        // Parse file type from find's format character
+        let type: 'file' | 'directory' | 'symlink' | 'other';
+        switch (typeChar) {
+          case 'f':
+            type = 'file';
+            break;
+          case 'd':
+            type = 'directory';
+            break;
+          case 'l':
+            type = 'symlink';
+            break;
+          default:
+            type = 'other';
+        }
+
+        const size = parseInt(sizeStr, 10);
+        const mode = parseInt(modeStr, 8); // Parse octal mode
+
+        // Calculate relative path from base directory
+        const relativePath = absolutePath.startsWith(`${basePath}/`)
+          ? absolutePath.substring(basePath.length + 1)
+          : absolutePath === basePath
+            ? '.'
+            : absolutePath.split('/').pop() || '';
+
+        // Extract file name
+        const name = absolutePath.split('/').pop() || '';
+
+        // Convert mode to string format (rwxr-xr-x)
+        const modeString = this.modeToString(mode);
+
+        // Extract permissions for current user (owner permissions)
+        const permissions = this.getPermissions(mode);
+
+        files.push({
+          name,
+          absolutePath,
+          relativePath,
+          type,
+          size,
+          modifiedAt,
+          mode: modeString,
+          permissions
+        });
+      }
+
+      this.logger.info('Files listed successfully', {
+        path,
+        count: files.length
+      });
+
+      return {
+        success: true,
+        data: files
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to list files', error instanceof Error ? error : undefined, { path });
+
+      return {
+        success: false,
+        error: {
+          message: `Failed to list files in '${path}': ${errorMessage}`,
+          code: ErrorCode.FILESYSTEM_ERROR,
+          details: {
+            path,
+            operation: Operation.FILE_READ,
+            stderr: errorMessage
+          } satisfies FileSystemContext
+        }
+      };
+    }
+  }
+
+  /**
+   * Convert numeric mode to string format like "rwxr-xr-x"
+   */
+  private modeToString(mode: number): string {
+    const perms = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx'];
+    const user = (mode >> 6) & 7;
+    const group = (mode >> 3) & 7;
+    const other = mode & 7;
+    return perms[user] + perms[group] + perms[other];
+  }
+
+  /**
+   * Extract permission booleans for current user (owner permissions)
+   */
+  private getPermissions(mode: number): { readable: boolean; writable: boolean; executable: boolean } {
+    const userPerms = (mode >> 6) & 7;
+    return {
+      readable: (userPerms & 4) !== 0,
+      writable: (userPerms & 2) !== 0,
+      executable: (userPerms & 1) !== 0
+    };
+  }
+
+  /**
    * Stream a file using Server-Sent Events (SSE)
    * Sends metadata, chunks, and completion events
    * Uses 65535 byte chunks for proper base64 alignment

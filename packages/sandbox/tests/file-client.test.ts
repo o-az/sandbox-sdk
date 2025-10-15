@@ -1,10 +1,11 @@
-import type { 
+import type {
   DeleteFileResult,
-  MkdirResult, 
+  ListFilesResult,
+  MkdirResult,
   MoveFileResult,
-  ReadFileResult, 
+  ReadFileResult,
   RenameFileResult,
-  WriteFileResult 
+  WriteFileResult
 } from '@repo/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileClient } from '../src/clients/file-client';
@@ -496,6 +497,90 @@ database:
 
       await expect(client.moveFile('/app/file.txt', '/nonexistent/file.txt', 'session-move'))
         .rejects.toThrow(FileSystemError);
+    });
+  });
+
+  describe('listFiles', () => {
+    const createMockFile = (overrides: Partial<any> = {}) => ({
+      name: 'test.txt',
+      absolutePath: '/workspace/test.txt',
+      relativePath: 'test.txt',
+      type: 'file' as const,
+      size: 1024,
+      modifiedAt: '2023-01-01T00:00:00Z',
+      mode: 'rw-r--r--',
+      permissions: { readable: true, writable: true, executable: false },
+      ...overrides,
+    });
+
+    it('should list files with correct structure', async () => {
+      const mockResponse: ListFilesResult = {
+        success: true,
+        path: '/workspace',
+        files: [
+          createMockFile({ name: 'file.txt' }),
+          createMockFile({ name: 'dir', type: 'directory', mode: 'rwxr-xr-x' }),
+        ],
+        count: 2,
+        timestamp: '2023-01-01T00:00:00Z',
+      };
+
+      mockFetch.mockResolvedValue(new Response(JSON.stringify(mockResponse), { status: 200 }));
+
+      const result = await client.listFiles('/workspace', 'session-list');
+
+      expect(result.success).toBe(true);
+      expect(result.count).toBe(2);
+      expect(result.files[0].name).toBe('file.txt');
+      expect(result.files[1].name).toBe('dir');
+      expect(result.files[1].type).toBe('directory');
+    });
+
+    it('should pass options correctly', async () => {
+      const mockResponse: ListFilesResult = {
+        success: true,
+        path: '/workspace',
+        files: [createMockFile({ name: '.hidden', relativePath: '.hidden' })],
+        count: 1,
+        timestamp: '2023-01-01T00:00:00Z',
+      };
+
+      mockFetch.mockResolvedValue(new Response(JSON.stringify(mockResponse), { status: 200 }));
+
+      await client.listFiles('/workspace', 'session-list', { recursive: true, includeHidden: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/list-files'),
+        expect.objectContaining({
+          body: JSON.stringify({
+            path: '/workspace',
+            sessionId: 'session-list',
+            options: { recursive: true, includeHidden: true },
+          })
+        })
+      );
+    });
+
+    it('should handle empty directories', async () => {
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, path: '/empty', files: [], count: 0, timestamp: '2023-01-01T00:00:00Z' }),
+        { status: 200 }
+      ));
+
+      const result = await client.listFiles('/empty', 'session-list');
+
+      expect(result.count).toBe(0);
+      expect(result.files).toHaveLength(0);
+    });
+
+    it('should handle error responses', async () => {
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify({ error: 'Directory not found', code: 'FILE_NOT_FOUND' }),
+        { status: 404 }
+      ));
+
+      await expect(client.listFiles('/nonexistent', 'session-list'))
+        .rejects.toThrow(FileNotFoundError);
     });
   });
 

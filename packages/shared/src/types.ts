@@ -326,6 +326,35 @@ export interface MoveFileResult {
   exitCode?: number;
 }
 
+export interface FileInfo {
+  name: string;
+  absolutePath: string;
+  relativePath: string;
+  type: 'file' | 'directory' | 'symlink' | 'other';
+  size: number;
+  modifiedAt: string;
+  mode: string;
+  permissions: {
+    readable: boolean;
+    writable: boolean;
+    executable: boolean;
+  };
+}
+
+export interface ListFilesOptions {
+  recursive?: boolean;
+  includeHidden?: boolean;
+}
+
+export interface ListFilesResult {
+  success: boolean;
+  path: string;
+  files: FileInfo[];
+  count: number;
+  timestamp: string;
+  exitCode?: number;
+}
+
 export interface GitCheckoutResult {
   success: boolean;
   repoUrl: string;
@@ -556,7 +585,8 @@ export interface ExecutionSession {
   deleteFile(path: string): Promise<DeleteFileResult>;
   renameFile(oldPath: string, newPath: string): Promise<RenameFileResult>;
   moveFile(sourcePath: string, destinationPath: string): Promise<MoveFileResult>;
-  
+  listFiles(path: string, options?: ListFilesOptions): Promise<ListFilesResult>;
+
   // Git operations
   gitCheckout(repoUrl: string, options?: { branch?: string; targetDir?: string }): Promise<GitCheckoutResult>;
   
@@ -598,6 +628,7 @@ export interface ISandbox {
   deleteFile(path: string): Promise<DeleteFileResult>;
   renameFile(oldPath: string, newPath: string): Promise<RenameFileResult>;
   moveFile(sourcePath: string, destinationPath: string): Promise<MoveFileResult>;
+  listFiles(path: string, options?: ListFilesOptions): Promise<ListFilesResult>;
 
   // Git operations
   gitCheckout(repoUrl: string, options?: { branch?: string; targetDir?: string }): Promise<GitCheckoutResult>;

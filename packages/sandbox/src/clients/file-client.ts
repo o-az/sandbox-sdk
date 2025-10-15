@@ -1,10 +1,12 @@
-import type { 
-  DeleteFileResult, 
-  MkdirResult, 
-  MoveFileResult, 
-  ReadFileResult, 
-  RenameFileResult, 
-  WriteFileResult 
+import type {
+  DeleteFileResult,
+  ListFilesOptions,
+  ListFilesResult,
+  MkdirResult,
+  MoveFileResult,
+  ReadFileResult,
+  RenameFileResult,
+  WriteFileResult
 } from '@repo/shared';
 import { BaseHttpClient } from './base-client';
 import type { HttpClientOptions, SessionRequest } from './types';
@@ -231,11 +233,39 @@ export class FileClient extends BaseHttpClient {
       const data = { sourcePath: path, destinationPath: newPath, sessionId };
 
       const response = await this.post<MoveFileResult>('/api/move', data);
-      
+
       this.logSuccess('File moved', `${path} -> ${newPath}`);
       return response;
     } catch (error) {
       this.logError('moveFile', error);
+      throw error;
+    }
+  }
+
+  /**
+   * List files in a directory
+   * @param path - Directory path to list
+   * @param sessionId - The session ID for this operation
+   * @param options - Optional settings (recursive, includeHidden)
+   */
+  async listFiles(
+    path: string,
+    sessionId: string,
+    options?: ListFilesOptions
+  ): Promise<ListFilesResult> {
+    try {
+      const data = {
+        path,
+        sessionId,
+        options: options || {},
+      };
+
+      const response = await this.post<ListFilesResult>('/api/list-files', data);
+
+      this.logSuccess('Files listed', `${path} (${response.count} files)`);
+      return response;
+    } catch (error) {
+      this.logError('listFiles', error);
       throw error;
     }
   }

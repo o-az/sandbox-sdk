@@ -45,6 +45,7 @@ export type {
   ExecutionSession,
   // File streaming types
   FileChunk,
+  FileInfo,
   FileMetadata,
   FileStreamEvent,
   GitCheckoutResult,
@@ -53,6 +54,8 @@ export type {
   // Code interpreter result types
   InterpreterHealthResult,
   ISandbox,
+  ListFilesOptions,
+  ListFilesResult,
   LogEvent,
   MkdirResult,
   MoveFileResult,

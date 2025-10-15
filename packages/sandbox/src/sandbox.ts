@@ -576,6 +576,14 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     return this.client.files.readFileStream(path, session);
   }
 
+  async listFiles(
+    path: string,
+    options?: { recursive?: boolean; includeHidden?: boolean }
+  ) {
+    const session = await this.ensureDefaultSession();
+    return this.client.files.listFiles(path, session, options);
+  }
+
   async exposePort(port: number, options: { name?: string; hostname: string }) {
     // Check if hostname is workers.dev domain (doesn't support wildcard subdomains)
     if (options.hostname.endsWith('.workers.dev')) {
@@ -872,6 +880,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
       deleteFile: (path) => this.deleteFile(path, sessionId),
       renameFile: (oldPath, newPath) => this.renameFile(oldPath, newPath, sessionId),
       moveFile: (sourcePath, destPath) => this.moveFile(sourcePath, destPath, sessionId),
+      listFiles: (path, options) => this.client.files.listFiles(path, sessionId, options),
 
       // Git operations
       gitCheckout: (repoUrl, options) => this.gitCheckout(repoUrl, { ...options, sessionId }),

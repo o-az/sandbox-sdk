@@ -1,6 +1,7 @@
 import type {
   DeleteFileResult,
   FileStreamEvent,
+  ListFilesResult,
   MkdirResult,
   MoveFileResult,
   ReadFileResult,
@@ -11,6 +12,7 @@ import { ErrorCode } from '@repo/shared/errors';
 
 import type {
   DeleteFileRequest,
+  ListFilesRequest,
   Logger,
   MkdirRequest,
   MoveFileRequest,
@@ -49,6 +51,8 @@ export class FileHandler extends BaseHandler<Request, Response> {
         return await this.handleMove(request, context);
       case '/api/mkdir':
         return await this.handleMkdir(request, context);
+      case '/api/list-files':
+        return await this.handleListFiles(request, context);
       default:
         return this.createErrorResponse({
           message: 'Invalid file endpoint',
@@ -369,6 +373,50 @@ export class FileHandler extends BaseHandler<Request, Response> {
         requestId: context.requestId,
         path: body.path,
         recursive: body.recursive,
+        errorCode: result.error.code,
+        errorMessage: result.error.message,
+      });
+
+      return this.createErrorResponse(result.error, context);
+    }
+  }
+
+  private async handleListFiles(request: Request, context: RequestContext): Promise<Response> {
+    const body = await this.parseRequestBody<ListFilesRequest>(request);
+
+    this.logger.info('Listing files', {
+      requestId: context.requestId,
+      path: body.path,
+      recursive: body.options?.recursive,
+      includeHidden: body.options?.includeHidden
+    });
+
+    const result = await this.fileService.listFiles(
+      body.path,
+      body.options || {},
+      body.sessionId
+    );
+
+    if (result.success) {
+      this.logger.info('Files listed successfully', {
+        requestId: context.requestId,
+        path: body.path,
+        count: result.data.length,
+      });
+
+      const response: ListFilesResult = {
+        success: true,
+        path: body.path,
+        files: result.data,
+        count: result.data.length,
+        timestamp: new Date().toISOString(),
+      };
+
+      return this.createTypedResponse(response, context);
+    } else {
+      this.logger.error('List files failed', undefined, {
+        requestId: context.requestId,
+        path: body.path,
         errorCode: result.error.code,
         errorMessage: result.error.message,
       });

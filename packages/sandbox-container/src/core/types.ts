@@ -390,7 +390,7 @@ export interface GitCheckoutResponse {
   timestamp: string;
 }
 
-export type { MkdirRequest } from '../validation/schemas';
+export type { ListFilesRequest, MkdirRequest } from '../validation/schemas';
 
 export interface MkdirResponse {
   success: boolean;

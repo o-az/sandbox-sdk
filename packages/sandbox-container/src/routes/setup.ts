@@ -84,6 +84,13 @@ export function setupRoutes(router: Router, container: Container): void {
     middleware: [container.get('loggingMiddleware')],
   });
 
+  router.register({
+    method: 'POST',
+    path: '/api/list-files',
+    handler: async (req, ctx) => container.get('fileHandler').handle(req, ctx),
+    middleware: [container.get('loggingMiddleware')],
+  });
+
   // Port management routes
   router.register({
     method: 'POST',

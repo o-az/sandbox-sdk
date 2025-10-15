@@ -57,6 +57,15 @@ export const MkdirRequestSchema = z.object({
   sessionId: z.string().optional(),
 });
 
+export const ListFilesRequestSchema = z.object({
+  path: z.string().min(1, 'Path cannot be empty'),
+  options: z.object({
+    recursive: z.boolean().optional(),
+    includeHidden: z.boolean().optional(),
+  }).optional(),
+  sessionId: z.string().optional(),
+});
+
 // Process management schemas
 // Uses flat structure consistent with other endpoints
 export const StartProcessRequestSchema = z.object({
@@ -96,19 +105,21 @@ export type DeleteFileRequest = z.infer<typeof DeleteFileRequestSchema>;
 export type RenameFileRequest = z.infer<typeof RenameFileRequestSchema>;
 export type MoveFileRequest = z.infer<typeof MoveFileRequestSchema>;
 export type MkdirRequest = z.infer<typeof MkdirRequestSchema>;
+export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 // Note: StartProcessRequest is now imported from @repo/shared for type safety
 // The Zod schema is still used for runtime validation
 export type ExposePortRequest = z.infer<typeof ExposePortRequestSchema>;
 export type GitCheckoutRequest = z.infer<typeof GitCheckoutRequestSchema>;
 
 // Union type for file requests
-export type FileRequest = 
-  | ReadFileRequest 
-  | WriteFileRequest 
-  | DeleteFileRequest 
-  | RenameFileRequest 
-  | MoveFileRequest 
-  | MkdirRequest;
+export type FileRequest =
+  | ReadFileRequest
+  | WriteFileRequest
+  | DeleteFileRequest
+  | RenameFileRequest
+  | MoveFileRequest
+  | MkdirRequest
+  | ListFilesRequest;
 
 // Schema mapping for different file operations
 export const FileRequestSchemas = {
@@ -118,6 +129,7 @@ export const FileRequestSchemas = {
   rename: RenameFileRequestSchema,
   move: MoveFileRequestSchema,
   mkdir: MkdirRequestSchema,
+  listFiles: ListFilesRequestSchema,
 } as const;
 
 export type FileOperation = keyof typeof FileRequestSchemas;

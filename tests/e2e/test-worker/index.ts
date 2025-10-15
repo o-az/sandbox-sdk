@@ -157,6 +157,14 @@ export default {
         });
       }
 
+      // List files
+      if (url.pathname === '/api/list-files' && request.method === 'POST') {
+        const result = await executor.listFiles(body.path, body.options);
+        return new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       // Process start
       if (url.pathname === '/api/process/start' && request.method === 'POST') {
         const process = await executor.startProcess(body.command);

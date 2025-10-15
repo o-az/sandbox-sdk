@@ -903,4 +903,174 @@ describe('File Operations Workflow (E2E)', () => {
     expect(errorData.error).toBeTruthy();
     expect(errorData.error).toMatch(/not found|does not exist|no such file/i);
   }, 60000);
+
+  test('should list files with metadata and permissions', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Create directory with files including executable script
+    await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/mkdir`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/project',
+          recursive: true,
+        }),
+      }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    await fetch(`${workerUrl}/api/file/write`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/project/data.txt',
+        content: 'Some data',
+      }),
+    });
+
+    await fetch(`${workerUrl}/api/execute`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        command: 'echo "#!/bin/bash" > /workspace/project/script.sh && chmod +x /workspace/project/script.sh',
+      }),
+    });
+
+    // List files and verify metadata
+    const listResponse = await fetch(`${workerUrl}/api/list-files`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/project',
+      }),
+    });
+
+    expect(listResponse.status).toBe(200);
+    const listData = await listResponse.json();
+
+    expect(listData.success).toBe(true);
+    expect(listData.path).toBe('/workspace/project');
+    expect(listData.files).toBeInstanceOf(Array);
+    expect(listData.count).toBeGreaterThan(0);
+
+    // Verify file has correct metadata and permissions
+    const dataFile = listData.files.find((f: any) => f.name === 'data.txt');
+    expect(dataFile).toBeDefined();
+    expect(dataFile.type).toBe('file');
+    expect(dataFile.absolutePath).toBe('/workspace/project/data.txt');
+    expect(dataFile.relativePath).toBe('data.txt');
+    expect(dataFile.size).toBeGreaterThan(0);
+    expect(dataFile.mode).toMatch(/^[r-][w-][x-][r-][w-][x-][r-][w-][x-]$/);
+    expect(dataFile.permissions.readable).toBe(true);
+    expect(dataFile.permissions.writable).toBe(true);
+    expect(dataFile.permissions.executable).toBe(false);
+
+    // Verify executable script has correct permissions
+    const scriptFile = listData.files.find((f: any) => f.name === 'script.sh');
+    expect(scriptFile).toBeDefined();
+    expect(scriptFile.permissions.executable).toBe(true);
+  }, 60000);
+
+  test('should list files recursively with correct relative paths', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Create nested directory structure
+    await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/file/mkdir`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/tree/level1/level2',
+          recursive: true,
+        }),
+      }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    await fetch(`${workerUrl}/api/file/write`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/tree/root.txt',
+        content: 'Root',
+      }),
+    });
+
+    await fetch(`${workerUrl}/api/file/write`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/tree/level1/level2/deep.txt',
+        content: 'Deep',
+      }),
+    });
+
+    const listResponse = await fetch(`${workerUrl}/api/list-files`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/tree',
+        options: { recursive: true },
+      }),
+    });
+
+    expect(listResponse.status).toBe(200);
+    const listData = await listResponse.json();
+
+    expect(listData.success).toBe(true);
+
+    // Verify relative paths are correct
+    const rootFile = listData.files.find((f: any) => f.name === 'root.txt');
+    expect(rootFile?.relativePath).toBe('root.txt');
+
+    const deepFile = listData.files.find((f: any) => f.name === 'deep.txt');
+    expect(deepFile?.relativePath).toBe('level1/level2/deep.txt');
+  }, 60000);
+
+  test('should handle listFiles errors appropriately', async () => {
+    currentSandboxId = createSandboxId();
+    const headers = createTestHeaders(currentSandboxId);
+
+    // Test non-existent directory
+    const notFoundResponse = await vi.waitFor(
+      async () => fetchWithStartup(`${workerUrl}/api/list-files`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          path: '/workspace/does-not-exist',
+        }),
+      }, { expectSuccess: false }),
+      { timeout: 60000, interval: 2000 }
+    );
+
+    expect(notFoundResponse.status).toBe(500);
+    const notFoundData = await notFoundResponse.json();
+    expect(notFoundData.error).toBeTruthy();
+    expect(notFoundData.error).toMatch(/not found|does not exist/i);
+
+    // Test listing a file instead of directory
+    await fetch(`${workerUrl}/api/file/write`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/file.txt',
+        content: 'Not a directory',
+      }),
+    });
+
+    const wrongTypeResponse = await fetch(`${workerUrl}/api/list-files`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        path: '/workspace/file.txt',
+      }),
+    });
+
+    expect(wrongTypeResponse.status).toBe(500);
+    const wrongTypeData = await wrongTypeResponse.json();
+    expect(wrongTypeData.error).toMatch(/not a directory/i);
+  }, 60000);
 });
