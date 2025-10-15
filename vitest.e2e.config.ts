@@ -16,8 +16,8 @@ export default defineConfig({
     include: ['tests/e2e/**/*.test.ts'],
 
     // Longer timeouts for E2E tests (wrangler startup, container operations)
-    testTimeout: 300000, // 5 minutes per test
-    hookTimeout: 120000, // 2 minutes for beforeAll/afterAll
+    testTimeout: 120000, // 2 minutes per test
+    hookTimeout: 60000, // 1 minute for beforeAll/afterAll
     teardownTimeout: 30000, // 30s for cleanup
 
     // Run tests serially to avoid port conflicts
