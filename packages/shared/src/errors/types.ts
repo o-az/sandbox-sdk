@@ -12,6 +12,7 @@ export const Operation = {
   FILE_RENAME: 'file.rename',
   FILE_STAT: 'file.stat',
   DIRECTORY_CREATE: 'directory.create',
+  DIRECTORY_LIST: 'directory.list',
 
   // Command Operations
   COMMAND_EXECUTE: 'command.execute',

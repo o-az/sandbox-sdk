@@ -4,6 +4,7 @@ import type {
   ValidationFailedContext,
 } from '@repo/shared/errors';
 import { ErrorCode, Operation } from '@repo/shared/errors';
+import type { FileInfo, ListFilesOptions } from '@repo/shared';
 import type {
   FileMetadata,
   FileStats,
@@ -30,6 +31,7 @@ export interface FileSystemOperations {
   mkdir(path: string, options?: MkdirOptions, sessionId?: string): Promise<ServiceResult<void>>;
   exists(path: string, sessionId?: string): Promise<ServiceResult<boolean>>;
   stat(path: string, sessionId?: string): Promise<ServiceResult<FileStats>>;
+  list(path: string, options?: ListFilesOptions, sessionId?: string): Promise<ServiceResult<FileInfo[]>>;
 }
 
 export class FileService implements FileSystemOperations {
@@ -916,28 +918,19 @@ export class FileService implements FileSystemOperations {
     return await this.stat(path, sessionId);
   }
 
+  async listFiles(path: string, options?: ListFilesOptions, sessionId?: string): Promise<ServiceResult<FileInfo[]>> {
+    return await this.list(path, options, sessionId);
+  }
+
   /**
    * List files in a directory
    * Returns detailed file information including permissions
    */
-  async listFiles(
+  async list(
     path: string,
-    options: { recursive?: boolean; includeHidden?: boolean } = {},
+    options: ListFilesOptions = {},
     sessionId = 'default'
-  ): Promise<ServiceResult<Array<{
-    name: string;
-    absolutePath: string;
-    relativePath: string;
-    type: 'file' | 'directory' | 'symlink' | 'other';
-    size: number;
-    modifiedAt: string;
-    mode: string;
-    permissions: {
-      readable: boolean;
-      writable: boolean;
-      executable: boolean;
-    };
-  }>>> {
+  ): Promise<ServiceResult<FileInfo[]>> {
     try {
       // 1. Validate path for security
       const validation = this.security.validatePath(path);
@@ -959,7 +952,10 @@ export class FileService implements FileSystemOperations {
       // 2. Check if directory exists using session-aware check
       const existsResult = await this.exists(path, sessionId);
       if (!existsResult.success) {
-        return existsResult as ServiceResult<Array<any>>;
+        return {
+          success: false,
+          error: existsResult.error
+        };
       }
 
       if (!existsResult.data) {
@@ -970,7 +966,7 @@ export class FileService implements FileSystemOperations {
             code: ErrorCode.FILE_NOT_FOUND,
             details: {
               path,
-              operation: Operation.FILE_READ
+              operation: Operation.DIRECTORY_LIST
             } satisfies FileNotFoundContext
           }
         };
@@ -983,10 +979,10 @@ export class FileService implements FileSystemOperations {
           success: false,
           error: {
             message: `Path is not a directory: ${path}`,
-            code: ErrorCode.IS_DIRECTORY,
+            code: ErrorCode.NOT_DIRECTORY,
             details: {
               path,
-              operation: Operation.FILE_READ
+              operation: Operation.DIRECTORY_LIST
             } satisfies FileSystemContext
           }
         };
@@ -1012,10 +1008,15 @@ export class FileService implements FileSystemOperations {
       // Skip the base directory itself and format output
       findCommand += ` -not -path ${escapedPath} -printf '%p\\t%y\\t%s\\t%TY-%Tm-%TdT%TH:%TM:%TS\\t%m\\n'`;
 
+      this.logger.info('Executing find command', { path, command: findCommand });
+
       const execResult = await this.sessionManager.executeInSession(sessionId, findCommand);
 
       if (!execResult.success) {
-        return execResult as ServiceResult<Array<any>>;
+        return {
+          success: false,
+          error: execResult.error
+        };
       }
 
       const result = execResult.data;
@@ -1028,7 +1029,7 @@ export class FileService implements FileSystemOperations {
             code: ErrorCode.FILESYSTEM_ERROR,
             details: {
               path,
-              operation: Operation.FILE_READ,
+              operation: Operation.DIRECTORY_LIST,
               exitCode: result.exitCode,
               stderr: result.stderr
             } satisfies FileSystemContext
@@ -1037,20 +1038,7 @@ export class FileService implements FileSystemOperations {
       }
 
       // 5. Parse the output
-      const files: Array<{
-        name: string;
-        absolutePath: string;
-        relativePath: string;
-        type: 'file' | 'directory' | 'symlink' | 'other';
-        size: number;
-        modifiedAt: string;
-        mode: string;
-        permissions: {
-          readable: boolean;
-          writable: boolean;
-          executable: boolean;
-        };
-      }> = [];
+      const files: FileInfo[] = [];
 
       const lines = result.stdout.trim().split('\n').filter(line => line.trim());
 
@@ -1127,7 +1115,7 @@ export class FileService implements FileSystemOperations {
           code: ErrorCode.FILESYSTEM_ERROR,
           details: {
             path,
-            operation: Operation.FILE_READ,
+            operation: Operation.DIRECTORY_LIST,
             stderr: errorMessage
           } satisfies FileSystemContext
         }
