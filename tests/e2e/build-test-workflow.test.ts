@@ -105,8 +105,9 @@ describe('Build and Test Workflow', () => {
       expect(pwdData.stdout).toMatch(/\/workspace/);
     });
 
-    test('should handle command failures correctly', async () => {
-      // Execute a command that will fail (reuses the same sandbox from first test)
+    test('should detect shell termination when exit command is used', async () => {
+      // Execute 'exit 1' which will terminate the shell itself
+      // This should now be detected and reported as a shell termination error
       const response = await fetch(`${workerUrl}/api/execute`, {
         method: 'POST',
         headers,
@@ -117,8 +118,12 @@ describe('Build and Test Workflow', () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.exitCode).toBe(1);
+
+      // Should indicate failure
       expect(data.success).toBe(false);
+
+      // Error message should mention shell termination
+      expect(data.error?.message || data.stderr || '').toMatch(/shell terminated unexpectedly|shell.*died/i);
     });
   });
 });

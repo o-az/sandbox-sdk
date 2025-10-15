@@ -17,10 +17,13 @@
       "env": ["NODE_ENV"]
     },
     "test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
       "inputs": [
         "src/**/*.ts",
         "tests/**/*.ts",
-        "vitest.config.ts"
+        "vitest.config.ts",
+        "package.json"
       ],
       "env": ["NODE_ENV"]
     },
@@ -35,17 +38,21 @@
     },
     "check": {
       "dependsOn": ["typecheck"],
-      "outputs": []
+      "outputs": [],
+      "inputs": [
+        "src/**/*.ts",
+        "biome.json"
+      ]
     },
     "docker:local": {
       "dependsOn": ["^build"],
-      "cache": false,
+      "cache": true,
       "outputs": [],
       "inputs": [
         "Dockerfile",
-        "wrangler.jsonc",
-        "../sandbox-container/dist/**",
-        "../sandbox-container/src/**"
+        "packages/sandbox/startup.sh",
+        "packages/sandbox-container/src/**",
+        "packages/shared/src/**"
       ]
     },
     "docker:publish": {

@@ -106,6 +106,7 @@ interface CommandHandle {
 
 export class Session {
   private shell: Subprocess | null = null;
+  private shellExitedPromise: Promise<never> | null = null;
   private ready = false;
   private sessionDir: string | null = null;
   private readonly id: string;
@@ -146,6 +147,27 @@ export class Session {
       stderr: 'ignore', // Ignore bash diagnostics
     });
 
+    // Set up shell exit monitor - rejects if shell dies unexpectedly
+    // This Promise will reject when the shell process exits, allowing us to detect
+    // shell death immediately and provide clear error messages to users
+    this.shellExitedPromise = new Promise<never>((_, reject) => {
+      this.shell!.exited.then((exitCode) => {
+        console.error(`[Session ${this.id}] Shell process exited unexpectedly with code ${exitCode ?? 'unknown'}`);
+        this.ready = false;
+
+        // Reject with clear error message
+        reject(new Error(
+          `Shell terminated unexpectedly (exit code: ${exitCode ?? 'unknown'}). ` +
+          `Session is dead and cannot execute further commands.`
+        ));
+      }).catch((error) => {
+        // Handle any errors from shell.exited promise
+        console.error(`[Session ${this.id}] Shell exit monitor error:`, error);
+        this.ready = false;
+        reject(error);
+      });
+    });
+
     this.ready = true;
   }
 
@@ -182,8 +204,14 @@ export class Session {
 
       console.log(`[Session ${this.id}] exec() waiting for exit code file: ${exitCodeFile}`);
 
-      // Wait for exit code file (event-driven via fs.watch!)
-      const exitCode = await this.waitForExitCode(exitCodeFile);
+      // Race between:
+      // 1. Normal completion (exit code file appears)
+      // 2. Shell death (shell process exits unexpectedly)
+      // This allows us to detect shell termination (e.g., from 'exit' command) immediately
+      const exitCode = await Promise.race([
+        this.waitForExitCode(exitCodeFile),
+        this.shellExitedPromise!
+      ]);
 
       console.log(`[Session ${this.id}] exec() got exit code: ${exitCode}, parsing log file`);
 
@@ -268,8 +296,16 @@ export class Session {
       let position = 0;
       let exitCodeContent = '';
 
-      // Wait until exit code file exists
+      // Wait until exit code file exists, checking for shell death on each iteration
       while (true) {
+        // Check if shell is still alive (will be false if shell died)
+        if (!this.isReady()) {
+          // Shell died - throw the error from shellExitedPromise
+          await this.shellExitedPromise!.catch((error) => {
+            throw error;
+          });
+        }
+
         const exitFile = Bun.file(exitCodeFile);
         if (await exitFile.exists()) {
           exitCodeContent = (await exitFile.text()).trim();
@@ -495,6 +531,7 @@ export class Session {
 
     this.ready = false;
     this.shell = null;
+    this.shellExitedPromise = null;
     this.sessionDir = null;
   }
 
