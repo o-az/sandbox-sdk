@@ -8,13 +8,11 @@ import { defineConfig } from 'vitest/config';
  *
  * Run with: npm run test:e2e
  *
- * Parallelization strategy:
- * - Local: Serial execution (wrangler dev can be unstable with parallel tests)
- * - CI: Parallel execution (deployed worker handles concurrency well)
+ * Architecture:
+ * - CI: Uses TEST_WORKER_URL pointing to deployed worker
+ * - Local: Each test file spawns its own wrangler dev instance
+ * - Tests run SEQUENTIALLY to avoid container provisioning resource contention
  */
-
-// Check if running in CI environment
-const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 
 export default defineConfig({
   test: {
@@ -28,24 +26,14 @@ export default defineConfig({
     hookTimeout: 60000, // 1 minute for beforeAll/afterAll
     teardownTimeout: 30000, // 30s for cleanup
 
-    // Conditional parallelization based on environment
+    // Run tests sequentially to avoid infrastructure resource contention
+    // Parallel execution causes container provisioning issues on both local and CI
     pool: 'forks',
-    ...(isCI ? {
-      // CI: Enable parallel execution - deployed worker handles it well
-      poolOptions: {
-        forks: {
-          singleFork: false,
-        },
+    poolOptions: {
+      forks: {
+        singleFork: true, // Force sequential execution
       },
-      fileParallelism: true,
-    } : {
-      // Local: Serial execution to avoid wrangler dev conflicts
-      maxConcurrency: 1,
-      poolOptions: {
-        forks: {
-          singleFork: true,
-        },
-      },
-    }),
+    },
+    fileParallelism: false, // No parallel file execution
   },
 });
