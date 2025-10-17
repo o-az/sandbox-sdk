@@ -21,7 +21,8 @@
   "workspaces": [
     "packages/*",
     "tooling/*",
-    "examples/*"
+    "examples/basic",
+    "examples/code-interpreter"
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.1.2",
