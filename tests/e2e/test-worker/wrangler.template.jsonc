@@ -17,7 +17,8 @@
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
-      "name": "{{CONTAINER_NAME}}"
+      "name": "{{CONTAINER_NAME}}",
+      "instance_type": "standard-4"
     }
   ],
 
