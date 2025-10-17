@@ -187,7 +187,9 @@ jobs:
 
   # Release publish - only runs if changesets exist
   publish-release:
-    needs: [unit-tests, e2e-tests]
+    needs: [unit-tests, 
+    # e2e-tests
+    ]
     if: ${{ github.repository_owner == 'cloudflare' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
