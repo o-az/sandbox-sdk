@@ -1,3 +1,4 @@
+import type { Logger } from '@repo/shared';
 import type {
   CommandErrorContext,
   ProcessErrorContext,
@@ -6,7 +7,6 @@ import type {
 import { ErrorCode } from '@repo/shared/errors';
 import type {
   CommandResult,
-  Logger,
   ProcessOptions,
   ProcessRecord,
   ProcessStatus,
@@ -21,14 +21,12 @@ export interface ProcessStore {
   update(id: string, data: Partial<ProcessRecord>): Promise<void>;
   delete(id: string): Promise<void>;
   list(filters?: ProcessFilters): Promise<ProcessRecord[]>;
-  cleanup(olderThan: Date): Promise<number>;
 }
 
 export interface ProcessFilters {
   status?: ProcessStatus;
 }
 
-// In-memory implementation optimized for Bun
 export class InMemoryProcessStore implements ProcessStore {
   private processes = new Map<string, ProcessRecord>();
 
@@ -67,22 +65,9 @@ export class InMemoryProcessStore implements ProcessStore {
 
     return processes;
   }
-
-  async cleanup(olderThan: Date): Promise<number> {
-    let cleaned = 0;
-    for (const [id, process] of Array.from(this.processes.entries())) {
-      if (process.startTime < olderThan && 
-          ['completed', 'failed', 'killed', 'error'].includes(process.status)) {
-        await this.delete(id);
-        cleaned++;
-      }
-    }
-    return cleaned;
-  }
 }
 
 export class ProcessService {
-  private cleanupInterval: Timer | null = null;
   private manager: ProcessManager;
 
   constructor(
@@ -91,9 +76,6 @@ export class ProcessService {
     private sessionManager: SessionManager
   ) {
     this.manager = new ProcessManager();
-
-    // Start cleanup process every 30 minutes
-    this.startCleanupProcess();
   }
 
   /**
@@ -102,14 +84,11 @@ export class ProcessService {
    * The difference is conceptual: startProcess() runs in background for long-lived processes
    */
   async startProcess(command: string, options: ProcessOptions = {}): Promise<ServiceResult<ProcessRecord>> {
-    this.logger.info('Starting background process via SessionManager', { command, options });
     return this.executeCommandStream(command, options);
   }
 
   async executeCommand(command: string, options: ProcessOptions = {}): Promise<ServiceResult<CommandResult>> {
     try {
-      this.logger.info('Executing command', { command, options });
-
       // Always use SessionManager for execution (unified model)
       const sessionId = options.sessionId || 'default';
       const result = await this.sessionManager.executeInSession(
@@ -130,12 +109,6 @@ export class ProcessService {
         stdout: result.data.stdout,
         stderr: result.data.stderr,
       };
-
-      this.logger.info('Command executed successfully', {
-        command,
-        exitCode: commandResult.exitCode,
-        success: commandResult.success
-      });
 
       return {
         success: true,
@@ -176,8 +149,6 @@ export class ProcessService {
           },
         };
       }
-
-      this.logger.info('Starting streaming command execution', { command, options });
 
       // 2. Create process record (without subprocess)
       const processRecordData = this.manager.createProcessRecord(command, undefined, options);
@@ -233,13 +204,6 @@ export class ProcessService {
             }).catch(error => {
               this.logger.error('Failed to update process status', error, { processId: processRecord.id });
             });
-
-            this.logger.info('Streaming command completed', {
-              processId: processRecord.id,
-              exitCode,
-              status,
-              duration: endTime.getTime() - processRecord.startTime.getTime(),
-            });
           } else if (event.type === 'error') {
             processRecord.status = 'error';
             processRecord.endTime = new Date();
@@ -265,10 +229,6 @@ export class ProcessService {
           processId: processRecord.id,
           command
         });
-      });
-
-      this.logger.info('Streaming command started successfully', {
-        processId: processRecord.id,
       });
 
       return {
@@ -367,8 +327,6 @@ export class ProcessService {
           status: 'killed',
           endTime: new Date()
         });
-
-        this.logger.info('Process killed', { processId: id });
       }
 
       return result;
@@ -427,8 +385,6 @@ export class ProcessService {
           killed++;
         }
       }
-
-      this.logger.info('Killed all processes', { count: killed });
 
       return {
         success: true,
@@ -525,33 +481,9 @@ export class ProcessService {
     }
   }
 
-
-  private startCleanupProcess(): void {
-    this.cleanupInterval = setInterval(async () => {
-      try {
-        // Use manager to calculate cleanup cutoff date
-        const thirtyMinutesAgo = this.manager.createCleanupCutoffDate(30);
-        const cleaned = await this.store.cleanup(thirtyMinutesAgo);
-        if (cleaned > 0) {
-          this.logger.info('Cleaned up old processes', { count: cleaned });
-        }
-      } catch (error) {
-        this.logger.error('Failed to cleanup processes', error instanceof Error ? error : undefined);
-      }
-    }, 30 * 60 * 1000); // 30 minutes
-  }
-
   // Cleanup method for graceful shutdown
   async destroy(): Promise<void> {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
-    }
-
     // Kill all running processes
-    const result = await this.killAllProcesses();
-    if (result.success) {
-      this.logger.info('All processes killed during service shutdown');
-    }
+    await this.killAllProcesses();
   }
 }
