@@ -11,8 +11,7 @@
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "test:e2e:only": "vitest run --config vitest.e2e.config.ts",
-    "docker:rebuild": "npm run build:clean && npm run docker:local -w @cloudflare/sandbox",
-    "toc": "doctoc README.md --github --maxlevel 3 && node scripts/fix-toc-links.js"
+    "docker:rebuild": "npm run build:clean && npm run docker:local -w @cloudflare/sandbox"
   },
   "keywords": [],
   "author": "",
@@ -37,7 +36,6 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/ui": "^3.2.4",
-    "doctoc": "^2.2.1",
     "fast-glob": "^3.3.3",
     "happy-dom": "^20.0.0",
     "react": "^19.1.0",
