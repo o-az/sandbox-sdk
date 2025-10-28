@@ -272,5 +272,72 @@ describe('KeepAlive Workflow', () => {
       const readData = await readResponse.json();
       expect(readData.content).toContain('Updated content after keepAlive');
     }, 120000);
+
+    test('should persist keepAlive flag across DO hibernation/wakeup cycles', async () => {
+      currentSandboxId = createSandboxId();
+      const headers = createTestHeaders(currentSandboxId);
+
+      const keepAliveHeaders = {
+        ...headers,
+        'X-Sandbox-KeepAlive': 'true',
+      };
+
+      // Step 1: Initialize sandbox with keepAlive enabled
+      const initResponse = await vi.waitFor(
+        async () => fetchWithStartup(`${workerUrl}/api/execute`, {
+          method: 'POST',
+          headers: keepAliveHeaders,
+          body: JSON.stringify({
+            command: 'echo "Initial setup with keepAlive"',
+          }),
+        }),
+        { timeout: 90000, interval: 2000 }
+      );
+
+      expect(initResponse.status).toBe(200);
+      const initData = await initResponse.json();
+      expect(initData.stdout).toContain('Initial setup with keepAlive');
+
+      // Step 2: Wait for potential DO hibernation (20+ seconds of complete inactivity)
+      // This simulates the DO going to sleep and waking up
+      console.log('[Test] Waiting 20 seconds to allow potential DO hibernation...');
+      await new Promise((resolve) => setTimeout(resolve, 20000));
+
+      // Step 3: Make a new request WITHOUT setting keepAlive header again
+      // If the flag wasn't persisted, the container would timeout after this point
+      const headersWithoutKeepAlive = headers; // No X-Sandbox-KeepAlive header
+
+      const afterHibernationResponse = await fetch(`${workerUrl}/api/execute`, {
+        method: 'POST',
+        headers: headersWithoutKeepAlive,
+        body: JSON.stringify({
+          command: 'echo "After potential hibernation"',
+        }),
+      });
+
+      expect(afterHibernationResponse.status).toBe(200);
+      const afterHibernationData = await afterHibernationResponse.json();
+      expect(afterHibernationData.stdout).toContain('After potential hibernation');
+
+      // Step 4: Wait another 15+ seconds to verify keepAlive is still active
+      // If persistence failed, the container would have timed out by now
+      console.log('[Test] Waiting another 15 seconds to verify persistent keepAlive...');
+      await new Promise((resolve) => setTimeout(resolve, 15000));
+
+      // Step 5: Verify container is STILL alive (without re-setting keepAlive)
+      const finalResponse = await fetch(`${workerUrl}/api/execute`, {
+        method: 'POST',
+        headers: headersWithoutKeepAlive, // Still no keepAlive header
+        body: JSON.stringify({
+          command: 'echo "Still alive after 35+ seconds total"',
+        }),
+      });
+
+      expect(finalResponse.status).toBe(200);
+      const finalData = await finalResponse.json();
+      expect(finalData.stdout).toContain('Still alive after 35+ seconds total');
+
+      console.log('[Test] ✅ keepAlive flag successfully persisted across hibernation cycle!');
+    }, 120000);
   });
 });
