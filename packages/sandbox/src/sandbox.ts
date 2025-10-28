@@ -97,10 +97,11 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
     // The CodeInterpreter extracts client.interpreter from the sandbox
     this.codeInterpreter = new CodeInterpreter(this);
 
-    // Load the sandbox name, port tokens, and default session from storage on initialization
+    // Load the sandbox name, port tokens, default session, and keepAlive flag from storage on initialization
     this.ctx.blockConcurrencyWhile(async () => {
       this.sandboxName = await this.ctx.storage.get<string>('sandboxName') || null;
       this.defaultSession = await this.ctx.storage.get<string>('defaultSession') || null;
+      this.keepAliveEnabled = await this.ctx.storage.get<boolean>('keepAliveEnabled') ?? false;
       const storedTokens = await this.ctx.storage.get<Record<string, string>>('portTokens') || {};
 
       // Convert stored tokens back to Map
@@ -139,6 +140,7 @@ export class Sandbox<Env = unknown> extends Container<Env> implements ISandbox {
   // RPC method to enable keepAlive mode
   async setKeepAlive(keepAlive: boolean): Promise<void> {
     this.keepAliveEnabled = keepAlive;
+    await this.ctx.storage.put('keepAliveEnabled', keepAlive);
     if (keepAlive) {
       this.logger.info('KeepAlive mode enabled - container will stay alive until explicitly destroyed');
     } else {
