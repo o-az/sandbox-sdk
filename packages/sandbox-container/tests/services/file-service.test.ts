@@ -95,13 +95,15 @@ describe('FileService', () => {
       // Verify MIME type detection command was called
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "file --mime-type -b '/tmp/test.txt'"
+        "file --mime-type -b '/tmp/test.txt'",
+        { timeoutMs: 5000 }
       );
 
       // Verify cat was called for text file
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "cat '/tmp/test.txt'"
+        "cat '/tmp/test.txt'",
+        { timeoutMs: 30000 }
       );
     });
 
@@ -148,7 +150,8 @@ describe('FileService', () => {
       // Verify base64 command was called for binary file
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "base64 -w 0 < '/tmp/image.png'"
+        "base64 -w 0 < '/tmp/image.png'",
+        { timeoutMs: 30000 }
       );
     });
 
@@ -363,10 +366,11 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify SessionManager was called with base64 encoded content (cwd is undefined, so only 2 params)
+      // Verify SessionManager was called with base64 encoded content
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        `echo '${base64Content}' | base64 -d > '/tmp/test.txt'`
+        `echo '${base64Content}' | base64 -d > '/tmp/test.txt'`,
+        { timeoutMs: 30000 }
       );
     });
 
@@ -427,12 +431,13 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify rm command was called (cwd is undefined, so only 2 params)
+      // Verify rm command was called
       // Should be the 4th call
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         4,
         'session-123',
-        "rm '/tmp/test.txt'"
+        "rm '/tmp/test.txt'",
+        { timeoutMs: 5000 }
       );
     });
 
@@ -504,12 +509,13 @@ describe('FileService', () => {
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(oldPath);
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith(newPath);
 
-      // Verify mv command was called (cwd is undefined, so only 2 params)
+      // Verify mv command was called
       // Should be the 2nd call after exists
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         2,
         'session-123',
-        "mv '/tmp/old.txt' '/tmp/new.txt'"
+        "mv '/tmp/old.txt' '/tmp/new.txt'",
+        { timeoutMs: 10000 }
       );
     });
 
@@ -556,12 +562,13 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify mv command was called (cwd is undefined, so only 2 params)
+      // Verify mv command was called
       // Should be the 2nd call after exists
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         2,
         'session-123',
-        "mv '/tmp/source.txt' '/tmp/dest.txt'"
+        "mv '/tmp/source.txt' '/tmp/dest.txt'",
+        { timeoutMs: 30000 }
       );
     });
 
@@ -594,10 +601,11 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify mkdir command was called (cwd is undefined, so only 2 params)
+      // Verify mkdir command was called
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "mkdir '/tmp/newdir'"
+        "mkdir '/tmp/newdir'",
+        { timeoutMs: 5000 }
       );
     });
 
@@ -613,10 +621,11 @@ describe('FileService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify mkdir -p command was called (cwd is undefined, so only 2 params)
+      // Verify mkdir -p command was called
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "mkdir -p '/tmp/nested/dir'"
+        "mkdir -p '/tmp/nested/dir'",
+        { timeoutMs: 5000 }
       );
     });
 
@@ -649,10 +658,11 @@ describe('FileService', () => {
         expect(result.data).toBe(true);
       }
 
-      // Verify test -e command was called (cwd is undefined, so only 2 params)
+      // Verify test -e command was called
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
-        "test -e '/tmp/test.txt'"
+        "test -e '/tmp/test.txt'",
+        { timeoutMs: 5000 }
       );
     });
 

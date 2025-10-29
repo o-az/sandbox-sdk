@@ -109,8 +109,7 @@ export class SessionManager {
   async executeInSession(
     sessionId: string,
     command: string,
-    cwd?: string,
-    timeoutMs?: number
+    options?: { cwd?: string; timeoutMs?: number }
   ): Promise<ServiceResult<RawExecResult>> {
     try {
       // Get or create session on demand
@@ -120,8 +119,8 @@ export class SessionManager {
       if (!sessionResult.success && (sessionResult.error!.details as InternalErrorContext)?.originalError === 'Session not found') {
         sessionResult = await this.createSession({
           id: sessionId,
-          cwd: cwd || '/workspace',
-          commandTimeoutMs: timeoutMs, // Pass timeout to session
+          cwd: options?.cwd || '/workspace',
+          commandTimeoutMs: options?.timeoutMs, // Pass timeout to session
         });
       }
 
@@ -131,7 +130,7 @@ export class SessionManager {
 
       const session = sessionResult.data;
 
-      const result = await session.exec(command, cwd ? { cwd } : undefined);
+      const result = await session.exec(command, options?.cwd ? { cwd: options.cwd } : undefined);
 
       return {
         success: true,

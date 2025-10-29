@@ -125,7 +125,7 @@ export class GitService {
       // explicitly specified or defaulted to the repository's HEAD
       const branchArgs = this.manager.buildGetCurrentBranchArgs();
       const branchCommand = this.buildCommand(branchArgs);
-      const branchExecResult = await this.sessionManager.executeInSession(sessionId, branchCommand, targetDirectory);
+      const branchExecResult = await this.sessionManager.executeInSession(sessionId, branchCommand, { cwd: targetDirectory });
 
       if (!branchExecResult.success) {
         // If we can't get the branch, use fallback but don't fail the entire operation
@@ -221,7 +221,7 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute git checkout (via SessionManager)
-      const execResult = await this.sessionManager.executeInSession(sessionId, command, repoPath);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -301,7 +301,7 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute command (via SessionManager)
-      const execResult = await this.sessionManager.executeInSession(sessionId, command, repoPath);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath });
 
       if (!execResult.success) {
         return execResult as ServiceResult<string>;
@@ -375,7 +375,7 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute command (via SessionManager)
-      const execResult = await this.sessionManager.executeInSession(sessionId, command, repoPath);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath });
 
       if (!execResult.success) {
         return execResult as ServiceResult<string[]>;

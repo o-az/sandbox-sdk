@@ -97,7 +97,7 @@ describe('GitService', () => {
         2,
         'default',
         'git branch --show-current',
-        '/workspace/repo'
+        { cwd: '/workspace/repo' }
       );
     });
 
@@ -241,7 +241,7 @@ describe('GitService', () => {
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
         'git checkout develop',
-        '/tmp/repo'
+        { cwd: '/tmp/repo' }
       );
     });
 
@@ -298,7 +298,7 @@ describe('GitService', () => {
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
         'git branch --show-current',
-        '/tmp/repo'
+        { cwd: '/tmp/repo' }
       );
     });
   });
@@ -341,7 +341,7 @@ describe('GitService', () => {
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
         'git branch -a',
-        '/tmp/repo'
+        { cwd: '/tmp/repo' }
       );
     });
 

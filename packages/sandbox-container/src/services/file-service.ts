@@ -98,7 +98,7 @@ export class FileService implements FileSystemOperations {
       // 3. Get file size using stat
       const escapedPath = this.escapePath(path);
       const statCommand = `stat -c '%s' ${escapedPath} 2>/dev/null`;
-      const statResult = await this.sessionManager.executeInSession(sessionId, statCommand);
+      const statResult = await this.sessionManager.executeInSession(sessionId, statCommand, { timeoutMs: 5000 });
 
       if (!statResult.success) {
         return {
@@ -134,7 +134,7 @@ export class FileService implements FileSystemOperations {
 
       // 4. Detect MIME type using file command
       const mimeCommand = `file --mime-type -b ${escapedPath}`;
-      const mimeResult = await this.sessionManager.executeInSession(sessionId, mimeCommand);
+      const mimeResult = await this.sessionManager.executeInSession(sessionId, mimeCommand, { timeoutMs: 5000 });
 
       if (!mimeResult.success) {
         return {
@@ -183,7 +183,7 @@ export class FileService implements FileSystemOperations {
       if (isBinary) {
         // Binary files: read as base64, return as-is (DO NOT decode)
         const base64Command = `base64 -w 0 < ${escapedPath}`;
-        const base64Result = await this.sessionManager.executeInSession(sessionId, base64Command);
+        const base64Result = await this.sessionManager.executeInSession(sessionId, base64Command, { timeoutMs: 30000 });
 
         if (!base64Result.success) {
           return {
@@ -220,7 +220,7 @@ export class FileService implements FileSystemOperations {
       } else {
         // Text files: read normally
         const catCommand = `cat ${escapedPath}`;
-        const catResult = await this.sessionManager.executeInSession(sessionId, catCommand);
+        const catResult = await this.sessionManager.executeInSession(sessionId, catCommand, { timeoutMs: 30000 });
 
         if (!catResult.success) {
           return {
@@ -309,7 +309,7 @@ export class FileService implements FileSystemOperations {
       const base64Content = Buffer.from(content, 'utf-8').toString('base64');
       const command = `echo '${base64Content}' | base64 -d > ${escapedPath}`;
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 30000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -412,7 +412,7 @@ export class FileService implements FileSystemOperations {
       const escapedPath = this.escapePath(path);
       const command = `rm ${escapedPath}`;
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 5000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -501,7 +501,7 @@ export class FileService implements FileSystemOperations {
       const escapedNewPath = this.escapePath(newPath);
       const command = `mv ${escapedOldPath} ${escapedNewPath}`;
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 10000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -586,7 +586,7 @@ export class FileService implements FileSystemOperations {
       const escapedDest = this.escapePath(destinationPath);
       const command = `mv ${escapedSource} ${escapedDest}`;
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 30000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -656,7 +656,7 @@ export class FileService implements FileSystemOperations {
       command += ` ${escapedPath}`;
 
       // 4. Create directory using SessionManager
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 5000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -718,7 +718,7 @@ export class FileService implements FileSystemOperations {
       const escapedPath = this.escapePath(path);
       const command = `test -e ${escapedPath}`;
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 5000 });
 
       if (!execResult.success) {
         // If execution fails, treat as non-existent
@@ -799,7 +799,7 @@ export class FileService implements FileSystemOperations {
       const command = `stat ${statCmd.args[0]} ${statCmd.args[1]} ${escapedPath}`;
 
       // 5. Get file stats using SessionManager
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 5000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<FileStats>;
@@ -968,7 +968,7 @@ export class FileService implements FileSystemOperations {
       // Skip the base directory itself and format output
       findCommand += ` -not -path ${escapedPath} -printf '%p\\t%y\\t%s\\t%TY-%Tm-%TdT%TH:%TM:%TS\\t%m\\n'`;
 
-      const execResult = await this.sessionManager.executeInSession(sessionId, findCommand);
+      const execResult = await this.sessionManager.executeInSession(sessionId, findCommand, { timeoutMs: 30000 });
 
       if (!execResult.success) {
         return {
@@ -1165,7 +1165,7 @@ export class FileService implements FileSystemOperations {
               command = `dd if=${escapedPath} bs=${chunkSize} skip=${skip} count=${count} 2>/dev/null`;
             }
 
-            const execResult = await this.sessionManager.executeInSession(sessionId, command);
+            const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 30000 });
 
             if (!execResult.success) {
               const errorEvent = {
