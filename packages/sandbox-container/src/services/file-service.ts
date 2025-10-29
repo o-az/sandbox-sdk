@@ -33,6 +33,26 @@ export interface FileSystemOperations {
   list(path: string, options?: ListFilesOptions, sessionId?: string): Promise<ServiceResult<FileInfo[]>>;
 }
 
+/**
+ * FileService - Handles file system operations with timeouts
+ *
+ * Timeout Strategy:
+ * All file operations use timeouts to prevent indefinite hangs. Timeouts are tiered based on
+ * operation complexity and expected execution time:
+ *
+ * - Quick operations (5s): stat, exists, mkdir, delete
+ *   These are simple filesystem metadata operations that should complete quickly
+ *
+ * - Medium operations (10s): rename
+ *   File renames are typically quick but may take longer on slow filesystems
+ *
+ * - I/O-heavy operations (30s): read, write, move, listFiles, readFileStream
+ *   These operations involve actual data transfer or directory traversal and can be slow on:
+ *   - Large files or directories
+ *   - Network filesystems (NFS, CIFS)
+ *   - High I/O load
+ *   - Symlink loops (for listFiles)
+ */
 export class FileService implements FileSystemOperations {
   private manager: FileManager;
 

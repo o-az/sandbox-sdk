@@ -87,8 +87,9 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute git clone (via SessionManager)
+      // Clone can take a long time for large repos or slow networks, so use 5 minute timeout
       const sessionId = options.sessionId || 'default';
-      const execResult = await this.sessionManager.executeInSession(sessionId, command);
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { timeoutMs: 300000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<{ path: string; branch: string }>;
@@ -125,7 +126,8 @@ export class GitService {
       // explicitly specified or defaulted to the repository's HEAD
       const branchArgs = this.manager.buildGetCurrentBranchArgs();
       const branchCommand = this.buildCommand(branchArgs);
-      const branchExecResult = await this.sessionManager.executeInSession(sessionId, branchCommand, { cwd: targetDirectory });
+      // Quick operation - 10 second timeout
+      const branchExecResult = await this.sessionManager.executeInSession(sessionId, branchCommand, { cwd: targetDirectory, timeoutMs: 10000 });
 
       if (!branchExecResult.success) {
         // If we can't get the branch, use fallback but don't fail the entire operation
@@ -221,7 +223,8 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute git checkout (via SessionManager)
-      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath });
+      // Checkout can take time with large repos - 30 second timeout
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath, timeoutMs: 30000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<void>;
@@ -301,7 +304,8 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute command (via SessionManager)
-      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath });
+      // Quick operation - 10 second timeout
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath, timeoutMs: 10000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<string>;
@@ -375,7 +379,8 @@ export class GitService {
       const command = this.buildCommand(args);
 
       // Execute command (via SessionManager)
-      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath });
+      // Quick operation - 10 second timeout
+      const execResult = await this.sessionManager.executeInSession(sessionId, command, { cwd: repoPath, timeoutMs: 10000 });
 
       if (!execResult.success) {
         return execResult as ServiceResult<string[]>;

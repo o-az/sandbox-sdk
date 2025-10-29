@@ -85,19 +85,20 @@ describe('GitService', () => {
       expect(mockSecurityService.validateGitUrl).toHaveBeenCalledWith('https://github.com/user/repo.git');
       expect(mockSecurityService.validatePath).toHaveBeenCalledWith('/workspace/repo');
 
-      // Verify SessionManager was called for git clone (cwd is undefined)
+      // Verify SessionManager was called for git clone with 5 minute timeout
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         1,
         'default',
-        'git clone https://github.com/user/repo.git /workspace/repo'
+        'git clone https://github.com/user/repo.git /workspace/repo',
+        { timeoutMs: 300000 }
       );
 
-      // Verify SessionManager was called for getting current branch
+      // Verify SessionManager was called for getting current branch with 10 second timeout
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         2,
         'default',
         'git branch --show-current',
-        { cwd: '/workspace/repo' }
+        { cwd: '/workspace/repo', timeoutMs: 10000 }
       );
     });
 
@@ -134,11 +135,12 @@ describe('GitService', () => {
         expect(result.data.branch).toBe('develop');
       }
 
-      // Verify git clone command includes branch option (cwd is undefined)
+      // Verify git clone command includes branch option with 5 minute timeout
       expect(mockSessionManager.executeInSession).toHaveBeenNthCalledWith(
         1,
         'session-123',
-        'git clone --branch develop https://github.com/user/repo.git /tmp/custom-target'
+        'git clone --branch develop https://github.com/user/repo.git /tmp/custom-target',
+        { timeoutMs: 300000 }
       );
     });
 
@@ -237,11 +239,11 @@ describe('GitService', () => {
 
       expect(result.success).toBe(true);
 
-      // Verify SessionManager was called with correct parameters
+      // Verify SessionManager was called with correct parameters (30s timeout)
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
         'git checkout develop',
-        { cwd: '/tmp/repo' }
+        { cwd: '/tmp/repo', timeoutMs: 30000 }
       );
     });
 
@@ -298,7 +300,7 @@ describe('GitService', () => {
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
         'git branch --show-current',
-        { cwd: '/tmp/repo' }
+        { cwd: '/tmp/repo', timeoutMs: 10000 }
       );
     });
   });
@@ -341,7 +343,7 @@ describe('GitService', () => {
       expect(mockSessionManager.executeInSession).toHaveBeenCalledWith(
         'session-123',
         'git branch -a',
-        { cwd: '/tmp/repo' }
+        { cwd: '/tmp/repo', timeoutMs: 10000 }
       );
     });
 

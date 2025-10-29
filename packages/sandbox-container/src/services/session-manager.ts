@@ -130,7 +130,12 @@ export class SessionManager {
 
       const session = sessionResult.data;
 
-      const result = await session.exec(command, options?.cwd ? { cwd: options.cwd } : undefined);
+      // Pass both cwd and timeout to session.exec()
+      const execOptions: { cwd?: string; timeoutMs?: number } = {};
+      if (options?.cwd) execOptions.cwd = options.cwd;
+      if (options?.timeoutMs !== undefined) execOptions.timeoutMs = options.timeoutMs;
+
+      const result = await session.exec(command, Object.keys(execOptions).length > 0 ? execOptions : undefined);
 
       return {
         success: true,
