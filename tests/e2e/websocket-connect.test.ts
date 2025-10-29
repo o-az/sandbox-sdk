@@ -1,7 +1,11 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import WebSocket from 'ws';
 import { getTestWorkerUrl, WranglerDevRunner } from './helpers/wrangler-runner';
-import { createSandboxId, createTestHeaders, cleanupSandbox } from './helpers/test-fixtures';
+import {
+  createSandboxId,
+  createTestHeaders,
+  cleanupSandbox
+} from './helpers/test-fixtures';
 
 /**
  * WebSocket connect() Integration Tests
@@ -40,18 +44,18 @@ describe('WebSocket Connections', () => {
     // Start a simple echo server in the container
     await fetch(`${workerUrl}/api/init`, {
       method: 'POST',
-      headers,
+      headers
     });
 
     // Wait for server to be ready (generous timeout for first startup)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Connect via WebSocket using connect() routing
     const wsUrl = workerUrl.replace(/^http/, 'ws') + '/ws/echo';
     const ws = new WebSocket(wsUrl, {
       headers: {
-        'X-Sandbox-Id': currentSandboxId,
-      },
+        'X-Sandbox-Id': currentSandboxId
+      }
     });
 
     // Wait for connection
@@ -88,17 +92,23 @@ describe('WebSocket Connections', () => {
     // Initialize echo server
     await fetch(`${workerUrl}/api/init`, {
       method: 'POST',
-      headers,
+      headers
     });
 
     // Wait for server to be ready
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Open 3 concurrent connections to echo server
     const wsUrl = workerUrl.replace(/^http/, 'ws') + '/ws/echo';
-    const ws1 = new WebSocket(wsUrl, { headers: { 'X-Sandbox-Id': currentSandboxId } });
-    const ws2 = new WebSocket(wsUrl, { headers: { 'X-Sandbox-Id': currentSandboxId } });
-    const ws3 = new WebSocket(wsUrl, { headers: { 'X-Sandbox-Id': currentSandboxId } });
+    const ws1 = new WebSocket(wsUrl, {
+      headers: { 'X-Sandbox-Id': currentSandboxId }
+    });
+    const ws2 = new WebSocket(wsUrl, {
+      headers: { 'X-Sandbox-Id': currentSandboxId }
+    });
+    const ws3 = new WebSocket(wsUrl, {
+      headers: { 'X-Sandbox-Id': currentSandboxId }
+    });
 
     // Wait for all connections to open
     await Promise.all([
@@ -116,7 +126,7 @@ describe('WebSocket Connections', () => {
         ws3.on('open', () => resolve());
         ws3.on('error', reject);
         setTimeout(() => reject(new Error('WS3 timeout')), 10000);
-      }),
+      })
     ]);
 
     // Send different messages on each connection simultaneously
@@ -132,7 +142,7 @@ describe('WebSocket Connections', () => {
       new Promise<string>((resolve) => {
         ws3.on('message', (data) => resolve(data.toString()));
         ws3.send('Message 3');
-      }),
+      })
     ]);
 
     // Verify each connection received its own message (no interference)

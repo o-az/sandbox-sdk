@@ -1,5 +1,5 @@
-import type { Sandbox } from "@cloudflare/sandbox";
-import { jsonResponse, errorResponse } from "../http";
+import type { Sandbox } from '@cloudflare/sandbox';
+import { jsonResponse, errorResponse } from '../http';
 
 // Minimal WebSocket echo server script using Bun
 const ECHO_SERVER_SCRIPT = `
@@ -37,41 +37,43 @@ console.log("WebSocket echo server listening on port " + port);
 
 export async function initializeWebSocketServer(sandbox: Sandbox<unknown>) {
   try {
-    const processId = "ws-echo-8080";
+    const processId = 'ws-echo-8080';
 
     // Check if server is already running
     const processes = await sandbox.listProcesses();
-    const existingProcess = processes.find(p => p.id === processId);
+    const existingProcess = processes.find((p) => p.id === processId);
 
     if (existingProcess) {
       return jsonResponse({
-        message: "WebSocket server already running",
+        message: 'WebSocket server already running',
         port: 8080,
         processId
       });
     }
 
     // Write the echo server script
-    await sandbox.writeFile("/tmp/ws-echo.ts", ECHO_SERVER_SCRIPT);
+    await sandbox.writeFile('/tmp/ws-echo.ts', ECHO_SERVER_SCRIPT);
 
     // Start the server as a background process
-    await sandbox.startProcess("bun run /tmp/ws-echo.ts", {
+    await sandbox.startProcess('bun run /tmp/ws-echo.ts', {
       processId,
-      cwd: "/tmp"
+      cwd: '/tmp'
     });
 
     // Give the server a moment to start
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     return jsonResponse({
-      message: "WebSocket echo server initialized",
+      message: 'WebSocket echo server initialized',
       port: 8080,
       processId,
-      endpoint: "/ws/echo"
+      endpoint: '/ws/echo'
     });
-
   } catch (error: any) {
-    console.error("Failed to initialize WebSocket server:", error);
-    return errorResponse(`Failed to initialize WebSocket server: ${error.message}`, 500);
+    console.error('Failed to initialize WebSocket server:', error);
+    return errorResponse(
+      `Failed to initialize WebSocket server: ${error.message}`,
+      500
+    );
   }
 }
