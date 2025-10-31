@@ -4,7 +4,7 @@
 # ============================================================================
 # Stage 1: Prune monorepo to only include necessary packages
 # ============================================================================
-FROM node:20-alpine AS pruner
+FROM node:lts-alpine AS pruner
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN turbo prune @repo/sandbox-container --docker
 # ============================================================================
 # Stage 2: Install dependencies and build packages
 # ============================================================================
-FROM node:20-alpine AS builder
+FROM node:lts-alpine AS builder
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ RUN npx turbo run build
 # ============================================================================
 # Stage 3: Install production-only dependencies
 # ============================================================================
-FROM node:20-alpine AS prod-deps
+FROM node:lts-alpine AS prod-deps
 
 WORKDIR /app
 
@@ -93,8 +93,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Set Python 3.11 as default python3
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
-# Install Node.js 20 LTS using official NodeSource setup script
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# Install Node.js 24 LTS using official NodeSource setup script
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
